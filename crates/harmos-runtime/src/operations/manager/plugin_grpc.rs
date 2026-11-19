@@ -44,6 +44,7 @@ pub(crate) struct ChildInvocation {
 pub(crate) struct GrpcAdmission {
     registry: Weak<Registry>,
     entries: Vec<Arc<Entry>>,
+    lifecycle: Vec<Arc<Entry>>,
     manager: Manager,
     replacing: Option<String>,
     previous: Vec<Arc<Entry>>,
@@ -58,6 +59,58 @@ pub(crate) struct GrpcAdmission {
 /* === Implementations === */
 
 impl GrpcAdmission {
+    pub(crate) async fn lifecycle(&self, name: &str) -> Result<()> {
+        let Some(entry) = self.lifecycle.iter().find(|entry| entry.id().ends_with(name)) else {
+            return Ok(());
+        };
+        let binding = entry.binding.downcast_ref::<Binding>().expect("plugin lifecycle binding");
+        let prepared = harmos_operations::execution::__private::PreparedNative {
+            instance: binding.prepare(Vec::new()),
+            grant: None,
+            streams: None,
+        };
+        let invocation = crate::operations::wire::dispatch_prepared(
+            &self.manager,
+            Submission {
+                submitted: self.manager.clock().now(),
+                entry: entry.clone(),
+                cause: None,
+                preparation: None,
+            },
+            Source::Host,
+            None,
+            prepared,
+            crate::operations::binding::Request::from(Vec::new()),
+        )?;
+        let settled = invocation.settle();
+        let result = invocation.await;
+        let settlement = settled.await;
+        result.map(|_| ()).and(settlement)
+    }
+
+    pub(crate) fn close(&self) {
+        for entry in self.entries.iter().chain(&self.lifecycle) {
+            let pending = entry.pending.lock().expect("operation settlement lock is healthy");
+            if !entry.retirement_control() {
+                entry.active.store(false, Ordering::Release);
+            }
+            for control in pending.values() {
+                control.request_cancel();
+            }
+        }
+    }
+
+    pub(crate) async fn settle(&self) -> Result<()> {
+        self.close();
+        let mut failure = None;
+        for entry in self.entries.iter().chain(&self.lifecycle) {
+            if let Err(error) = super::settle(entry).await {
+                failure.get_or_insert(error);
+            }
+        }
+        failure.map_or(Ok(()), Err)
+    }
+
     pub(crate) fn commit(&mut self) -> Result<()> {
         if self.staged {
             self.previous = self.manager.reserve_inner(&self.entries, self.replacing.as_deref(), true)?;
@@ -68,7 +121,7 @@ impl GrpcAdmission {
     pub(crate) fn seal(&mut self) {
         self.sealed = true;
         for entry in &self.previous {
-            entry.active.store(false, std::sync::atomic::Ordering::Release);
+            entry.active.store(false, Ordering::Release);
             for control in entry.pending.lock().expect("operation settlement lock is healthy").values() {
                 control.request_cancel();
             }
@@ -195,7 +248,20 @@ impl Manager {
     ) -> std::result::Result<GrpcAdmission, grpc::Error> {
         let catalog = activation.description.declarations.as_ref().unwrap();
         let mut entries = Vec::new();
+        let mut lifecycle = Vec::new();
         for contract in &catalog.operations {
+            let hook = grpc::lifecycle_operation(&activation.description.id, &contract.id);
+            if hook
+                && (contract.request != "google.protobuf.Empty"
+                    || contract.response != "google.protobuf.Empty"
+                    || contract.visibility() != model::Visibility::Protected
+                    || contract.replay_safe)
+            {
+                return Err(grpc::Error::Invalid(format!(
+                    "Admit {}: Declare a Protected Lifecycle Operation with Empty Messages and No Replay",
+                    contract.id
+                )));
+            }
             let definition = OperationDefinition {
                 id: Identifier::new(&contract.id).map_err(|error| grpc::Error::Invalid(error.to_string()))?,
                 description: contract.description.clone(),
@@ -212,7 +278,7 @@ impl Manager {
             let mut entry = self
                 .binding_erased(
                     activation.owner(),
-                    lane,
+                    if hook { crate::operations::lane::RESIDENT } else { lane },
                     binding,
                     definition,
                     Some(crate::operations::wire::dispatch_native),
@@ -234,13 +300,18 @@ impl Manager {
             let metadata = crate::operations::Contract::from_protobuf(entry.definition.clone(), protobuf, None, &self.schema_settings)
                 .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
             Arc::get_mut(&mut entry).expect("unpublished plugin entry").contract = Some(metadata);
-            entries.push(entry);
+            if hook {
+                lifecycle.push(entry);
+            } else {
+                entries.push(entry);
+            }
         }
         self.reserve_inner(&entries, replace.then_some(activation.owner()), !replace)
             .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
         Ok(GrpcAdmission {
             registry: Arc::downgrade(&self.registry),
             entries,
+            lifecycle,
             manager: self.clone(),
             replacing: replace.then(|| activation.owner().to_owned()),
             previous: Vec::new(),

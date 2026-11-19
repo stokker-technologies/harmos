@@ -34,13 +34,24 @@ pub use scoped::ScopedBinding;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, sync::Arc};
+use std::{
+    future::{self, Future},
+    process::ExitStatus,
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 // Third Party Imports
-use tokio::sync::{oneshot, watch};
+use prost_types::Timestamp;
+use tokio::sync::{self, oneshot, watch};
 use tonic::transport::Channel;
 
 // Local Imports
+use crate::operations::{GrpcAdmission, Lane, Manager};
+use crate::runtime::StopParticipant;
+use crate::streams::StreamManager;
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
 use harmos_protocol::model::SettingValues;
@@ -74,13 +85,14 @@ pub struct Activation {
     pub settings: SettingValues,
     pub number: u64,
     pub description: InstanceGetResponse,
-    pub previous_started_at: Option<prost_types::Timestamp>,
+    pub previous_started_at: Option<Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
     pub process_id: Option<u32>,
     connection: Arc<Connection>,
     clock: Clock,
-    admission: Option<Arc<crate::operations::GrpcAdmission>>,
-    publications: Arc<std::sync::OnceLock<publish::ScopeSource>>,
+    admission: Option<Arc<GrpcAdmission>>,
+    publications: Arc<OnceLock<publish::ScopeSource>>,
+    finalized: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -99,13 +111,13 @@ pub(crate) struct PreparedPlugin {
     process: Option<Process>,
     address: String,
     pub(crate) activation: Activation,
-    admission: crate::operations::GrpcAdmission,
+    admission: GrpcAdmission,
     publications: PreparedPublications,
 }
 
 struct Startup {
-    participant: crate::runtime::StopParticipant,
-    process_participant: Option<crate::runtime::StopParticipant>,
+    participant: StopParticipant,
+    process_participant: Option<StopParticipant>,
     entry: Option<EntrySettings>,
     cancelled: Option<oneshot::Receiver<()>>,
     options: Option<LoadOptions>,
@@ -124,8 +136,8 @@ struct ConnectedPlugin {
 }
 
 struct Session<A: Application> {
-    operations: crate::operations::Manager,
-    streams: crate::streams::StreamManager<A>,
+    operations: Manager,
+    streams: StreamManager<A>,
     lane: &'static str,
     clock: Clock,
     settings: PlacementSettings,
@@ -134,7 +146,7 @@ struct Session<A: Application> {
     activation: Activation,
     publications: Publications,
     stop: watch::Receiver<Option<String>>,
-    participant: crate::runtime::StopParticipant,
+    participant: StopParticipant,
 }
 
 /* === Enums === */
@@ -147,7 +159,7 @@ pub enum Placement {
 
 enum Ending {
     Stop(String),
-    Exit(Result<std::process::ExitStatus, Error>),
+    Exit(Result<ExitStatus, Error>),
     Disconnect,
 }
 
@@ -155,6 +167,12 @@ enum Ending {
 pub enum Error {
     #[error("Inspect Plugin: {0}; correct the candidate or its placement settings before inspecting again")]
     Inspection(#[source] Box<Error>),
+    #[error("{operation}: {source}")]
+    Lifecycle {
+        operation: String,
+        #[source]
+        source: crate::Error,
+    },
 
     #[error("{0}")]
     Invalid(String),
@@ -203,7 +221,7 @@ pub enum Error {
     LoadDeadline { plugin: String, timeout: std::time::Duration, configured_by: &'static str },
 
     #[error("managed plugin exited with {0}")]
-    Exit(std::process::ExitStatus),
+    Exit(ExitStatus),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -212,6 +230,21 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Error {
+    pub(crate) fn lifecycle_failure(&self, plugin: &str) -> Option<model::Failure> {
+        match self {
+            Self::Lifecycle { operation, source } => {
+                let mut failure = invoke::failure(source, operation, plugin);
+                if failure.operation.is_empty() {
+                    failure.operation = operation.clone();
+                }
+                Some(failure)
+            }
+            _ => None,
+        }
+    }
+}
 
 impl PreparedPlugin {
     pub(crate) async fn stop(&mut self, clock: &Clock, settings: &PlacementSettings) -> Result<(), Error> {
@@ -223,6 +256,10 @@ impl PreparedPlugin {
 }
 
 impl CallingPlugin {
+    pub(crate) fn is_ready(&self) -> bool {
+        self.connection.ready.load(Ordering::Acquire)
+    }
+
     pub(crate) fn connection_identity(&self) -> usize {
         Arc::as_ptr(&self.connection) as usize
     }
@@ -237,6 +274,43 @@ impl CallingPlugin {
 impl Activation {
     pub(crate) fn owner(&self) -> &str {
         self.entry_name.as_deref().unwrap_or(&self.provider)
+    }
+
+    fn has_hooks(&self) -> bool {
+        self.description
+            .declarations
+            .as_ref()
+            .expect("admitted plugin declarations")
+            .operations
+            .iter()
+            .any(|operation| lifecycle_operation(&self.description.id, &operation.id))
+    }
+
+    async fn initialize(&self) -> Result<(), Error> {
+        self.hook(".initialize").await
+    }
+
+    async fn hook(&self, name: &str) -> Result<(), Error> {
+        let operation = format!("{}{name}", self.description.id);
+        let admission = self.admission.as_ref().expect("lifecycle follows admission");
+        admission.lifecycle(name).await.map_err(|source| Error::Lifecycle { operation, source })
+    }
+
+    async fn finalize(&self) -> Result<(), Error> {
+        if self.finalized.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        self.connection.ready.store(false, Ordering::Release);
+        let admission = self.admission.as_ref().expect("finalize follows admission");
+        let settled = admission.settle().await;
+        let finalized = self.hook(".finalize").await;
+        admission.remove();
+        settled
+            .map_err(|source| Error::Lifecycle {
+                operation: format!("{}.finalize", self.description.id),
+                source,
+            })
+            .and(finalized)
     }
 }
 
@@ -255,7 +329,7 @@ impl<A: Application> Runtime<A> {
         }
         // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
         // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
-        let spawned = Arc::new(tokio::sync::Mutex::new(None));
+        let spawned = Arc::new(sync::Mutex::new(None));
         let process_participant = self.stop_participant();
         let stage = {
             let spawned = spawned.clone();
@@ -277,7 +351,7 @@ impl<A: Application> Runtime<A> {
                 )
                 .map_err(|error| Error::Invalid(error.to_string()))?;
                 activation.process_id = process.id();
-                let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
+                let admission = operations.prepare_grpc_admission(&activation, Lane::default().name(), true)?;
                 let publications = Publications::prepare(&streams, &activation, &settings, &operations, true, None).await?;
                 Ok((address, activation, admission, publications))
             }
@@ -315,13 +389,29 @@ impl<A: Application> Runtime<A> {
         } = prepared;
         let operations = self.operations.execution();
         let clock = operations.clock().clone();
-        let activated = (|| {
+        // Initialize Before Publishing the Replacement's Operations or Sample Demands.
+        let initialized = admission.lifecycle(".initialize").await.map_err(|source| Error::Lifecycle {
+            operation: format!("{}.initialize", activation.description.id),
+            source,
+        });
+        let activated = initialized.and_then(|()| {
             admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
             Publications::activate(publications, &self.streams, &activation, &clock, &operations, &settings, true)
-        })();
+        });
         let publications = match activated {
             Ok(publications) => publications,
             Err(error) => {
+                activation.admission = Some(Arc::new(admission));
+                if let Err(failure) = activation.finalize().await {
+                    tracing::warn!(plugin = %activation.description.id, %failure, "plugin finalization failed");
+                }
+                if activation.has_hooks() {
+                    let mut client = activation.connection.client();
+                    let request = InstanceStopRequest {
+                        reason: "Replacement Initialization Failed".into(),
+                    };
+                    let _ = clock.timeout(settings.stop_grace, client.stop(request)).await;
+                }
                 if let Some(process) = &mut process {
                     process.terminate(&clock, settings.stop_grace, "Stop Failed Replacement Activation").await?;
                 }
@@ -330,10 +420,11 @@ impl<A: Application> Runtime<A> {
         };
         admission.seal();
         activation.admission = Some(Arc::new(admission));
+        activation.connection.ready.store(true, Ordering::Release);
         Ok(Attached::run(
             operations,
             self.streams.clone(),
-            crate::operations::Lane::default().name(),
+            Lane::default().name(),
             settings,
             self.stop_participant(),
             ConnectedPlugin {
@@ -352,7 +443,7 @@ impl<A: Application> Runtime<A> {
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
-            crate::operations::Lane::default().name(),
+            Lane::default().name(),
             placement,
             settings,
             Startup {
@@ -379,7 +470,7 @@ impl<A: Application> Runtime<A> {
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
-            crate::operations::Lane::default().name(),
+            Lane::default().name(),
             placement,
             settings,
             Startup {
@@ -417,8 +508,8 @@ impl Activation {
 
 impl Attached {
     async fn start<A: Application>(
-        operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
-        settings: PlacementSettings, startup: Startup,
+        operations: Manager, streams: StreamManager<A>, lane: &'static str, placement: Placement, settings: PlacementSettings,
+        startup: Startup,
     ) -> Result<Self, Error> {
         let (cancel, dropped) = oneshot::channel();
         let task = tokio::spawn(Self::start_owned(operations, streams, lane, placement, settings, startup, dropped));
@@ -428,8 +519,8 @@ impl Attached {
     }
 
     async fn start_owned<A: Application>(
-        operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
-        settings: PlacementSettings, startup: Startup, dropped: oneshot::Receiver<()>,
+        operations: Manager, streams: StreamManager<A>, lane: &'static str, placement: Placement, settings: PlacementSettings,
+        startup: Startup, dropped: oneshot::Receiver<()>,
     ) -> Result<Self, Error> {
         let Startup {
             mut participant,
@@ -454,7 +545,8 @@ impl Attached {
         };
         // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
         // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
-        let spawned = Arc::new(tokio::sync::Mutex::new(None));
+        let spawned = Arc::new(sync::Mutex::new(None));
+        let admitted = Arc::new(Mutex::new(None));
         let setup = {
             let spawned = spawned.clone();
             let operations = operations.clone();
@@ -462,6 +554,7 @@ impl Attached {
             let clock = clock.clone();
             let settings = settings.clone();
             let placement = placement.clone();
+            let admitted = admitted.clone();
             async move {
                 let mut process = spawned.lock().await;
                 let address = match &placement {
@@ -494,7 +587,10 @@ impl Attached {
                     activation.connection.closed.send_replace(true);
                 })?;
                 activation.admission = Some(Arc::new(admission));
+                *admitted.lock().expect("startup activation lock is healthy") = Some(activation.clone());
+                activation.initialize().await?;
                 let publications = Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
+                activation.connection.ready.store(true, Ordering::Release);
                 Ok::<_, Error>((address, activation, publications))
             }
         };
@@ -503,7 +599,7 @@ impl Attached {
                 Some(cancelled) => {
                     let _ = cancelled.await;
                 }
-                None => std::future::pending().await,
+                None => future::pending().await,
             }
         };
         let setup = async {
@@ -521,9 +617,22 @@ impl Attached {
         };
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
         let mut process = spawned.lock().await.take();
+        let admitted = admitted.lock().expect("startup activation lock is healthy").take();
         let (address, activation, publications) = match result {
             Ok(connected) => connected,
             Err(error) => {
+                if let Some(activation) = admitted {
+                    if let Err(failure) = activation.finalize().await {
+                        tracing::warn!(plugin = %activation.description.id, %failure, "plugin finalization failed");
+                    }
+                    if activation.has_hooks() {
+                        let mut client = activation.connection.client();
+                        let _ = clock
+                            .timeout(settings.stop_grace, client.stop(InstanceStopRequest { reason: "Initialization Failed".into() }))
+                            .await;
+                    }
+                    activation.connection.closed.send_replace(true);
+                }
                 if let Some(process) = &mut process {
                     process.terminate(&clock, settings.stop_grace, "Stop Plugin Startup").await?;
                 }
@@ -540,8 +649,8 @@ impl Attached {
     }
 
     fn run<A: Application>(
-        operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, settings: PlacementSettings,
-        participant: crate::runtime::StopParticipant, connected: ConnectedPlugin,
+        operations: Manager, streams: StreamManager<A>, lane: &'static str, settings: PlacementSettings, participant: StopParticipant,
+        connected: ConnectedPlugin,
     ) -> Self {
         let ConnectedPlugin {
             process,
@@ -618,6 +727,10 @@ impl Attached {
 
 /* === Private Functions === */
 
+pub(crate) fn lifecycle_operation(plugin: &str, operation: &str) -> bool {
+    matches!(operation.strip_prefix(plugin), Some(".initialize" | ".finalize"))
+}
+
 async fn describe(mut client: InstanceClient<Channel>) -> Result<InstanceGetResponse, Error> {
     client
         .get(InstanceGetRequest {
@@ -631,7 +744,7 @@ async fn describe(mut client: InstanceClient<Channel>) -> Result<InstanceGetResp
 }
 
 async fn connect(
-    clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>,
+    clock: &Clock, address: &str, number: u64, previous_started_at: Option<Timestamp>, executable_digest: Option<[u8; 32]>,
     message_bytes: usize,
 ) -> Result<Activation, Error> {
     let connection = Arc::new(Connection::open(address, harmos_protocol::transfer::default_message_bytes().get()).await?);
@@ -655,7 +768,8 @@ async fn connect(
         process_id: None,
         connection,
         admission: None,
-        publications: Arc::new(std::sync::OnceLock::new()),
+        publications: Arc::new(OnceLock::new()),
+        finalized: Arc::new(AtomicBool::new(false)),
         clock: clock.clone(),
     })
 }
@@ -685,7 +799,7 @@ async fn disconnected(mut closed: watch::Receiver<bool>) {
     }
 }
 
-async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut crate::runtime::StopParticipant) -> String {
+async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut StopParticipant) -> String {
     loop {
         if let Some(reason) = stop.borrow_and_update().clone() {
             return reason;
@@ -716,7 +830,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             let exited = async {
                 match &mut process {
                     Some(process) => process.exited().await,
-                    None => std::future::pending().await,
+                    None => future::pending().await,
                 }
             };
             tokio::select! {
@@ -731,6 +845,8 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         // Every Ending Settles Its Bindings Before the Connection or Process Is Released. Teardown
         // Parks Its Activity While It Waits on the Plugin, So Every Clock Kind Reaches Its Deadlines.
         let teardown = clock.activity("plugin teardown");
+        activation.connection.ready.store(false, Ordering::Release);
+        activation.admission.as_ref().expect("connected plugin admission").close();
         if !matches!(ending, Ending::Stop(_)) {
             activation.connection.closed.send_replace(true);
         }
@@ -739,7 +855,11 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         if let Err(error) = &settled {
             tracing::warn!(plugin = %activation.description.id, action = "Settle Plugin Publications", %error, "plugin publications did not settle");
         }
-        activation.admission.as_ref().unwrap().remove();
+        let finalized = teardown.wait(activation.finalize()).await;
+        if let Err(error) = &finalized {
+            tracing::warn!(plugin = %activation.description.id, %error, "plugin finalization failed; continuing Stop");
+            status.send_modify(|status| status.failure = Some(Arc::new(Error::Invalid(error.to_string()))));
+        }
         // The Plugin Is Told to Stop Before It Is Killed: Stop and Its Exit Get a Fresh `stop_grace`.
         let deadline = clock.now() + settings.stop_grace;
         match ending {
@@ -790,7 +910,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 // A Reap Failure Wins So the Owner Retains the Installation.
                 return match exit {
                     Err(error @ Error::Reap(_)) => Err(Arc::new(error)),
-                    exit => settled.and(stopped).and(exit).map_err(Arc::new),
+                    exit => settled.and(finalized).and(stopped).and(exit).map_err(Arc::new),
                 };
             }
             Ending::Exit(result) => return Err(Arc::new(result.map_or_else(|error| error, Error::Exit))),
@@ -815,6 +935,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
             let _activity = clock.activity("plugin reconnect");
+            let admitted = Arc::new(Mutex::new(None));
             // One Plugin Load Bounds the Whole Attempt, and Stop Interrupts Every Step of It.
             let attempt = {
                 let address = address.clone();
@@ -823,6 +944,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 let clock = clock.clone();
                 let settings = settings.clone();
                 let previous_activation = activation.clone();
+                let admitted = admitted.clone();
                 async move {
                     let mut next = connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()).await?;
                     if next.description.id != previous_activation.description.id {
@@ -851,9 +973,18 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                             return Err(error);
                         }
                     }
+                    *admitted.lock().expect("reconnect activation lock is healthy") = Some(next.clone());
+                    if let Err(error) = next.initialize().await {
+                        let _ = next.finalize().await;
+                        return Err(error);
+                    }
                     match Publications::open(&streams, &next, &clock, &settings, &operations).await {
-                        Ok(opened) => Ok((next, opened)),
+                        Ok(opened) => {
+                            next.connection.ready.store(true, Ordering::Release);
+                            Ok((next, opened))
+                        }
                         Err(error) => {
+                            let _ = next.finalize().await;
                             next.connection.closed.send_replace(true);
                             next.admission.as_ref().unwrap().remove();
                             Err(error)
@@ -863,9 +994,24 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             };
             let reconnected = tokio::select! {
                 biased;
-                _ = stopping(&mut stop, &mut participant) => return Ok(()),
-                result = load::load(&operations, activation.owner(), LoadOptions::default(), attempt) => result,
+                _ = stopping(&mut stop, &mut participant) => None,
+                result = load::load(&operations, activation.owner(), LoadOptions::default(), attempt) => Some(result),
             };
+            let admitted = admitted.lock().expect("reconnect activation lock is healthy").take();
+            if !matches!(reconnected, Some(Ok(_)))
+                && let Some(next) = admitted
+            {
+                if let Err(error) = next.finalize().await {
+                    tracing::warn!(plugin = %next.description.id, %error, "plugin reconnect finalization failed");
+                }
+                if next.has_hooks() {
+                    let mut client = next.connection.client();
+                    let _ =
+                        clock.timeout(settings.stop_grace, client.stop(InstanceStopRequest { reason: "Reconnect Failed".into() })).await;
+                }
+                next.connection.closed.send_replace(true);
+            }
+            let Some(reconnected) = reconnected else { return Ok(()) };
             let next = match reconnected {
                 Ok((next, opened)) => {
                     publications = opened;

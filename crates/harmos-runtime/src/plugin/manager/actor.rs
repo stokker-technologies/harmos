@@ -158,7 +158,7 @@ pub(super) enum Command {
     Health {
         name: String,
         activation: u64,
-        status: Box<Result<Status, String>>,
+        status: Box<Result<Status, Arc<grpc::Error>>>,
     },
 }
 
@@ -763,13 +763,14 @@ impl Actor {
             let attached = match attached {
                 Ok(attached) => attached,
                 Err(error) => {
+                    let error = Arc::new(error);
                     let command = Command::Health {
                         name: worker_name,
                         activation,
-                        status: Box::new(Err(error.to_string())),
+                        status: Box::new(Err(error.clone())),
                     };
                     tokio::select! { _ = &mut stopping => {}, _ = commands.send(command) => {} }
-                    return match error {
+                    return match error.as_ref() {
                         grpc::Error::Reap(_) => Err(problem("Reap Starting Plugin", error)),
                         _ => Ok(()),
                     };
@@ -842,7 +843,7 @@ impl Actor {
         Ok(entry)
     }
 
-    async fn health(&mut self, name: String, activation: u64, status: Result<Status, String>) -> Result<(), Error> {
+    async fn health(&mut self, name: String, activation: u64, status: Result<Status, Arc<grpc::Error>>) -> Result<(), Error> {
         let Some(mut entry) = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(&name)).cloned() else {
             return Ok(());
         };
@@ -862,13 +863,15 @@ impl Actor {
                         .ok_or_else(|| Error::new("activation_exhausted", "Reconnect Plugin", "create a new entry"))?;
                     entry.state = PluginState::Ready as i32;
                     // A Ready Activation Reports a Stream Whose Demand Failed; Its Other Streams Keep Publishing.
-                    entry.failure = status.failure.map(|failure| model::Failure {
-                        classification: model::Classification::Permanent as i32,
-                        code: "plugin_stream_failed".into(),
-                        message: failure.to_string(),
-                        action: "follow the reported action, then Restart the plugin".into(),
-                        plugin: name.clone(),
-                        ..Default::default()
+                    entry.failure = status.failure.map(|failure| {
+                        failure.lifecycle_failure(&name).unwrap_or_else(|| model::Failure {
+                            classification: model::Classification::Permanent as i32,
+                            code: "plugin_stream_failed".into(),
+                            message: failure.to_string(),
+                            action: "follow the reported action, then Restart the plugin".into(),
+                            plugin: name.clone(),
+                            ..Default::default()
+                        })
                     });
                     entry.declarations_digest = current.description.declarations.as_ref().expect("admitted catalog exists").digest.clone();
                     entry.process = current.process_id.map(|id| PluginProcess {
@@ -895,16 +898,16 @@ impl Actor {
                 } else {
                     entry.state = PluginState::Unavailable as i32;
                     entry.process = None;
-                    entry.failure = Some(unavailable(
-                        &name,
-                        status.failure.map(|failure| failure.to_string()).unwrap_or_else(|| "plugin activation stopped".into()),
-                    ));
+                    entry.failure = Some(match status.failure {
+                        Some(failure) => failure.lifecycle_failure(&name).unwrap_or_else(|| unavailable(&name, failure.to_string())),
+                        None => unavailable(&name, "plugin activation stopped".into()),
+                    });
                 }
             }
             Err(error) => {
                 entry.state = PluginState::Unavailable as i32;
                 entry.process = None;
-                entry.failure = Some(unavailable(&name, error));
+                entry.failure = Some(error.lifecycle_failure(&name).unwrap_or_else(|| unavailable(&name, error.to_string())));
             }
         }
         let mut registry = self.registry.clone();

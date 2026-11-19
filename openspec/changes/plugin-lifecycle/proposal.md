@@ -11,7 +11,7 @@ every language reads the same way.
 
 ## What Changes
 
-Owner decisions locked on 2026-11-16. Status per row: **proposed** until its tasks land.
+Owner decisions locked on 2026-11-16, with native lifecycle operations superseded on 2026-11-19. Status per row: **proposed** until its tasks land.
 Harmos owns the generic plugin lifecycle and registration machinery; products own their kinds.
 
 | Decision | Direction |
@@ -26,8 +26,10 @@ Harmos owns the generic plugin lifecycle and registration machinery; products ow
 | No aliases or path overrides | Import the names used; qualify clashes by module path. No import aliases or path overrides (`#[path]`, `sys.path` edits), except named unavoidable exceptions. |
 | SDK ownership (later owner amendment: plugin-boundary) | Harmos owns thin four-language carrier helpers and generic registration/lifecycle machinery. Products own contracts, registrars and the only author-facing SDKs/starters; Harmos types stay internal without import aliases. |
 
-- Add host-invoked plugin initialize and finalize to the native plugin carrier, replacing
-  `Instance.Stop`; rename the Wasm guest shutdown command and policy to finalize.
+- Encode host-invoked native initialize and finalize as reserved `<plugin>.initialize` and
+  `<plugin>.finalize` operations through existing Invoke; preserve Instance.Stop and all wire messages.
+- Native hook policies use existing operation policies/defaults, without new configuration.
+- Plugin-lifetime child subscriptions cannot outlive Invoke/window contexts on the current wire; leave them out rather than emulate them.
 - Add generic registration accumulation in all four carrier helpers; products own
   their public registrar and `Registration` contract and translate internally. Dissolve
   the Wasm `Registration` builder into the plugin value plus guest capacity.
@@ -68,8 +70,7 @@ where each plugin runs its stop and cleanup hooks.
 
 ## Impact
 
-`proto/harmos/plugin/v1` (`instance.proto`, `guest.proto`), `proto/harmos/model/v1`
-(declaration lifecycle policies), `crates/harmos-runtime` (runtime verbs, plugin activation,
+No native protocol changes. `crates/harmos-runtime` (runtime verbs, plugin activation,
 Wasm guest host, carrier), `crates/harmos-operations` (application, service and carrier
 hooks), all four SDKs and their generators, `tools/conformance`, the Schematic example,
 runtime stories, `docs/architecture.md`, `docs/product-guide.md`, `docs/plugin-manager.md`
