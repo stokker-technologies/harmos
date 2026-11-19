@@ -11,8 +11,18 @@
 
 /* === Imports === */
 
+// Standard Library Imports
 use std::{env, fs};
 
+// Third Party Imports
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::TcpListener,
+};
+
+// Local Imports
+use super::support::{self, Backends, Host};
+use crate::plugin_grpc;
 use harmos_packaging::bundle::{self, Executable, Facility, Identity, Source};
 use harmos_protocol::host::PluginState;
 use harmos_protocol::host::PluginsDeleteRequest;
@@ -21,22 +31,16 @@ use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::{PluginPlacement, PluginsReplaceRequest, plugin_placement};
 use harmos_protocol::host::{PluginValue, PluginsSetRequest};
 use harmos_protocol::model::Failure;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::TcpListener,
-};
-
-use super::support::{self, Backends, Host};
-use crate::plugin_grpc;
 
 /* === Tests === */
 
 #[tokio::test]
 async fn managed_bundle_version_survives_activation_replacement_and_manager_restart() {
-    for (command, enabled) in [(false, true), (false, false), (true, true), (true, false)] {
-        // Build Two Bundles With Versions Independent of the Same Executable.
+    // Read the Executable Once for Both Launch Modes
+    let bytes = fs::read(plugin_grpc::support::binary("harmos-bundle-version-fixture")).unwrap();
+    for command in [false, true] {
+        // Build Two Bundles Shared by the Enabled and Disabled Entries
         let root = tempfile::tempdir().unwrap();
-        let bytes = fs::read(plugin_grpc::support::binary("harmos-conformance-plugin")).unwrap();
         let path = format!("bin/plugin{}", env::consts::EXE_SUFFIX);
         let launch = command.then(|| vec![format!("./{path}")]);
         let sources = [Source {
@@ -61,83 +65,119 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
         };
         let replacement = bundle::build(replacement_identity.clone(), &sources, launch.as_deref(), Default::default()).unwrap();
 
-        // Activation Publishes the Verified Bundle Version While Retaining Live Metadata.
+        // Upload Each Immutable Bundle Once per Launch Mode
         let backends = Backends::new();
         let mut host = Host::start(root.path(), &backends).await;
-        let content = host.upload("original", original.bytes().to_vec()).await;
-        let mut watch = host.client.watch(PluginsWatchRequest { name: Some("frozen".into()), at: None }).await.unwrap().into_inner();
-        host.client.create(support::managed("frozen", content, true)).await.unwrap();
-        let ready = support::state(&mut watch, "frozen", PluginState::Ready, 1).await;
-        let live = host.manager.activation("frozen").await.unwrap();
-        assert_ne!(live.description.version, identity.version.to_string());
-        assert_ne!(live.description.version, replacement_identity.version.to_string());
-        assert_eq!(ready.description.as_ref().unwrap().version, identity.version.to_string());
-        assert_eq!(ready.description.as_ref().unwrap().id, live.description.id);
+        let original = host.upload("original", original.bytes().to_vec()).await;
+        let replacement = host.upload("replacement", replacement.bytes().to_vec()).await;
+        let mut entries = Vec::new();
+        let mut processes = Vec::new();
+        for enabled in [true, false] {
+            // Activation Publishes the Bundle Version While Retaining Live Metadata
+            let name = if enabled { "frozen_enabled" } else { "frozen_disabled" };
+            let mut watch = host.client.watch(PluginsWatchRequest { name: Some(name.into()), at: None }).await.unwrap().into_inner();
+            host.client.create(support::managed(name, original.clone(), true)).await.unwrap();
+            let ready = support::state(&mut watch, name, PluginState::Ready, 1).await;
+            let first = support::Process::observe(ready.process.as_ref().unwrap().id).await;
+            let live = host.manager.activation(name).await.unwrap();
+            assert_ne!(live.description.version, identity.version.to_string());
+            assert_ne!(live.description.version, replacement_identity.version.to_string());
+            assert_eq!(ready.description.as_ref().unwrap().version, identity.version.to_string());
+            assert_eq!(ready.description.as_ref().unwrap().id, live.description.id);
 
-        // A Disabled Entry Retains Its Description While Its Bundle Is Replaced.
-        let ready = if enabled {
-            ready
-        } else {
-            host.client
-                .set(PluginsSetRequest {
+            // Disable Reaps the Child and Retains the Original Bundle Description
+            let (ready, first) = if enabled {
+                (ready, Some(first))
+            } else {
+                let stopped = host
+                    .client
+                    .set(PluginsSetRequest {
+                        name: ready.name,
+                        value: Some(PluginValue { enabled: false }),
+                        expected_revision: ready.revision,
+                    })
+                    .await
+                    .unwrap()
+                    .into_inner()
+                    .entry
+                    .unwrap();
+                first.assert_exited().await;
+                assert_eq!(stopped.state, PluginState::Stopped as i32);
+                assert!(stopped.process.is_none());
+                assert_eq!(stopped.description.as_ref().unwrap().version, identity.version.to_string());
+                (stopped, None)
+            };
+
+            // Replacement Publishes Its Bundle Version and Reaps the Previous Child
+            let replaced = host
+                .client
+                .replace(PluginsReplaceRequest {
                     name: ready.name,
-                    value: Some(PluginValue { enabled: false }),
+                    placement: Some(PluginPlacement {
+                        kind: Some(plugin_placement::Kind::Managed(replacement.clone())),
+                    }),
                     expected_revision: ready.revision,
+                    request_id: format!("replace-{name}"),
                 })
                 .await
                 .unwrap()
                 .into_inner()
                 .entry
-                .unwrap()
-        };
+                .unwrap();
+            if let Some(first) = first {
+                first.assert_exited().await;
+            }
+            assert_eq!(replaced.description.as_ref().unwrap().version, replacement_identity.version.to_string());
 
-        // Replacement Publishes the New Bundle Version in Both Response and Watch.
-        let content = host.upload("replacement", replacement.bytes().to_vec()).await;
-        let replaced = host
-            .client
-            .replace(PluginsReplaceRequest {
-                name: ready.name,
-                placement: Some(PluginPlacement {
-                    kind: Some(plugin_placement::Kind::Managed(content)),
-                }),
-                expected_revision: ready.revision,
-                request_id: "replace-frozen".into(),
-            })
-            .await
-            .unwrap()
-            .into_inner()
-            .entry
-            .unwrap();
-        assert_eq!(replaced.description.as_ref().unwrap().version, replacement_identity.version.to_string());
-        let activating = if enabled {
-            replaced
-        } else {
-            host.client
-                .set(PluginsSetRequest {
-                    name: replaced.name,
-                    value: Some(PluginValue { enabled: true }),
-                    expected_revision: replaced.revision,
-                })
-                .await
-                .unwrap()
-                .into_inner()
-                .entry
-                .unwrap()
-        };
-        let ready = support::state(&mut watch, "frozen", PluginState::Ready, activating.activation).await;
-        assert_eq!(ready.description.as_ref().unwrap().version, replacement_identity.version.to_string());
-        drop(watch);
+            // Enable the Replaced Entry When Necessary and Observe Its Live Version
+            let activating = if enabled {
+                replaced
+            } else {
+                assert_eq!(replaced.state, PluginState::Stopped as i32);
+                assert!(replaced.process.is_none());
+                host.client
+                    .set(PluginsSetRequest {
+                        name: replaced.name,
+                        value: Some(PluginValue { enabled: true }),
+                        expected_revision: replaced.revision,
+                    })
+                    .await
+                    .unwrap()
+                    .into_inner()
+                    .entry
+                    .unwrap()
+            };
+            let ready = support::state(&mut watch, name, PluginState::Ready, activating.activation).await;
+            assert_eq!(ready.description.as_ref().unwrap().version, replacement_identity.version.to_string());
+            let second = support::Process::observe(ready.process.as_ref().unwrap().id).await;
+            entries.push(ready);
+            processes.push(second);
+        }
+
+        // Shutdown Reaps Every Replacement Before a New Manager Starts
         host.close().await;
+        for second in processes {
+            second.assert_exited().await;
+        }
 
-        // A New Manager Reconstructs the Bundle Authority From Its Installed Manifest.
+        // A New Manager Reconstructs Both Entries From Their Installed Manifests
         let mut host = Host::start(root.path(), &backends).await;
-        let mut watch = host.client.watch(PluginsWatchRequest { name: Some("frozen".into()), at: None }).await.unwrap().into_inner();
-        let restored = support::state(&mut watch, "frozen", PluginState::Ready, ready.activation + 1).await;
-        assert_eq!(restored.description.as_ref().unwrap().version, replacement_identity.version.to_string());
-        let live = host.manager.activation("frozen").await.unwrap();
-        assert_ne!(live.description.version, replacement_identity.version.to_string());
-        drop(watch);
+        let mut processes = Vec::new();
+        for ready in entries {
+            let mut watch = host.client.watch(PluginsWatchRequest { name: Some(ready.name.clone()), at: None }).await.unwrap().into_inner();
+            let restored = support::state(&mut watch, &ready.name, PluginState::Ready, ready.activation + 1).await;
+            assert_eq!(restored.description.as_ref().unwrap().version, replacement_identity.version.to_string());
+            let live = host.manager.activation(&ready.name).await.unwrap();
+            assert_ne!(live.description.version, replacement_identity.version.to_string());
+            let third = support::Process::observe(restored.process.as_ref().unwrap().id).await;
+            processes.push(third);
+        }
+
+        // The Restored Children Are Reaped Before the Next Launch Mode
         host.close().await;
+        for third in processes {
+            third.assert_exited().await;
+        }
     }
 }
 
@@ -263,6 +303,21 @@ async fn failed_readiness_is_reaped_before_immediate_delete() {
     let failed = support::state(&mut watch, "failing", PluginState::Unavailable, 1).await;
     assert!(failed.failure.is_some());
     process.assert_exited().await;
+
+    // A Ready Wait Reports the Retained Startup Failure Without Waiting for Another Event
+    let mut ready_watch = host
+        .client
+        .watch(PluginsWatchRequest {
+            name: Some(failed.name.clone()),
+            at: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let waiting = tokio::spawn(async move { support::state(&mut ready_watch, "failing", PluginState::Ready, 1).await });
+    assert!(waiting.await.unwrap_err().is_panic());
+
+    // Delete the Failed Entry After Its Child Has Exited
     host.client
         .delete(PluginsDeleteRequest {
             name: failed.name,

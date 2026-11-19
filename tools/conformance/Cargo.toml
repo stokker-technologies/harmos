@@ -64,6 +64,13 @@ test = false
 bench = false
 
 [[bin]]
+name = "harmos-bundle-version-fixture"
+path = "../../crates/harmos-runtime/tests/fixtures/bundle_version.rs"
+
+test = false
+bench = false
+
+[[bin]]
 name = "harmos-managed-stub-fixture"
 path = "../../crates/harmos-runtime/tests/fixtures/managed_stub.rs"
 test = false
