@@ -65,28 +65,34 @@ class InstanceInvokeResponse(_message.Message):
     def __init__(self, child: _Optional[_Union[_invocation_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_invocation_pb2.ChildCancel, _Mapping]] = ..., response: _Optional[_Union[_invocation_pb2.Response, _Mapping]] = ..., child_demand: _Optional[_Union[_invocation_pb2.ChildDemand, _Mapping]] = ...) -> None: ...
 
 class InstanceSamplesRequest(_message.Message):
-    __slots__ = ("open", "child", "window")
+    __slots__ = ("open", "child", "window", "demand")
     OPEN_FIELD_NUMBER: _ClassVar[int]
     CHILD_FIELD_NUMBER: _ClassVar[int]
     WINDOW_FIELD_NUMBER: _ClassVar[int]
+    DEMAND_FIELD_NUMBER: _ClassVar[int]
     open: _stream_pb2.SamplesSelection
     child: _invocation_pb2.ChildResponse
     window: _stream_pb2.Window
-    def __init__(self, open: _Optional[_Union[_stream_pb2.SamplesSelection, _Mapping]] = ..., child: _Optional[_Union[_invocation_pb2.ChildResponse, _Mapping]] = ..., window: _Optional[_Union[_stream_pb2.Window, _Mapping]] = ...) -> None: ...
+    demand: _stream_pb2.CollectionDemand
+    def __init__(self, open: _Optional[_Union[_stream_pb2.SamplesSelection, _Mapping]] = ..., child: _Optional[_Union[_invocation_pb2.ChildResponse, _Mapping]] = ..., window: _Optional[_Union[_stream_pb2.Window, _Mapping]] = ..., demand: _Optional[_Union[_stream_pb2.CollectionDemand, _Mapping]] = ...) -> None: ...
 
 class InstanceSamplesResponse(_message.Message):
-    __slots__ = ("samples", "child", "child_cancel", "child_demand", "batch")
+    __slots__ = ("samples", "child", "child_cancel", "child_demand", "batch", "collection", "demand")
     SAMPLES_FIELD_NUMBER: _ClassVar[int]
     CHILD_FIELD_NUMBER: _ClassVar[int]
     CHILD_CANCEL_FIELD_NUMBER: _ClassVar[int]
     CHILD_DEMAND_FIELD_NUMBER: _ClassVar[int]
     BATCH_FIELD_NUMBER: _ClassVar[int]
+    COLLECTION_FIELD_NUMBER: _ClassVar[int]
+    DEMAND_FIELD_NUMBER: _ClassVar[int]
     samples: _containers.RepeatedCompositeFieldContainer[_stream_pb2.Sample]
     child: _invocation_pb2.ChildRequest
     child_cancel: _invocation_pb2.ChildCancel
     child_demand: _invocation_pb2.ChildDemand
     batch: _stream_pb2.SampleBatch
-    def __init__(self, samples: _Optional[_Iterable[_Union[_stream_pb2.Sample, _Mapping]]] = ..., child: _Optional[_Union[_invocation_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_invocation_pb2.ChildCancel, _Mapping]] = ..., child_demand: _Optional[_Union[_invocation_pb2.ChildDemand, _Mapping]] = ..., batch: _Optional[_Union[_stream_pb2.SampleBatch, _Mapping]] = ...) -> None: ...
+    collection: _stream_pb2.CollectionBatch
+    demand: _stream_pb2.CollectionDemandResponse
+    def __init__(self, samples: _Optional[_Iterable[_Union[_stream_pb2.Sample, _Mapping]]] = ..., child: _Optional[_Union[_invocation_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_invocation_pb2.ChildCancel, _Mapping]] = ..., child_demand: _Optional[_Union[_invocation_pb2.ChildDemand, _Mapping]] = ..., batch: _Optional[_Union[_stream_pb2.SampleBatch, _Mapping]] = ..., collection: _Optional[_Union[_stream_pb2.CollectionBatch, _Mapping]] = ..., demand: _Optional[_Union[_stream_pb2.CollectionDemandResponse, _Mapping]] = ...) -> None: ...
 
 class InstanceStopRequest(_message.Message):
     __slots__ = ("reason",)

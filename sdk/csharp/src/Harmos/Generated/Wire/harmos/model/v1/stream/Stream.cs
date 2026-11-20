@@ -25,16 +25,17 @@ namespace Harmos;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChxoYXJtb3MvbW9kZWwvdjEvc3RyZWFtLnByb3RvEg9oYXJtb3MubW9kZWwu",
-            "djEaHmdvb2dsZS9wcm90b2J1Zi9kdXJhdGlvbi5wcm90byLgAQoRU3RyZWFt",
+            "djEaHmdvb2dsZS9wcm90b2J1Zi9kdXJhdGlvbi5wcm90byKAAgoRU3RyZWFt",
             "RGVjbGFyYXRpb24SDgoCaWQYASABKAlSAmlkEhAKA3JvdxgCIAEoCVIDcm93",
             "EiAKC2Rlc2NyaXB0aW9uGAMgASgJUgtkZXNjcmlwdGlvbhI1CghpbnRlcnZh",
             "bBgEIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvblIIaW50ZXJ2YWwS",
             "KQoQaW50ZXJ2YWxfc2V0dGluZxgFIAEoCVIPaW50ZXJ2YWxTZXR0aW5nEiUK",
-            "DndpbmRvd19zZXR0aW5nGAYgASgJUg13aW5kb3dTZXR0aW5nYgZwcm90bzM="));
+            "DndpbmRvd19zZXR0aW5nGAYgASgJUg13aW5kb3dTZXR0aW5nEh4KCmNvbGxl",
+            "Y3Rpb24YByABKAlSCmNvbGxlY3Rpb25iBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.StreamDeclaration), global::Harmos.StreamDeclaration.Parser, new[]{ "Id", "Row", "Description", "Interval", "IntervalSetting", "WindowSetting" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.StreamDeclaration), global::Harmos.StreamDeclaration.Parser, new[]{ "Id", "Row", "Description", "Interval", "IntervalSetting", "WindowSetting", "Collection" }, null, null, null, null)
           }));
     }
     #endregion
@@ -82,6 +83,7 @@ namespace Harmos;
       interval_ = other.interval_ != null ? other.interval_.Clone() : null;
       intervalSetting_ = other.intervalSetting_;
       windowSetting_ = other.windowSetting_;
+      collection_ = other.collection_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -163,6 +165,18 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "collection" field.</summary>
+    public const int CollectionFieldNumber = 7;
+    private string collection_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Collection {
+      get { return collection_; }
+      set {
+        collection_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -184,6 +198,7 @@ namespace Harmos;
       if (!object.Equals(Interval, other.Interval)) return false;
       if (IntervalSetting != other.IntervalSetting) return false;
       if (WindowSetting != other.WindowSetting) return false;
+      if (Collection != other.Collection) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -197,6 +212,7 @@ namespace Harmos;
       if (interval_ != null) hash ^= Interval.GetHashCode();
       if (IntervalSetting.Length != 0) hash ^= IntervalSetting.GetHashCode();
       if (WindowSetting.Length != 0) hash ^= WindowSetting.GetHashCode();
+      if (Collection.Length != 0) hash ^= Collection.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -239,6 +255,10 @@ namespace Harmos;
         output.WriteRawTag(50);
         output.WriteString(WindowSetting);
       }
+      if (Collection.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Collection);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -273,6 +293,10 @@ namespace Harmos;
         output.WriteRawTag(50);
         output.WriteString(WindowSetting);
       }
+      if (Collection.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Collection);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -300,6 +324,9 @@ namespace Harmos;
       }
       if (WindowSetting.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(WindowSetting);
+      }
+      if (Collection.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Collection);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -333,6 +360,9 @@ namespace Harmos;
       }
       if (other.WindowSetting.Length != 0) {
         WindowSetting = other.WindowSetting;
+      }
+      if (other.Collection.Length != 0) {
+        Collection = other.Collection;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -380,6 +410,10 @@ namespace Harmos;
             WindowSetting = input.ReadString();
             break;
           }
+          case 58: {
+            Collection = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -424,6 +458,10 @@ namespace Harmos;
           }
           case 50: {
             WindowSetting = input.ReadString();
+            break;
+          }
+          case 58: {
+            Collection = input.ReadString();
             break;
           }
         }

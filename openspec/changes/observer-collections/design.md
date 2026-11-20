@@ -104,7 +104,10 @@ message CollectionRows {
 
 The existing `Window` carries start, period, count and sequence. Each output row's
 timestamp is `start + offset * period`, stamped by the host. All rows from a tick
-therefore share exactly one timestamp. Missing stream entries or empty row lists
+therefore share exactly one timestamp. Collection rows reuse the existing
+`PublicationRow.context.source_time` to retain that exact host tick, including
+submicrosecond precision; the standard publication timestamp remains in
+microseconds. Missing stream entries or empty row lists
 mean silence; they do not produce rows, sequence gaps or failure markers. An empty
 completed tick must still be acknowledged so scoped waits can settle.
 
@@ -169,10 +172,13 @@ a process crash or permanent disconnection; the host guarantees ownership remova
 and its existing bounded settlement, while process-local resources must also have
 ordinary drop/close ownership.
 
-Hooks use the first/last transitioning demand's Context. Their resource lifetime
+Hooks use the first/last transitioning demand's Context. Host child calls remain
+confined to unanswered windows, so hooks use local Context resources and captured
+acquisition configuration rather than opening host child calls. Their resource lifetime
 spans all active scopes; per-scope data continues to belong to the scoped Context.
-Hooks and collection handler execution must be coordinated so last-stop never
-releases a resource still in use.
+Hooks and collection handler execution are coordinated so last-stop never
+releases a resource still in use. Hook completion is recorded before its reply;
+a completed acquisition still owns cleanup if cancellation loses that reply.
 
 ### Rust Authoring Shape
 
@@ -251,6 +257,19 @@ reads. The host is called by attached/scoped publications; product call sites ar
 unavailable here. Recommend deleting the product loop after collection adoption,
 but the owner must identify its files and approve that removal in its repository.
 
+The allocation renderer in `crates/harmos-protocol/codegen/memory.rs`, called by
+`generate.rs`, prints generated Rust with prettyplease; `mise.toml`'s
+`format:rust` task subsequently formats that same output in
+`crates/harmos-domain/src/message/allocation/protobuf.rs` with rustfmt. Their
+rendered import order and line wrapping differ. Keep both owners unchanged in
+this delivery; recommend making the generator own canonical rustfmt output and
+removing its competing final-format responsibility after the owner's decision.
+
+The grouped publication preparation now keeps a row decoder only where its
+representation uses it: ordinary observers and device streams. Collection
+members own their decoders directly, without constructing another unused
+representative decoder.
+
 ## Documentation Impact
 
 No documentation files are edited. After implementation, the owner should update:
@@ -258,7 +277,7 @@ No documentation files are edited. After implementation, the owner should update
 | File and Line | Required Statement |
 | --- | --- |
 | `docs/architecture.md:1258` | Samples demand groups requested member streams by collection within each scope. |
-| `docs/architecture.md:1323` | Window answers include dense observer columns and collection rows with zero or more rows per tick. |
+| `docs/architecture.md:1323` | Window answers include dense observer columns and sparse collection rows; exact host ticks use existing `context.source_time`. |
 | `docs/architecture.md:1342` | Collection demand and unscoped suppression operate on a whole collection; row restrictions depend on the encoding. |
 | `docs/architecture.md:1362` | A collection handler failure ends the collection's listened demands together. |
 | `docs/python-sdk.md:64` | Document collection bindings and report whether Python authoring is available. |
