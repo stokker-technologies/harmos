@@ -927,3 +927,15 @@ impl ReflectMessage for crate::plugin::InstanceStopResponse {
         pool().get_message_by_name("harmos.plugin.v1.InstanceStopResponse").expect("generated message")
     }
 }
+
+impl ReflectMessage for crate::plugin::LaunchesAnnounceRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.LaunchesAnnounceRequest").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::plugin::LaunchesAnnounceResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.LaunchesAnnounceResponse").expect("generated message")
+    }
+}
