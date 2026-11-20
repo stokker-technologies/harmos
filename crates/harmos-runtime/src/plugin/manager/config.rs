@@ -22,7 +22,7 @@ use prost::Message;
 // Local Imports
 use super::Error;
 use crate::{bundle::Limits, plugin::grpc::PlacementSettings};
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 use harmos_protocol::model;
 
 /* === Constants === */
@@ -36,6 +36,7 @@ use harmos_protocol::model;
 #[derive(Clone, Debug)]
 pub struct PluginManagerSettings {
     pub namespace: String,
+    pub state: PluginStateSettings,
     pub directory: PathBuf,
     pub target: String,
     pub placement: PlacementSettings,
@@ -49,11 +50,26 @@ pub struct PluginManagerSettings {
     pub response_bytes: NonZeroUsize,
 }
 
+/// Policy of the Durable Plugin State Operations.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginStateSettings {
+    /// Maximum Encoded Replacement Value Accepted by Put.
+    pub max_bytes: NonZeroUsize,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Default for PluginStateSettings {
+    fn default() -> Self {
+        Self {
+            max_bytes: NonZeroUsize::new(1024 * 1024).expect("positive plugin state bound"),
+        }
+    }
+}
 
 impl PluginManagerSettings {
     pub(super) fn validate(&self) -> Result<(), Error> {
@@ -87,9 +103,9 @@ impl PluginManagerSettings {
             revisions: vec![],
         };
         for action in [super::actor::CAPACITY_ACTION, super::actor::GAP_ACTION] {
-            let response = wire::PluginsWatchResponse {
+            let response = host::PluginsWatchResponse {
                 resolved_at: Some(boundary.clone()),
-                event: Some(wire::plugins_watch_response::Event::ResyncRequired(action.into())),
+                event: Some(host::plugins_watch_response::Event::ResyncRequired(action.into())),
             };
             if response.encoded_len() > self.response_bytes.get() {
                 return Err(Error::new(

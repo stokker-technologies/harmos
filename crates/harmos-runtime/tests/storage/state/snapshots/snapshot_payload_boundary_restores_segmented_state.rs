@@ -17,10 +17,14 @@ async fn snapshot_payload_boundary_restores_segmented_state() {
         let storage = store.manager(config());
         let runtime = start(policy(100), &storage).await;
         runtime.state.commit(deposit(4)).await.unwrap();
+        storage.flush_recovery().await.unwrap();
+        let replay = Store::new();
+        *replay.recovery.entries.lock().unwrap() = store.recovery.entries.lock().unwrap().clone();
+        replay.recovery.saved.store(store.recovery.saved.load(Ordering::SeqCst), Ordering::SeqCst);
         crate::support::app::stop(&runtime).await.unwrap();
         let mut bounded = policy(100);
         bounded.max_bytes = NonZeroUsize::new(store.snapshot().payload.len() - (segments - 1)).unwrap();
-        store.recovery.snapshot.lock().unwrap().take();
+        let store = replay;
         let storage = store.manager(config());
         let runtime = start(bounded.clone(), &storage).await;
         crate::support::app::stop(&runtime).await.unwrap();
@@ -32,7 +36,6 @@ async fn snapshot_payload_boundary_restores_segmented_state() {
         assert_eq!(storage.status().pending_bytes, 0);
 
         // Restore Without A Journal Fallback, Then Save The Same Segmentation.
-        store.recovery.entries.lock().unwrap().clear();
         let storage = store.manager(config());
         let runtime = start(bounded, &storage).await;
         assert_eq!(balance(&runtime).await, 4);

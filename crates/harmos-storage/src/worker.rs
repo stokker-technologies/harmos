@@ -785,6 +785,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                     reason: "receipt does not cover the requested written frontier",
                 });
             }
+            inner.bounded("recovery.compact_recovery", inner.recovery.compact_recovery()).await?;
             Ok(Completed::Recovery(saved))
         }
     }

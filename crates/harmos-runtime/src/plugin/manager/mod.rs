@@ -22,7 +22,7 @@ pub(crate) mod settings;
 
 /* === Re-Exports === */
 
-pub use config::PluginManagerSettings;
+pub use config::{PluginManagerSettings, PluginStateSettings};
 pub use harmos_operations::plugins::{Error, Management};
 pub use persistence::catalog;
 
@@ -63,6 +63,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::operations::Lane;
 use crate::plugin::grpc;
 use crate::runtime::Builder;
+use crate::state::plugin::Persistence;
 use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
@@ -85,6 +86,7 @@ struct Inner {
     storage: StorageManager,
     settings: PluginManagerSettings,
     commands: OnceLock<Commands>,
+    states: OnceLock<Arc<dyn Persistence>>,
 }
 
 struct Commands {
@@ -111,6 +113,7 @@ impl Manager {
                 storage,
                 settings,
                 commands: OnceLock::new(),
+                states: OnceLock::new(),
             }),
         })
     }
@@ -162,9 +165,15 @@ impl Manager {
                 runtime.activate_grpc_entry(prepared, settings).await
             })
         });
+        let states: Arc<dyn Persistence> = Arc::new(runtime.state.clone());
+        self.inner
+            .states
+            .set(states.clone())
+            .map_err(|_| Error::new("already_started", "Start Plugin State", "start the manager only once"))?;
         let actor = actor::Actor::open(
             self.inner.storage.engine(),
             self.inner.settings.clone(),
+            states,
             attach,
             (sender.clone(), reading),
             stage,
@@ -262,6 +271,27 @@ impl<A: Application> Builder<A> {
 }
 
 impl Management for Manager {
+    fn state_get(&self, name: String) -> Pending<'_, host::plugins::StateGetResponse> {
+        Box::pin(async move {
+            let key = self.call(move |reply| actor::Command::StateKey(name, reply)).await?;
+            self.inner.states.get().ok_or_else(closed)?.get(key).await
+        })
+    }
+    fn state_put(&self, name: String, request: host::plugins::StatePutRequest) -> Pending<'_, host::plugins::StatePutResponse> {
+        Box::pin(async move {
+            if request.value.len() > self.inner.settings.state.max_bytes.get() {
+                return Err(Error::new(
+                    "state_capacity",
+                    "Put Plugin State",
+                    "reduce the value or configure PluginStateSettings.max_bytes",
+                ));
+            }
+            let key = self.call(move |reply| actor::Command::StateKey(name, reply)).await?;
+            let revision = self.inner.states.get().ok_or_else(closed)?.put(key, request).await?;
+            Ok(host::plugins::StatePutResponse { revision })
+        })
+    }
+
     fn replace(&self, request: PluginsReplaceRequest) -> Pending<'_, PluginsReplaceResponse> {
         Box::pin(self.call(move |reply| actor::Command::Replace(request, reply)))
     }
@@ -299,8 +329,164 @@ impl Management for Manager {
 
 /* === Private Functions === */
 
+fn state_prefix(namespace: &str) -> String {
+    format!("{}:{namespace}", namespace.len())
+}
+
 fn closed() -> Error {
     Error::new("manager_stopped", "Manage Plugins", "start a host with an active plugin manager")
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::plugin::tests::{backends, start, storage};
+    extern crate harmos;
+
+    use self::harmos::plugin::{Context, HostOperation, Operation, Plugin};
+    use prost_types::Timestamp;
+    use std::env;
+    use std::num::NonZeroUsize;
+    use std::time::Duration;
+
+    fn settings() -> PluginManagerSettings {
+        let capacity = NonZeroUsize::new(32).unwrap();
+        PluginManagerSettings {
+            namespace: "plugin-manager-story".into(),
+            directory: env::current_dir().unwrap().join("target/plugin-state-test"),
+            target: "x86_64-pc-windows-msvc".into(),
+            state: PluginStateSettings { max_bytes: NonZeroUsize::new(8).unwrap() },
+            placement: grpc::PlacementSettings {
+                reconnect_delay: Duration::from_millis(100),
+                stop_grace: Duration::from_secs(1),
+                stream_window: capacity,
+                interval_window: Duration::from_secs(1),
+                interval_lag: Default::default(),
+            },
+            bundle: Default::default(),
+            entries: capacity,
+            create_receipts: capacity,
+            registry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+            command_capacity: capacity,
+            retained_cuts: capacity,
+            watch_capacity: capacity,
+            response_bytes: NonZeroUsize::new(65536).unwrap(),
+        }
+    }
+
+    fn entry(identity: &str) -> host::PluginsCreateRequest {
+        host::PluginsCreateRequest {
+            request_id: identity.into(),
+            name: "example".into(),
+            origin: None,
+            value: Some(host::PluginValue { enabled: false }),
+            placement: Some(host::PluginPlacement {
+                kind: Some(host::plugin_placement::Kind::Remote(host::PluginRemote { url: "http://127.0.0.1:1".into() })),
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn initialize_reads_state_after_plugin_and_host_restart() {
+        let (observed, mut observations) = mpsc::unbounded_channel();
+        let initialize = Operation::new("example.initialize", async move |ctx: &Context, _: ()| -> harmos::Result<()> {
+            let state = ctx.state();
+            let previous = state.get::<Timestamp>().await?;
+            state.put(&Timestamp { seconds: previous.seconds + 1, nanos: 0 }).await?;
+            observed
+                .send(previous.seconds)
+                .map_err(|_| harmos::Error::Invalid("Initialize Plugin State: retain the observation receiver".into()))?;
+            Ok(())
+        })
+        .visibility(harmos::Visibility::Protected);
+        let mut listener = Plugin::new("example", "1.0.0")
+            .remote()
+            .register(|ctx| {
+                ctx.register(HostOperation::PluginsStateGet)?;
+                ctx.register(HostOperation::PluginsStatePut)?;
+                ctx.register(initialize)?;
+                Ok(())
+            })
+            .unwrap()
+            .start("127.0.0.1:0")
+            .await
+            .unwrap();
+        let (data, recovery) = backends();
+        let disk = storage(&data, &recovery);
+        let manager = Manager::new(disk.clone(), settings()).unwrap();
+        let runtime = Arc::new(start(&disk, true, Some(manager.clone())).await);
+        manager.start(&runtime).await.unwrap();
+        let mut request = entry("initial");
+        request.value = Some(host::PluginValue { enabled: true });
+        request.placement = Some(host::PluginPlacement {
+            kind: Some(host::plugin_placement::Kind::Remote(host::PluginRemote {
+                url: format!("http://{}", listener.address()),
+            })),
+        });
+        manager.create(request).await.unwrap();
+        assert_eq!(observations.recv().await.unwrap(), 0);
+        let current = manager.get(host::PluginsGetRequest { name: "example".into(), at: None }).await.unwrap().entry.unwrap();
+        manager
+            .restart(host::PluginsRestartRequest {
+                name: current.name,
+                expected_revision: current.revision,
+            })
+            .await
+            .unwrap();
+        assert_eq!(observations.recv().await.unwrap(), 1);
+        runtime.stop().await.unwrap();
+        drop(runtime);
+        drop(manager);
+        drop(disk);
+        let disk = storage(&data, &recovery);
+        let manager = Manager::new(disk.clone(), settings()).unwrap();
+        let runtime = Arc::new(start(&disk, true, Some(manager.clone())).await);
+        manager.start(&runtime).await.unwrap();
+        assert_eq!(observations.recv().await.unwrap(), 2);
+        runtime.stop().await.unwrap();
+        listener.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn plugin_entry_state_survives_restart_and_is_removed_with_entry() {
+        let (data, recovery) = backends();
+        let disk = storage(&data, &recovery);
+        let manager = Manager::new(disk.clone(), settings()).unwrap();
+        let runtime = Arc::new(start(&disk, true, Some(manager.clone())).await);
+        manager.start(&runtime).await.unwrap();
+        manager.create(entry("first")).await.unwrap();
+        manager.state_put("example".into(), host::plugins::StatePutRequest { expected_revision: 0, value: vec![7, 8] }).await.unwrap();
+        let error = manager
+            .state_put("example".into(), host::plugins::StatePutRequest { expected_revision: 1, value: vec![0; 9] })
+            .await
+            .unwrap_err();
+        assert_eq!(error.0.code, "state_capacity");
+        assert!(manager.state_get("missing".into()).await.is_err());
+        runtime.stop().await.unwrap();
+        drop(runtime);
+        drop(manager);
+        drop(disk);
+        let disk = storage(&data, &recovery);
+        let manager = Manager::new(disk.clone(), settings()).unwrap();
+        let runtime = Arc::new(start(&disk, true, Some(manager.clone())).await);
+        manager.start(&runtime).await.unwrap();
+        let saved = manager.state_get("example".into()).await.unwrap();
+        assert_eq!(saved.value, vec![7, 8]);
+        assert_eq!(saved.revision, 1);
+        let current = manager.get(host::PluginsGetRequest { name: "example".into(), at: None }).await.unwrap().entry.unwrap();
+        let key = manager.call(|reply| actor::Command::StateKey("example".into(), reply)).await.unwrap();
+        manager
+            .delete(host::PluginsDeleteRequest {
+                name: current.name,
+                expected_revision: current.revision,
+            })
+            .await
+            .unwrap();
+        assert_eq!(runtime.state.get(key).await.unwrap(), host::plugins::StateGetResponse::default());
+        manager.create(entry("second")).await.unwrap();
+        assert_eq!(manager.state_get("example".into()).await.unwrap(), host::plugins::StateGetResponse::default());
+        runtime.stop().await.unwrap();
+    }
+}

@@ -78,11 +78,13 @@ facility!(InvocationsCancel, super::lifecycle::Cancel, "harmos.plugin.v1.Invocat
 facility!(InvocationsWatch, super::lifecycle::Watch, "harmos.plugin.v1.Invocations/Watch");
 facility!(OperationsList, crate::host::List, "harmos.plugin.v1.Operations/List");
 facility!(OperationsGet, crate::host::Get, "harmos.plugin.v1.Operations/Get");
+facility!(StateGet, super::plugins::state::Get, "harmos.plugin.v1.plugins.State/Get");
+facility!(StatePut, super::plugins::state::Put, "harmos.plugin.v1.plugins.State/Put");
 facility!(SettingsList, super::plugins::settings::List, "harmos.plugin.v1.plugins.Settings/List");
 
 /* === Public Functions === */
 
-pub fn factories() -> [Result<OperationFactory, ServingError>; 8] {
+pub fn factories() -> [Result<OperationFactory, ServingError>; 10] {
     [
         OperationFactory::protobuf::<TimeGet>(),
         OperationFactory::protobuf::<TimeSleep>(),
@@ -92,6 +94,8 @@ pub fn factories() -> [Result<OperationFactory, ServingError>; 8] {
         OperationFactory::protobuf::<OperationsList>(),
         OperationFactory::protobuf::<OperationsGet>(),
         OperationFactory::protobuf::<SettingsList>(),
+        OperationFactory::protobuf::<StateGet>(),
+        OperationFactory::protobuf::<StatePut>(),
     ]
 }
 

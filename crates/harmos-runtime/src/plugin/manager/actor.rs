@@ -15,8 +15,37 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    fs,
+    future::Future,
+    mem,
+    pin::Pin,
+    sync::Arc,
+};
+// Third Party Imports
+use prost::Message;
+use sha2::{Digest, Sha256};
+use tokio::{
+    sync::{broadcast, mpsc, oneshot},
+    task::JoinHandle,
+};
+use tonic::transport::Endpoint;
+// Local Imports
 use harmos_protocol::host::PluginDescription;
 
+use super::{
+    Error, PluginManagerSettings,
+    content::Installation,
+    persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
+};
+use crate::bundle::{self, Manifest};
+use crate::clock::Activity;
+use crate::plugin::grpc::{self, Activation, Attached, Managed, Placement, PreparedPlugin, Status};
+use crate::runtime::StopParticipant;
+use crate::state::plugin::Persistence;
+use harmos_protocol::host;
 use harmos_protocol::host::PluginChange;
 use harmos_protocol::host::PluginEntry;
 use harmos_protocol::host::PluginProcess;
@@ -38,35 +67,6 @@ use harmos_protocol::host::PluginsSetRequest;
 use harmos_protocol::host::PluginsSetResponse;
 use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::PluginsWatchResponse;
-
-// Standard Library Imports
-use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    fs,
-    future::Future,
-    mem,
-    pin::Pin,
-    sync::Arc,
-};
-// Third Party Imports
-use prost::Message;
-use sha2::{Digest, Sha256};
-use tokio::{
-    sync::{broadcast, mpsc, oneshot},
-    task::JoinHandle,
-};
-use tonic::transport::Endpoint;
-// Local Imports
-use super::{
-    Error, PluginManagerSettings,
-    content::Installation,
-    persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
-};
-use crate::bundle::{self, Manifest};
-use crate::clock::Activity;
-use crate::plugin::grpc::{self, Activation, Attached, Managed, Placement, PreparedPlugin, Status};
-use crate::runtime::StopParticipant;
-use harmos_protocol::host;
 use harmos_protocol::model;
 use harmos_storage::StorageManager;
 
@@ -95,6 +95,7 @@ pub(super) type Activate = Arc<dyn Fn(PreparedPlugin) -> Attachment + Send + Syn
 
 pub(super) struct Actor {
     pub(super) store: Store,
+    pub(super) states: Arc<dyn Persistence>,
     pub(super) guest_control: Option<GuestControl>,
     pub(super) registry: Registry,
     pub(super) settings: PluginManagerSettings,
@@ -136,6 +137,7 @@ pub(super) enum GuestAction {
 }
 
 pub(super) enum Command {
+    StateKey(String, Reply<String>),
     Activation(String, Reply<Activation>),
     Admitted(Box<Activation>, Reply<()>),
     #[cfg(feature = "plugin-guest")]
@@ -170,13 +172,16 @@ pub(super) enum Command {
 
 impl Command {
     pub(super) fn is_query(&self) -> bool {
-        matches!(self, Self::Activation(..) | Self::SettingsList(..) | Self::Get(..) | Self::List(..) | Self::Watch(..))
+        matches!(
+            self,
+            Self::StateKey(..) | Self::Activation(..) | Self::SettingsList(..) | Self::Get(..) | Self::List(..) | Self::Watch(..)
+        )
     }
 }
 
 impl Actor {
     pub async fn open(
-        storage: StorageManager, settings: PluginManagerSettings, attach: Attach,
+        storage: StorageManager, settings: PluginManagerSettings, states: Arc<dyn Persistence>, attach: Attach,
         mailboxes: (mpsc::Sender<Command>, mpsc::Receiver<Command>), stage: Stage, activate: Activate, participant: StopParticipant,
     ) -> Result<Self, Error> {
         let (commands, queries) = mailboxes;
@@ -203,6 +208,10 @@ impl Actor {
                 entry.state = PluginState::Stopped as i32;
             }
             let saved = registry.entries.get_mut(name).expect("restored entry exists");
+            if saved.state_key == 0 {
+                let revision = entry.revision.as_slice().try_into().map_err(|error| problem("Restore Plugin State Identity", error))?;
+                saved.state_key = u64::from_be_bytes(revision);
+            }
             saved.generation = entry.activation;
             saved.entry = entry.encode_to_vec();
         }
@@ -215,6 +224,7 @@ impl Actor {
         let changes = broadcast::channel(settings.watch_capacity.get()).0;
         let mut actor = Self {
             store,
+            states,
             guest_control: None,
             registry,
             settings,
@@ -231,6 +241,9 @@ impl Actor {
             changes,
             workers: BTreeMap::new(),
         };
+        let prefix = super::state_prefix(&actor.settings.namespace);
+        let keys = actor.registry.entries.values().map(|entry| format!("{prefix}{}", entry.state_key)).collect();
+        actor.states.retain(prefix, keys).await?;
         actor.store.save(&actor.registry).await?;
         actor.publish(None)?;
         Ok(actor)
@@ -286,7 +299,12 @@ impl Actor {
                 Command::Restart(request, reply) => {
                     let _ = reply.send(self.restart(request).await);
                 }
-                Command::Activation(..) | Command::SettingsList(..) | Command::Get(..) | Command::List(..) | Command::Watch(..) => {
+                Command::StateKey(..)
+                | Command::Activation(..)
+                | Command::SettingsList(..)
+                | Command::Get(..)
+                | Command::List(..)
+                | Command::Watch(..) => {
                     unreachable!("queries are handled before mutations");
                 }
                 Command::Health { name, activation, status } => {
@@ -320,6 +338,15 @@ impl Actor {
 
     fn query(&mut self, command: Command) -> Option<Command> {
         match command {
+            Command::StateKey(name, reply) => {
+                let result = self
+                    .registry
+                    .entries
+                    .get(&name)
+                    .map(|entry| format!("{}{}", super::state_prefix(&self.settings.namespace), entry.state_key))
+                    .ok_or_else(|| Error::new("entry_missing", "Access Plugin State", "load an existing plugin entry"));
+                let _ = reply.send(result);
+            }
             Command::Activation(name, reply) => {
                 let activation = self.workers.get(&name).and_then(|worker| worker.activation.clone());
                 let result = activation
@@ -595,6 +622,7 @@ impl Actor {
             entry.name.clone(),
             SavedEntry {
                 entry: entry.encode_to_vec(),
+                state_key: u64::from_be_bytes(entry.revision.as_slice().try_into().expect("issued entry revisions contain eight bytes")),
                 executable: installation.as_ref().map(|installation| installation.executable().to_owned()),
                 executable_digest: installation.as_ref().map(Installation::digest),
                 generation: entry.activation,
@@ -743,6 +771,8 @@ impl Actor {
             },
         )
         .await?;
+        let key = format!("{}{}", super::state_prefix(&self.settings.namespace), saved.state_key);
+        self.states.retire(key).await?;
         if let Some(executable) = saved.executable {
             super::content::remove(&executable, &self.settings)?;
         }

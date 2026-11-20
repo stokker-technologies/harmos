@@ -9,6 +9,8 @@ from .._generated.plugin_types import (
     OperationsGetResponse,
     OperationsListResponse,
     SettingsListResponse,
+    StateGetResponse,
+    StatePutResponse,
     TimeGetResponse,
     TimeSleepResponse,
 )
@@ -31,6 +33,8 @@ __all__ = [
     "Registrar",
     "Registration",
     "SettingsListResponse",
+    "StateGetResponse",
+    "StatePutResponse",
     "Stream",
     "TimeGetResponse",
     "TimeSleepResponse",

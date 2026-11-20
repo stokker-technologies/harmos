@@ -141,6 +141,8 @@ private:
                                   })
                                   .add([&](harmos::plugin::Registrar &ctx) {
                                     ctx.add(harmos::plugin::HostOperation::PluginsSettingsList);
+                                    ctx.add(harmos::plugin::HostOperation::PluginsStateGet);
+                                    ctx.add(harmos::plugin::HostOperation::PluginsStatePut);
                                   })
                                   .declarations();
     for (const auto &requirement : declarations.requires_())
@@ -601,3 +603,28 @@ TEST_CASE("Ending Samples Settles Open Child Calls") {
 /* === Private Functions === */
 
 /* === Entry Point === */
+
+TEST_CASE("Plugin State Preserves Bytes and Revision") {
+  SamplesHost host([](Context &context) {
+    const auto saved = context.state().get();
+    return value(std::to_string(context.state().put(saved.revision(), saved.value() + "intent")));
+  });
+  Samples samples(host);
+  samples.window(10, 1);
+  auto child = samples.read();
+  REQUIRE(child.child().operation() == "harmos.plugin.v1.plugins.State/Get");
+  harmos::host::v1::plugins::StateGetResponse saved;
+  saved.set_value("old");
+  saved.set_revision(3);
+  samples.reply(child.child().call(), saved);
+  child = samples.read();
+  REQUIRE(child.child().operation() == "harmos.plugin.v1.plugins.State/Put");
+  const auto request = harmos::plugin::decode<harmos::host::v1::plugins::StatePutRequest>(child.child().payload());
+  REQUIRE(request.expected_revision() == 3);
+  REQUIRE(request.value() == "oldintent");
+  harmos::host::v1::plugins::StatePutResponse applied;
+  applied.set_revision(4);
+  samples.reply(child.child().call(), applied);
+  REQUIRE(samples.answer(1, 4 * 1024 * 1024) == vector<string>{"4"});
+  REQUIRE(samples.finish().ok());
+}

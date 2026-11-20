@@ -51,6 +51,10 @@ pub(super) struct Registry {
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct SavedEntry {
     pub entry: Vec<u8>,
+
+    #[serde(default)]
+    pub state_key: u64,
+
     pub executable: Option<String>,
     pub executable_digest: Option<[u8; 32]>,
     pub generation: u64,

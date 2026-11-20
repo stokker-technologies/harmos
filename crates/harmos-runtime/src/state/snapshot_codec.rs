@@ -27,8 +27,10 @@ use serde::{
 };
 
 // Local Imports
+use super::history::Undoable;
+use super::plugin;
 use super::snapshot::{Restored, SnapshotPolicy};
-use crate::state::{Metadata, Tail, UndoEntry, Undos, dispatch::Dispatch};
+use crate::state::{Metadata, Tail, Undos, dispatch::Dispatch};
 use crate::storage::SchemaKey;
 use crate::storage::state::{SnapshotPayload, SnapshotWriter};
 use crate::{
@@ -52,6 +54,10 @@ struct Snapshot<S> {
     schema: SchemaKey,
     position: Position,
     state: S,
+
+    #[serde(default)]
+    plugins: plugin::Values,
+
     undos: Vec<Undo>,
     receipts: Vec<(RequestKey, Receipt)>,
     tail: Vec<Envelope<serde_json::Value>>,
@@ -185,7 +191,7 @@ impl Write for Counter {
 
 pub(super) fn encode<A: Application>(
     policy: &SnapshotPolicy, catalog: &Dispatch<A, Payload<A>>, state: &At<A::State>, undos: &Undos<A>, tail: &Tail<A>,
-    receipts: &HashMap<RequestKey, Receipt>,
+    receipts: &HashMap<RequestKey, Receipt>, plugins: &plugin::Values,
 ) -> Result<SnapshotPayload>
 where
     A::State: Serialize,
@@ -197,7 +203,7 @@ where
     let oversized = Cell::new(None);
     let mut serializer = serde_json::Serializer::new(&mut out);
     let result = (|| {
-        let mut value = serializer.serialize_struct("Snapshot", 7)?;
+        let mut value = serializer.serialize_struct("Snapshot", 8)?;
         value.serialize_field("definitions", &catalog.definitions())?;
         value.serialize_field("schema", &policy.schema)?;
         value.serialize_field("position", &state.position)?;
@@ -205,6 +211,7 @@ where
         value.serialize_field("receipts", &Receipts(receipts, policy.max_bytes.get(), &oversized))?;
         value.serialize_field("tail", &Window(tail, policy.max_bytes.get(), &oversized))?;
         value.serialize_field("state", &state.value)?;
+        value.serialize_field("plugins", plugins)?;
         SerializeStruct::end(value)
     })();
     if let Some(bytes) = oversized.get() {
@@ -247,7 +254,7 @@ where
         let inverse = entry.inverse.as_ref().map(|value| transaction(value, catalog)).transpose()?;
         entries.insert(
             entry.position,
-            UndoEntry {
+            Undoable {
                 principal: entry.principal,
                 forward,
                 inverse,
@@ -298,6 +305,7 @@ where
             value: snapshot.state,
             position: snapshot.position,
         },
+        plugins: snapshot.plugins,
         undos: Undos { entries },
         receipts,
         tail,

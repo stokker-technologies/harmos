@@ -1,0 +1,6 @@
+
+Å
+"harmos/host/v1/plugins/state.protoharmos.host.v1.plugins";
+StatePutRequest
+expected_revision (
+value (bproto3

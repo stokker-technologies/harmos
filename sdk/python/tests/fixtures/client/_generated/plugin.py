@@ -18,6 +18,7 @@ from harmos._wire.host.v1.invocations_pb2 import (
 )
 from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
 from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
+from harmos._wire.host.v1.plugins.state_pb2 import StateGetRequest, StateGetResponse, StatePutRequest, StatePutResponse
 from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.model.v1.invocation_pb2 import InstanceState
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
@@ -35,6 +36,8 @@ class HostOperation(Enum):
     OPERATIONS_LIST = "harmos.plugin.v1.Operations/List"
     OPERATIONS_GET = "harmos.plugin.v1.Operations/Get"
     PLUGINS_SETTINGS_LIST = "harmos.plugin.v1.plugins.Settings/List"
+    PLUGINS_STATE_GET = "harmos.plugin.v1.plugins.State/Get"
+    PLUGINS_STATE_PUT = "harmos.plugin.v1.plugins.State/Put"
     TIME_GET = "harmos.plugin.v1.Time/Get"
     TIME_SLEEP = "harmos.plugin.v1.Time/Sleep"
 
@@ -57,6 +60,12 @@ _OPERATIONS_GET = Operation(
 _PLUGINS_SETTINGS_LIST = Operation(
     HostOperation.PLUGINS_SETTINGS_LIST.value, SettingsListRequest, SettingsListResponse, visibility=VISIBILITY_PUBLIC, watch=False
 )
+_PLUGINS_STATE_GET = Operation(
+    HostOperation.PLUGINS_STATE_GET.value, StateGetRequest, StateGetResponse, visibility=VISIBILITY_PUBLIC, watch=False
+)
+_PLUGINS_STATE_PUT = Operation(
+    HostOperation.PLUGINS_STATE_PUT.value, StatePutRequest, StatePutResponse, visibility=VISIBILITY_PUBLIC, watch=False
+)
 _TIME_GET = Operation(HostOperation.TIME_GET.value, TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC, watch=False)
 _TIME_SLEEP = Operation(HostOperation.TIME_SLEEP.value, TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC, watch=False)
 
@@ -75,6 +84,10 @@ def host_requirement(operation: HostOperation) -> Operation[Message, Message]:
             return cast(Operation[Message, Message], _OPERATIONS_GET)
         case HostOperation.PLUGINS_SETTINGS_LIST:
             return cast(Operation[Message, Message], _PLUGINS_SETTINGS_LIST)
+        case HostOperation.PLUGINS_STATE_GET:
+            return cast(Operation[Message, Message], _PLUGINS_STATE_GET)
+        case HostOperation.PLUGINS_STATE_PUT:
+            return cast(Operation[Message, Message], _PLUGINS_STATE_PUT)
         case HostOperation.TIME_GET:
             return cast(Operation[Message, Message], _TIME_GET)
         case HostOperation.TIME_SLEEP:
@@ -141,6 +154,7 @@ class HostPluginsResource:
     def __init__(self, context: "Context") -> None:
         self._context = context
         self.settings = HostPluginsSettingsResource(context)
+        self.state = HostPluginsStateResource(context)
 
 
 class HostPluginsSettingsResource:
@@ -153,6 +167,21 @@ class HostPluginsSettingsResource:
         request = SettingsListRequest(name=name, at=at)
         response = await self._context.call(_PLUGINS_SETTINGS_LIST, request, policy=policy)
         return response
+
+
+class HostPluginsStateResource:
+    def __init__(self, context: "Context") -> None:
+        self._context = context
+
+    async def get(self, *, policy: OperationPolicy | None = None) -> StateGetResponse:
+        request = StateGetRequest()
+        response = await self._context.call(_PLUGINS_STATE_GET, request, policy=policy)
+        return response
+
+    async def put(self, expected_revision: int, value: bytes, *, policy: OperationPolicy | None = None) -> int:
+        request = StatePutRequest(expected_revision=expected_revision, value=value)
+        response = await self._context.call(_PLUGINS_STATE_PUT, request, policy=policy)
+        return response.revision
 
 
 class HostTimeResource:

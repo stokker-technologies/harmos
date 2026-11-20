@@ -380,6 +380,20 @@ impl MemorySize for plugins::SettingsSetRequest {
     }
 }
 
+impl MemorySize for plugins::StateGetRequest {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>()
+    }
+}
+
+impl MemorySize for plugins::StatePutRequest {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>()
+            .saturating_add(self.expected_revision.memory_size().saturating_sub(mem::size_of_val(&self.expected_revision)))
+            .saturating_add(self.value.memory_size().saturating_sub(mem::size_of_val(&self.value)))
+    }
+}
+
 impl MemorySize for plugins_watch_response::Event {
     fn memory_size(&self) -> usize {
         mem::size_of::<Self>().saturating_add(match self {

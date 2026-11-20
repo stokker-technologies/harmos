@@ -21,9 +21,8 @@ pub use segments::{Segment, SnapshotManifest, SnapshotPayload, SnapshotWriter};
 
 /* === Imports === */
 
-use std::num::NonZeroUsize;
-
 // Standard Library Imports
+use std::num::NonZeroUsize;
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
@@ -70,14 +69,25 @@ pub struct RecoveryPage {
 pub trait StateBackend: Send + Sync + 'static {
     fn get_history(&self) -> &StoreHistory;
     fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition>;
+
     /// Bounds Each Snapshot Segment; A Snapshot May Contain Multiple Segments.
     fn get_recovery_snapshot(&self, max_bytes: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
+
+    /// Publish Only Complete Snapshots and Refuse Replacing a Newer Snapshot With an Older One.
     fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
+
     fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage>;
     fn append_recovery_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()>;
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition>;
+
+    /// After Durable Snapshot Publication, Atomically Retain the Newest Complete Snapshot
+    /// and Only Entries After Its Covered Position. Preserve the Uncovered Suffix;
+    /// Repeated or Interrupted Compaction Must Leave Recovery Readable.
+    /// With No Durable Snapshot This Is a No-Op. The Manager Calls It After Recovery Flush.
+    fn compact_recovery(&self) -> StorageFuture<'_, ()>;
+
     fn delete_recovery_session(&self) -> StorageFuture<'_, ()>;
 }
 

@@ -196,6 +196,7 @@ async fn runtime() -> (Arc<Runtime<Model>>, Duration, TempDir) {
     let entries = manager::Manager::new(
         storage.clone(),
         manager::PluginManagerSettings {
+            state: Default::default(),
             namespace: "guest-benchmark".into(),
             directory: directory.path().join("plugins"),
             target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),

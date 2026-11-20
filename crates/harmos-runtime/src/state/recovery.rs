@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use tokio::sync::watch;
 // Local Imports
+use super::plugin;
 use crate::state::{Inverting, Undos, dispatch::Dispatch, replay};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{
@@ -44,6 +45,7 @@ pub(crate) struct Group<P> {
 
 pub(crate) struct Recovered<A: Application> {
     pub(crate) state: At<A::State>,
+    pub(crate) plugins: plugin::Values,
     pub(crate) undos: Undos<A>,
     pub(crate) tail: Vec<Arc<Entry<Recorded<A>>>>,
     pub(crate) durable: watch::Receiver<Position>,
@@ -107,6 +109,7 @@ impl<A: Application> StateManager<A> {
             history: through.history.clone(),
             sequence: 0,
         };
+        let mut plugins = plugin::Values::new();
         let mut undos = Undos::default();
         let mut receipts = HashMap::new();
         let mut retained = VecDeque::<Arc<Entry<Recorded<A>>>>::new();
@@ -124,6 +127,7 @@ impl<A: Application> StateManager<A> {
             }
             after = snapshot.through.clone();
             state = restored.state;
+            plugins = restored.plugins;
             undos = restored.undos;
             receipts = restored.receipts;
             retained = restored.tail;
@@ -149,6 +153,11 @@ impl<A: Application> StateManager<A> {
                 let mut decoded = Vec::new();
                 for envelope in group.entries {
                     if let Some(envelope) = decode_payload::<A>(envelope, catalog)? {
+                        if let Recorded::System(fact) = &envelope.payload.value
+                            && let Some(mutation) = plugin::Mutation::restore(fact).map_err(Incompatible::unreadable)?
+                        {
+                            mutation.apply(&mut plugins);
+                        }
                         decoded.push(envelope);
                     }
                 }
@@ -170,6 +179,7 @@ impl<A: Application> StateManager<A> {
         let durable = reader.finish(state.position);
         Ok(Recovered {
             state,
+            plugins,
             undos,
             tail: retained.into(),
             durable,

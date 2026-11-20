@@ -1,5 +1,108 @@
 # gRPC Plugins Design
 
+## Durable Plugin State
+
+The plugin host owns one opaque, revisioned value per persisted plugin entry.
+This is outstanding-effect recovery state, independent of application undo and
+settings. No durable `plugin.state` API exists in the starting source: context
+resources are process-local; the registry persists entries and settings only.
+The existing StateManager writer records library-owned system facts and folds
+them into a library-owned map alongside `A::State`. Recovery replays those facts;
+the existing complete snapshot includes the map. Thus `State = ()` receives the
+same facility without application transaction or record declarations. No second
+journal, storage queue or persistence backend is introduced.
+
+```rust,ignore
+// Host Contract (Calling Identity Comes From the Carrier)
+ctx.host().plugins.state.get().await?; // { value: bytes, revision: u64 }
+ctx.host().plugins.state.put(expected_revision, value).await?; // new revision
+// Rust Accessor (Prost, Like Existing Settings Wire Values)
+let state = ctx.state();
+let saved = state.get::<OutstandingEffects>().await?;
+state.put(&effects).await?;
+```
+
+Revision zero means no value has been written. Empty bytes clear the opaque value
+while advancing its revision, preventing ABA conflicts. Put compares the expected
+revision inside the single journal writer and returns `state_revision_conflict`
+on mismatch. The SDK handle retains the revision from Get or Put; callers must Get
+before updating an existing value. A clone shares the same revision observation.
+Put completes only after the recovery journal has been flushed durably. Missing
+managed recovery storage refuses rather than acknowledging memory-only durability.
+A plugin records intent before an external mutation and clears it only after undo.
+Initialize may read state through the same admitted host calls.
+
+The messages live in `harmos.host.v1.plugins`; the plugin carrier exposes
+`harmos.plugin.v1.plugins.State/{Get,Put}` through the existing facility adapter.
+The manager's `PluginStateSettings.max_bytes` defaults to one MiB. A stable
+entry key survives replacement and restart; deleting and recreating the same name
+issues a fresh key. Removal durably retires that key, and startup reconciliation
+retires orphaned keys after an interrupted deletion. The registry remains the
+single entry owner; it stores only that identity, not a second copy of the value.
+
+The plugin state operation owns a configurable maximum opaque value size with a
+library default, as explicitly requested for this feature; callers supply no
+literal bounds. This task decision overrides the general consumer-owned budget
+rule for this one setting. The managed registry supplies entry identity and
+removal; state survives disable, replacement and plugin/host restart, and is
+retired with its entry. Get and Put accept no selector: the trusted calling entry
+is their sole authority. Direct attachments without a persisted entry refuse.
+
+The architecture already permits covered-entry deletion after snapshot publication
+(`docs/architecture.md:912`), but StateBackend had no explicit retirement step or
+manager invocation. Recovery compaction is now an explicit backend contract: after publishing and flushing a
+complete snapshot, retain that newest complete snapshot and only journal entries
+after its covered recovery position. The storage manager invokes the explicit
+backend compaction step after successful durable snapshot publication. Compaction
+must be idempotent, preserve the uncovered suffix, and leave recovery readable if
+interrupted. A product implements that trait method in its existing StateBackend;
+there is no product-side plugin persistence facility to add.
+
+A compacted snapshot is required recovery input: discarding it or disabling its
+read policy cannot promise full-journal replay. The former test that discards the
+newest snapshot then replays covered entries is superseded. Segmented equivalence
+and payload-boundary fixtures preserve independent replay input before compaction;
+their state, undo, receipt, tail and segmentation assertions remain unchanged.
+
+The existing registry's object persistence remains entry/settings ownership, not
+an alternative plugin-state store. The task explicitly extends the retained host
+service family despite the broader product-policy transfer still pending under
+`plugin-boundary`; it does not implement that unrelated migration. Generated
+protocol bindings remain tracked. Documentation changes are reported to the owner.
+
+## Existing Overlaps Requiring Owner Direction
+
+- `crates/harmos-runtime/src/state/capture.rs` has Callback and Managed journal
+  capture. `Builder::require_capture` serves callback consumers;
+  `Builder::managed_storage` serves StateBackend consumers. Both acknowledge
+  persisted journal groups. Prefer retiring Callback after its consumers migrate
+  to StateBackend; this delivery retains both pending owner direction.
+- `crates/harmos-runtime/src/plugin/grpc/mod.rs` and
+  `crates/harmos-operations/src/execution/operations/access.rs` both define
+  CallingPlugin. Runtime invocation/publication uses the connection-bearing type;
+  built-in Settings and State use the name-only projection installed by
+  `operations/authored.rs` and `operations/manager/plugin_grpc.rs`. Prefer one
+  operations-owned trusted identity and delete the parallel name-only type.
+- `crates/harmos-runtime/tests/support/snapshot_store.rs` Store and
+  `crates/harmos-storage/tests/support/fixture.rs` Fixture both compose in-memory
+  primary/recovery backends. Snapshot tests/benches use Store; storage tests use
+  Fixture. Prefer a shared Fixture with snapshot access, retiring Store.
+- `sdk/cpp/cmake/Protocol.cmake` lists protocol inputs manually, while
+  `crates/harmos-protocol/codegen/mod.rs` recursively discovers the same protocol
+  tree. The C++ build and Rust generator consume these separate inventories.
+  Prefer generating the C++ inventory from the authoritative descriptors and
+  deleting its hand-maintained list.
+
+The shared generator integration fixture also keeps two contract inventories:
+`test_shared_generator_preserves_contracts.py` generates complete SDKs using the
+live library descriptors, then compares them against the frozen whole-output
+hashes in `tools/python/tests/fixtures/shared_sdk_inventory.json`. Its nested
+contract assertions still pass; adding State changes the inherited SDK inventory.
+No generation task owns refreshing that baseline. Under the task's REWORK rule,
+do not overwrite hashes or remove the assertion here. Prefer an independently
+owned fixture schema with semantic generation checks, retiring the whole-library
+hash inventory after owner direction.
+
 ## Product Integration Repair Contract
 
 The scoped integration repair adds

@@ -19,6 +19,7 @@ mod replace;
 mod restart;
 mod set;
 pub mod settings;
+pub mod state;
 mod watch;
 
 /* === Re-Exports === */
@@ -78,6 +79,8 @@ pub struct Error(pub Box<model::Failure>);
 /* === Traits === */
 
 pub trait Management: Send + Sync + 'static {
+    fn state_get(&self, name: String) -> Pending<'_, host::plugins::StateGetResponse>;
+    fn state_put(&self, name: String, request: host::plugins::StatePutRequest) -> Pending<'_, host::plugins::StatePutResponse>;
     fn replace(&self, request: host::PluginsReplaceRequest) -> Pending<'_, host::PluginsReplaceResponse>;
     fn settings_list(&self, request: host::plugins::SettingsListRequest) -> Pending<'_, host::plugins::SettingsListResponse>;
     fn settings_set(&self, request: host::plugins::SettingsSetRequest) -> Pending<'_, host::plugins::SettingsSetResponse>;
@@ -116,6 +119,12 @@ pub fn catalog() -> crate::execution::operations::Catalog {
     crate::execution::__private::Catalog {
         name: "harmos.plugins",
         operations: vec![
+            OperationFactory::protobuf::<state::Get>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugin_state::Get>)
+                .expect("plugin state get declaration"),
+            OperationFactory::protobuf::<state::Put>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugin_state::Put>)
+                .expect("plugin state put declaration"),
             OperationFactory::protobuf::<Get>()
                 .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Get>)
                 .expect("plugin get declaration"),

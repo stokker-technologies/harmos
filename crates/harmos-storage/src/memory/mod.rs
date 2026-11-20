@@ -1261,7 +1261,16 @@ impl StateBackend for RecoveryBackend {
                 .verify(snapshot.payload.segment_bytes())
                 .map_err(|source| Error::backend("write in-memory recovery snapshot", BackendFailure::Corrupt, source))?;
             self.control.write([snapshot.through.sequence]).await?;
-            *self.pending_snapshot.lock().unwrap() = Some(snapshot.clone());
+            let mut pending = self.pending_snapshot.lock().unwrap();
+            let durable = self.snapshot.lock().unwrap();
+            let newest = durable.as_ref().into_iter().chain(pending.as_ref()).map(|value| value.through.sequence).max().unwrap_or(0);
+            if snapshot.through.sequence < newest {
+                return Err(Error::InvalidInput {
+                    field: "recovery snapshot",
+                    reason: "cannot replace a newer complete snapshot",
+                });
+            }
+            *pending = Some(snapshot.clone());
             self.control.snapshot_written.notify_one();
             Ok(())
         }))
@@ -1354,6 +1363,18 @@ impl StateBackend for RecoveryBackend {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         }))
     }
+    fn compact_recovery(&self) -> StorageFuture<'_, ()> {
+        Box::pin(recovery_call("compact", async move {
+            if !self.control.open.load(Ordering::SeqCst) {
+                return Err(Error::NotReady { domain: "compact in-memory recovery" });
+            }
+            let snapshot = self.snapshot.lock().unwrap();
+            if let Some(snapshot) = &*snapshot {
+                self.entries.lock().unwrap().retain(|sequence, _| *sequence > snapshot.through.sequence);
+            }
+            Ok(())
+        }))
+    }
     fn delete_recovery_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(recovery_call("close", async move { self.control.close() }))
     }
@@ -1424,3 +1445,67 @@ fn upsert_release(releases: &mut Vec<Release>, release: Release) {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harmos_domain::state::Position;
+
+    #[tokio::test]
+    async fn recovery_compaction_retains_the_newest_snapshot_and_uncovered_suffix() {
+        let history = StoreHistory {
+            store: Identifier::new("test-store").unwrap(),
+            epoch: Identifier::new("test-epoch").unwrap(),
+        };
+        let backend = RecoveryBackend::new(history.clone());
+        backend.create_recovery_session().await.unwrap();
+        let required_data = StorageCursor { history, sequence: 0 };
+        for sequence in 1..=8 {
+            let entry = RecoveryEntry {
+                required_data: required_data.clone(),
+                position: backend.at(sequence),
+                payload: vec![sequence as u8],
+            };
+            backend.append_recovery_entries(StorageBatch::new(vec![entry])).await.unwrap();
+            let through = backend.at(sequence);
+            backend.flush(&through).await.unwrap();
+            backend.compact_recovery().await.unwrap();
+            assert_eq!(backend.entries.lock().unwrap().len(), 1);
+            let after = backend.at(sequence - 1);
+            let page = backend
+                .list_recovery_entries(
+                    &after,
+                    &through,
+                    ReadLimits {
+                        rows: NonZeroUsize::new(2).unwrap(),
+                        bytes: NonZeroUsize::new(4096).unwrap(),
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(page.entries.len(), 1);
+            assert_eq!(page.entries[0].payload, vec![sequence as u8]);
+            let snapshot = RecoverySnapshot {
+                required_data: required_data.clone(),
+                through: through.clone(),
+                payload: SnapshotPayload::from_bytes(&[sequence as u8], NonZeroUsize::new(1024).unwrap(), Position(sequence)).unwrap(),
+            };
+            backend.set_recovery_snapshot(StorageBatch::new(vec![snapshot])).await.unwrap();
+            // An Accepted Snapshot Cannot Retire Recovery Until Flush Publishes It.
+            backend.compact_recovery().await.unwrap();
+            assert!(backend.entries.lock().unwrap().contains_key(&sequence));
+            backend.flush(&through).await.unwrap();
+            backend.compact_recovery().await.unwrap();
+            backend.compact_recovery().await.unwrap();
+            assert!(backend.entries.lock().unwrap().is_empty());
+            assert_eq!(backend.snapshot.lock().unwrap().as_ref().unwrap().through, through);
+        }
+        let newest = backend.snapshot.lock().unwrap().clone().unwrap();
+        let mut older = newest.clone();
+        older.through = backend.at(7);
+        older.payload = SnapshotPayload::from_bytes(&[7], NonZeroUsize::new(1024).unwrap(), Position(7)).unwrap();
+        assert!(backend.set_recovery_snapshot(StorageBatch::new(vec![older])).await.is_err());
+        assert_eq!(backend.snapshot.lock().unwrap().as_ref().unwrap(), &newest);
+        backend.delete_recovery_session().await.unwrap();
+    }
+}

@@ -1,5 +1,33 @@
 ## ADDED Requirements
 
+### Requirement: Durable Entry-Scoped Plugin State
+The host SHALL persist one opaque revisioned value per plugin entry through its
+existing StateManager journal and complete snapshots, independently of the
+application's compile-time state. Get and Put SHALL admit only the trusted calling
+entry. Put SHALL compare the expected revision, enforce its configured operation
+size limit, and return only after durable journal flush. Empty bytes SHALL clear
+the value while advancing the revision. Removing an entry SHALL retire its state.
+
+#### Scenario: Initialize After Host Restart
+- **WHEN** a plugin with outstanding effects initializes after a host restart
+- **THEN** Get returns its last durable value and revision even with application state `()`
+
+#### Scenario: Conflicting Update
+- **WHEN** Put carries an outdated expected revision
+- **THEN** the host returns `state_revision_conflict` without changing the value
+
+#### Scenario: Durable Intent
+- **WHEN** recovery flush has not completed
+- **THEN** Put has not returned success and the plugin cannot treat intent as durable
+
+### Requirement: Bounded Recovery Retention
+After a complete snapshot is durable, the storage manager SHALL invoke backend
+compaction to retain the newest complete snapshot and its uncovered journal suffix.
+
+#### Scenario: Repeated Snapshots
+- **WHEN** multiple complete snapshot cycles cover successive writes
+- **THEN** covered entries and superseded snapshots do not accumulate
+
 ### Requirement: Canonical Plugin Service Identity
 Every SDK plugin SHALL register its canonical gRPC service identity independently of the generated source module layout.
 

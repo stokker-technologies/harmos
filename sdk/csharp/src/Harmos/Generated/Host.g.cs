@@ -16,6 +16,8 @@ public enum HostOperation
   OperationsList,
   OperationsGet,
   PluginsSettingsList,
+  PluginsStateGet,
+  PluginsStatePut,
   TimeGet,
   TimeSleep,
 }
@@ -27,6 +29,8 @@ internal static class HostContracts
   internal static readonly Operation<global::Harmos.Clients.OperationsListRequest, global::Harmos.Clients.OperationsListResponse> OperationsList = new("harmos.plugin.v1.Operations/List", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.OperationsGetRequest, global::Harmos.Clients.OperationsGetResponse> OperationsGet = new("harmos.plugin.v1.Operations/Get", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.SettingsListRequest, global::Harmos.Clients.SettingsListResponse> PluginsSettingsList = new("harmos.plugin.v1.plugins.Settings/List", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.StateGetRequest, global::Harmos.Clients.StateGetResponse> PluginsStateGet = new("harmos.plugin.v1.plugins.State/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.StatePutRequest, global::Harmos.Clients.StatePutResponse> PluginsStatePut = new("harmos.plugin.v1.plugins.State/Put", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.TimeGetRequest, global::Harmos.Clients.TimeGetResponse> TimeGet = new("harmos.plugin.v1.Time/Get", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.TimeSleepRequest, global::Harmos.Clients.TimeSleepResponse> TimeSleep = new("harmos.plugin.v1.Time/Sleep", Visibility.Public, watch: false);
 }
@@ -40,6 +44,8 @@ public static class HostRequirements
     HostOperation.OperationsList => ctx.Register(HostContracts.OperationsList),
     HostOperation.OperationsGet => ctx.Register(HostContracts.OperationsGet),
     HostOperation.PluginsSettingsList => ctx.Register(HostContracts.PluginsSettingsList),
+    HostOperation.PluginsStateGet => ctx.Register(HostContracts.PluginsStateGet),
+    HostOperation.PluginsStatePut => ctx.Register(HostContracts.PluginsStatePut),
     HostOperation.TimeGet => ctx.Register(HostContracts.TimeGet),
     HostOperation.TimeSleep => ctx.Register(HostContracts.TimeSleep),
     _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")
@@ -108,6 +114,7 @@ public sealed class HostOperationsResource(Context context)
 public sealed class HostPluginsResource(Context context)
 {
   public HostPluginsSettingsResource Settings { get; } = new(context);
+  public HostPluginsStateResource State { get; } = new(context);
 }
 public sealed class HostPluginsSettingsResource(Context context)
 {
@@ -126,6 +133,27 @@ public sealed class HostPluginsSettingsResource(Context context)
     }
     var response = await context.CallAsync(HostContracts.PluginsSettingsList, request, policy, cancellationToken);
     return response;
+  }
+}
+public sealed class HostPluginsStateResource(Context context)
+{
+  public async Task<global::Harmos.Clients.StateGetResponse> Get(OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  {
+    var request = new global::Harmos.Clients.StateGetRequest
+    {
+    };
+    var response = await context.CallAsync(HostContracts.PluginsStateGet, request, policy, cancellationToken);
+    return response;
+  }
+  public async Task<ulong> Put(ulong expected_revision, ByteString value, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  {
+    var request = new global::Harmos.Clients.StatePutRequest
+    {
+      ExpectedRevision = expected_revision,
+      Value = value,
+    };
+    var response = await context.CallAsync(HostContracts.PluginsStatePut, request, policy, cancellationToken);
+    return response.Revision;
   }
 }
 public sealed class HostTimeResource(Context context)

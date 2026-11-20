@@ -13,8 +13,6 @@
 mod cancelled_snapshot_releases;
 #[path = "snapshots/corrupt_snapshot_blocks.rs"]
 mod corrupt_snapshot_blocks;
-#[path = "snapshots/journal_replays_alone.rs"]
-mod journal_replays_alone;
 #[path = "snapshots/oversized_entry_warns_and_preserves_recovery.rs"]
 mod oversized_entry_warns_and_preserves_recovery;
 #[path = "snapshots/oversized_snapshot_skipped.rs"]

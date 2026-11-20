@@ -62,6 +62,8 @@ fn host_services_are_absent_and_plugin_facilities_declare_only_plugins() {
         "harmos.plugin.v1.Operations/List".to_owned(),
         "harmos.plugin.v1.Operations/Get".to_owned(),
         "harmos.plugin.v1.plugins.Settings/List".to_owned(),
+        "harmos.plugin.v1.plugins.State/Get".to_owned(),
+        "harmos.plugin.v1.plugins.State/Put".to_owned(),
     ]);
     let mut actual = BTreeSet::new();
     for service in pool.services() {

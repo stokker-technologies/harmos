@@ -140,7 +140,8 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                 audience = callers.get(identity, "CLIENTS")
                 faces = (
                     ["context"]
-                    if file.package.startswith("harmos.plugin.v1") and service.name in {"Time", "Operations", "Invocations", "Settings"}
+                    if file.package.startswith("harmos.plugin.v1")
+                    and service.name in {"Time", "Operations", "Invocations", "Settings", "State"}
                     else ["plugin"]
                     if executor == "plugin"
                     else [

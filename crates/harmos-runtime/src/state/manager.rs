@@ -25,6 +25,7 @@ use tracing::Instrument;
 
 // Local Imports
 use super::ManagedState;
+use super::plugin;
 use super::transaction::TransactionError;
 use super::writer::{Admission, Direction, Refusal, Request};
 use super::{
@@ -45,6 +46,8 @@ use crate::supervision::executor::InContext;
 
 pub(crate) struct TrackedState<A: Application> {
     pub(crate) state: RwLock<At<A::State>>,
+    pub(crate) plugins: RwLock<plugin::Values>,
+    pub(crate) plugin_storage: Option<crate::storage::StorageManager>,
     pub(crate) tail: RwLock<Tail<A>>,
     pub(super) applied: watch::Sender<Position>,
     pub(super) stored: watch::Receiver<Position>,
@@ -68,8 +71,8 @@ pub(crate) struct Context {
 pub struct StateManager<A: Application> {
     handles: Arc<()>,
     record_schemas: Arc<crate::records::Registry>,
-    writer: mpsc::Sender<writer::QueuedRequest<A>>,
-    context: Context,
+    pub(super) writer: mpsc::Sender<writer::QueuedRequest<A>>,
+    pub(super) context: Context,
     pub(super) tracked: Arc<TrackedState<A>>,
 }
 
@@ -113,7 +116,7 @@ impl<A: Application> StateManager<A> {
     // The private boot boundary receives already-owned journal components.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
-        origin: At<A::State>, inverses: Inverting<A>, undos: Undos<A>, requests: usize, tail: Tail<A>,
+        origin: At<A::State>, plugins: plugin::Values, inverses: Inverting<A>, undos: Undos<A>, requests: usize, tail: Tail<A>,
         durability: Option<watch::Receiver<Position>>, catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
         capture: Option<capture::Declaration<A>>, storage: Option<crate::storage::StorageManager>,
         schema_settings: Arc<crate::config::SchemaSettings>, clock: crate::clock::Clock,
@@ -126,7 +129,10 @@ impl<A: Application> StateManager<A> {
         let stored = durability.unwrap_or(bridged);
         let capture_failed = Arc::new(AtomicBool::new(false));
         let capture = capture.map(|capture| capture.start(capture_failed.clone(), position));
+        let plugin_storage = matches!(capture.as_ref(), Some(capture::Capture::Managed { .. })).then(|| storage.clone()).flatten();
         let tracked = Arc::new(TrackedState {
+            plugins: RwLock::new(plugins),
+            plugin_storage,
             state: RwLock::new(origin),
             tail: RwLock::new(tail),
             applied,
@@ -207,6 +213,7 @@ impl<A: Application> StateManager<A> {
         let request = Request::Record {
             value,
             prepared,
+            plugin: None,
             preparation: permit,
             context: self.context.clone(),
             reply,
@@ -219,7 +226,10 @@ impl<A: Application> StateManager<A> {
         };
         let queued = tracing::debug_span!(target: "harmos::state", "state.queue");
         permit.send((request, crate::supervision::executor::SpanContext::new(tracing::Span::current(), queued)));
-        answer.await.map_err(|_| self.unavailable())?.map_err(preparation)
+        answer.await.map_err(|_| self.unavailable())?.map_err(|error| match error {
+            writer::RecordRefusal::Preparation(error) => preparation(error),
+            writer::RecordRefusal::Plugin(_) => unreachable!("ordinary records do not compare plugin revisions"),
+        })
     }
 
     pub fn decode_transaction(&self, id: &DefinitionId, version: u32, bytes: &[u8]) -> Result<A::Transaction, DecodeError> {
