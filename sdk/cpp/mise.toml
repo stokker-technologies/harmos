@@ -37,7 +37,10 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.b
 [tasks.check]
 description = "Check the C++ SDK Preset"
 dir = "../.."
-run = ["mise -C sdk/cpp run format -- --check", "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --check"]
+run = [
+  "mise -C sdk/cpp run format -- --check",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --check",
+]
 
 [tasks.consumer]
 hide = true
