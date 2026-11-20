@@ -53,8 +53,18 @@ The host SHALL connect to the plugin for both placements, and plugin-to-host ope
 SHALL travel on the `Invoke` call that started them.
 
 #### Scenario: Managed Plugin
-- **WHEN** the host starts a managed plugin
-- **THEN** the plugin announces the loopback address it listens on and the host connects to it
+- **WHEN** the host starts a managed plugin with `HARMOS_HOST_ENDPOINT` and `HARMOS_LAUNCH_TOKEN`
+- **THEN** the plugin calls `harmos.plugin.v1.Launches/Announce` with its token and the loopback
+  address it listens on, and the host connects to it
+
+#### Scenario: Managed Launch Credential
+- **WHEN** an announcement carries a wrong, spent or revoked token
+- **THEN** the host refuses it with `UNAUTHENTICATED` and no pending launch receives an address
+
+#### Scenario: Managed Plugin Exits Before Announcing
+- **WHEN** a managed process exits before announcing
+- **THEN** the load fails with the executable, process identifier, exit status and the bounded
+  tail of its standard error, and the token is revoked
 
 #### Scenario: Remote Plugin
 - **WHEN** the product supplies a URL whose server is reachable
