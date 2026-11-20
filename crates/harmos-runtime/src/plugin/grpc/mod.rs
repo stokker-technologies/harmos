@@ -394,10 +394,10 @@ impl<A: Application> Runtime<A> {
                     process.settled();
                 }
                 Ok(PreparedPlugin {
-                participant,
-                process,
-                address,
-                activation,
+                    participant,
+                    process,
+                    address,
+                    activation,
                     admission,
                     publications,
                 })

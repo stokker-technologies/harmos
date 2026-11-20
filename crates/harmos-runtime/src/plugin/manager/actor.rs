@@ -1017,7 +1017,10 @@ pub(super) fn record_failure(entry: &mut PluginEntry, failure: Option<model::Fai
     {
         let caller_correctable = matches!(
             model::Classification::try_from(failure.classification),
-            Ok(model::Classification::Transient | model::Classification::Refused | model::Classification::Cancelled | model::Classification::TimedOut)
+            Ok(model::Classification::Transient
+                | model::Classification::Refused
+                | model::Classification::Cancelled
+                | model::Classification::TimedOut)
         );
         let (name, activation, code, message, action, diagnostics) =
             (&entry.name, entry.activation, &failure.code, &failure.message, &failure.action, &failure.diagnostics);
@@ -1164,7 +1167,10 @@ mod tests {
         let records = Records::default();
         let subscriber = tracing_subscriber::registry().with(records.clone());
         tracing::subscriber::with_default(subscriber, || {
-            let mut entry = PluginEntry { name: "plugin".into(), ..Default::default() };
+            let mut entry = PluginEntry {
+                name: "plugin".into(),
+                ..Default::default()
+            };
 
             // Entering a Failed State Logs Once; Health Repeating the Same Failure Does Not.
             record_failure(&mut entry, Some(failure("plugin_unavailable", model::Classification::Transient)));

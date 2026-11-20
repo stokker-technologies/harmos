@@ -1379,7 +1379,7 @@ The runtime builder's `plugins(Manager)` registers the resource and catalog;
 | Manager-instance cut epoch | Issued cuts expire across host restart; stale or foreign positions fail explicitly. Durable entry identities and revisions survive. |
 | Product policy through existing visibility, grants and external authorizer | Opaque invocation scope is inherited unchanged and never parsed as authority; no product role model enters the manager. |
 | No automatic process restart loop | Remote reconnect remains attachment policy; failed managed processes stay unavailable until Restart or host restart, avoiding a second restart scheduler. |
-| Hidden Windows process startup and explicit loopback endpoint environment | Managed executables have no console window and receive `HARMOS_ADDRESS=127.0.0.1:0`; existing readiness announcement supplies the bound endpoint without reserving a racy port. |
+| Hidden Windows process startup and explicit loopback endpoint environment | Managed executables have no console window and receive `HARMOS_HOST_ENDPOINT` and `HARMOS_LAUNCH_TOKEN`; the plugin binds `127.0.0.1:0` and announces the bound endpoint through `Launches/Announce` without reserving a racy port. |
 | Explicit startup against `Arc<Runtime<A>>` | The manager retains a weak host reference, avoiding a runtime/resource cycle; normal runtime shutdown owns and awaits its participant. |
 
 Owned source inventory: `proto/harmos/v1/plugins.proto`,

@@ -113,8 +113,9 @@ impl Launches {
     pub async fn reserve(&self, owner: impl Into<String>) -> Result<Launch, Error> {
         let endpoint = self.listen().await?;
         let mut secret = [0u8; 32];
-        getrandom::fill(&mut secret)
-            .map_err(|error| Error::Invalid(format!("Reserve Plugin Launch: the system random source failed ({error}); start the plugin again")))?;
+        getrandom::fill(&mut secret).map_err(|error| {
+            Error::Invalid(format!("Reserve Plugin Launch: the system random source failed ({error}); start the plugin again"))
+        })?;
         let token = secret.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
         let key = Sha256::digest(token.as_bytes()).into();
         let (sender, announced) = oneshot::channel();
@@ -161,7 +162,8 @@ impl Launches {
             let shutdown = async move {
                 let _ = stopping.wait_for(|stopped| *stopped).await;
             };
-            if let Err(error) = tonic::transport::Server::builder().add_service(service).serve_with_incoming_shutdown(incoming, shutdown).await
+            if let Err(error) =
+                tonic::transport::Server::builder().add_service(service).serve_with_incoming_shutdown(incoming, shutdown).await
             {
                 tracing::error!(%endpoint, %error, "plugin launch listener failed; managed plugins cannot announce until the host restarts");
             }
@@ -225,7 +227,8 @@ impl Drop for Inner {
 impl harmos_protocol::plugin::launches_server::Launches for Service {
     async fn announce(&self, request: Request<LaunchesAnnounceRequest>) -> Result<Response<LaunchesAnnounceResponse>, Status> {
         let request = request.into_inner();
-        let refused = || Status::unauthenticated("Announce Plugin: the launch credential is invalid or spent; restart the plugin through the host");
+        let refused =
+            || Status::unauthenticated("Announce Plugin: the launch credential is invalid or spent; restart the plugin through the host");
         let inner = self.0.upgrade().ok_or_else(refused)?;
         let key: [u8; 32] = Sha256::digest(request.token.as_bytes()).into();
         // The First Authenticated Announcement Consumes the Credential, Whatever Address It Carries.

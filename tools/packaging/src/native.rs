@@ -59,8 +59,7 @@ pub(crate) fn describe(path: &Path, cancellation: &BuildCancellation) -> Result<
 fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetResponse, Error> {
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
     let launches = Launches::new();
-    let mut launch =
-        runtime.block_on(launches.reserve(path.display().to_string())).map_err(|error| Error::Settings(error.to_string()))?;
+    let mut launch = runtime.block_on(launches.reserve(path.display().to_string())).map_err(|error| Error::Settings(error.to_string()))?;
 
     // Start the Exact Stamped Executable in Managed Mode; It Announces Instead of Printing.
     let mut command = Command::new(std::path::absolute(path)?);

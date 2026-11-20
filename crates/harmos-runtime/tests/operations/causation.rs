@@ -254,7 +254,10 @@ fn family_contract_declaration_operation()
 async fn fail_contract_declaration_handler(
     _: FailContractDeclaration, _: harmos_runtime::operations::FunctionContext<FailContractDeclaration>,
 ) -> Result<harmos_runtime::operations::Response<()>, Error> {
-    Err(Error::InvalidInput { field: "label", reason: "the story refuses every label" })
+    Err(Error::InvalidInput {
+        field: "label",
+        reason: "the story refuses every label",
+    })
 }
 
 fn fail_contract_declaration_operation()
@@ -315,10 +318,8 @@ async fn a_failed_request_writes_exactly_one_record_without_its_payload() {
 
     // The Operation Layer Writes One Caller-Correctable Record Naming the Operation, Never the Payload.
     let events = events.0.lock().unwrap();
-    let failures = events
-        .iter()
-        .filter(|(target, level, _)| *target == "harmos::operations" && *level <= tracing::Level::WARN)
-        .collect::<Vec<_>>();
+    let failures =
+        events.iter().filter(|(target, level, _)| *target == "harmos::operations" && *level <= tracing::Level::WARN).collect::<Vec<_>>();
     assert_eq!(failures.len(), 1, "{failures:?}");
     let (_, level, fields) = failures[0];
     assert_eq!(*level, tracing::Level::WARN);

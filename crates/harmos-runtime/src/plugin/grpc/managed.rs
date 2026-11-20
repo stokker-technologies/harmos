@@ -207,8 +207,9 @@ impl Process {
             Ok(Ok(address)) => Ok(address.to_string()),
             Ok(Err(error)) => Err(Error::Invalid(format!("{error} (process {process})"))),
             Err(exit) => {
-                let status = exit
-                    .map_err(|error| self.reap_failure(format!("Reap Managed Plugin: process {process}: {error}; retain its installation")))?;
+                let status = exit.map_err(|error| {
+                    self.reap_failure(format!("Reap Managed Plugin: process {process}: {error}; retain its installation"))
+                })?;
                 // The Child Has Exited, So Its Standard Error Ends Unless a Descendant Still Holds It.
                 self.output.closed().await;
                 let diagnostics = self.diagnostics(Some(status));
@@ -232,7 +233,12 @@ impl Process {
         let _ = clock.timeout(grace, self.output.closed()).await;
         let status = self.child.as_mut().and_then(|child| child.try_wait().ok().flatten());
         let diagnostics = self.diagnostics(status);
-        Ok(Error::LoadDeadline { plugin, timeout, configured_by, diagnostics })
+        Ok(Error::LoadDeadline {
+            plugin,
+            timeout,
+            configured_by,
+            diagnostics,
+        })
     }
 
     pub(super) fn id(&self) -> Option<u32> {
@@ -408,7 +414,9 @@ fn description(executable: &Path, id: Option<u32>) -> String {
 /// Forward Each Line of One Pipe to the Host Log at Debug; Standard Error Also Fills the Tail While Retained.
 ///
 /// A line longer than `line_bytes` is cut there, so a child writing without newlines cannot grow host memory.
-async fn forward(mut pipe: impl AsyncRead + Unpin, stream: Stream, process: String, tail: Option<Arc<Mutex<Option<Tail>>>>, line_bytes: usize) {
+async fn forward(
+    mut pipe: impl AsyncRead + Unpin, stream: Stream, process: String, tail: Option<Arc<Mutex<Option<Tail>>>>, line_bytes: usize,
+) {
     let emit = |line: &[u8]| {
         let text = String::from_utf8_lossy(line.strip_suffix(b"\r").unwrap_or(line)).into_owned();
         match stream {

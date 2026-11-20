@@ -235,7 +235,8 @@ pub async fn installs_itself(program: &Path, arguments: &[&str], directory: Opti
     if let Some(directory) = directory {
         command.current_dir(directory);
     }
-    let (mut peer, address) = support::announced(command.args(arguments).args(["--install-itself", "serve"]).stderr(Stdio::inherit())).await;
+    let (mut peer, address) =
+        support::announced(command.args(arguments).args(["--install-itself", "serve"]).stderr(Stdio::inherit())).await;
     let endpoint = format!("http://{address}");
 
     // Run Its Entry Program Against a Controlled Host

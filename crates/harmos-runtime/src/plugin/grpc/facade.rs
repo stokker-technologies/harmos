@@ -357,8 +357,7 @@ impl NativeOperation for Inspect {
         let process_participant = host.0.participant();
         let (retained, dropped) = oneshot::channel();
         let message_bytes = operations.transfer_message_bytes().get();
-        let mut task =
-            tokio::spawn(inspect_owned(operations.clone(), request, message_bytes, participant, process_participant, dropped));
+        let mut task = tokio::spawn(inspect_owned(operations.clone(), request, message_bytes, participant, process_participant, dropped));
         let result = tokio::select! {
             biased;
             () = context.cancellation.cancelled() => {
@@ -413,8 +412,8 @@ fn placement_memory(placement: &Placement) -> usize {
 }
 
 async fn inspect_owned(
-    operations: Manager, request: InspectRequest, message_bytes: usize, mut participant: StopParticipant, process_participant: StopParticipant,
-    dropped: oneshot::Receiver<()>,
+    operations: Manager, request: InspectRequest, message_bytes: usize, mut participant: StopParticipant,
+    process_participant: StopParticipant, dropped: oneshot::Receiver<()>,
 ) -> Result<Inspection, Error> {
     let clock = operations.clock().clone();
     let mut process = None;
@@ -423,14 +422,9 @@ async fn inspect_owned(
         let address = match &request.placement {
             Placement::Managed(managed) => {
                 let owner = managed.executable.display().to_string();
-                let (spawned, mut launch) = Process::spawn(
-                    managed,
-                    process_participant,
-                    &operations.registry.launches,
-                    operations.registry.startup_output,
-                    &owner,
-                )
-                .await?;
+                let (spawned, mut launch) =
+                    Process::spawn(managed, process_participant, &operations.registry.launches, operations.registry.startup_output, &owner)
+                        .await?;
                 process.insert(spawned).ready(&mut launch).await?
             }
             Placement::Remote(address) => address.clone(),

@@ -73,7 +73,10 @@ async fn configured(source: &Manual) -> Runtime<App> {
             lines: NonZeroUsize::new(TAIL_LINES).unwrap(),
             bytes: NonZeroUsize::new(4096).unwrap(),
         };
-        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings { policy: GrpcPluginPolicy { load }, startup_output });
+        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings {
+            policy: GrpcPluginPolicy { load },
+            startup_output,
+        });
     })
     .await
 }
@@ -102,7 +105,8 @@ async fn reaped(mut control: BufReader<TcpStream>) {
 }
 
 async fn announce(endpoint: &str, token: &str, address: &str) -> Result<(), tonic::Status> {
-    let mut client = LaunchesClient::connect(format!("http://{endpoint}")).await.map_err(|error| tonic::Status::unavailable(error.to_string()))?;
+    let mut client =
+        LaunchesClient::connect(format!("http://{endpoint}")).await.map_err(|error| tonic::Status::unavailable(error.to_string()))?;
     client
         .announce(LaunchesAnnounceRequest {
             token: token.into(),
@@ -127,7 +131,16 @@ async fn an_exit_before_announcing_reports_its_status_and_bounded_standard_error
     assert_eq!(status.code(), Some(7));
     assert!(!process.contains("Some("), "Print the Process Identifier as a Number: {process}");
     let tail = diagnostics.lines().filter(|line| line.starts_with("startup failure line")).collect::<Vec<_>>();
-    assert_eq!(tail, ["startup failure line 96", "startup failure line 97", "startup failure line 98", "startup failure line 99", "startup failure line 100"]);
+    assert_eq!(
+        tail,
+        [
+            "startup failure line 96",
+            "startup failure line 97",
+            "startup failure line 98",
+            "startup failure line 99",
+            "startup failure line 100"
+        ]
+    );
     assert_eq!(source.read().instant, origin, "Fail Before Any Deadline Elapses");
     runtime.stop().await.unwrap();
 }

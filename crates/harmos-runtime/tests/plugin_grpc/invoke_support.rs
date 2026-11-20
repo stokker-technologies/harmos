@@ -318,12 +318,7 @@ impl HostFixture {
                 }
             }
         });
-        Sdk {
-            address,
-            process,
-            proxy,
-            disconnect,
-        }
+        Sdk { address, process, proxy, disconnect }
     }
 }
 
@@ -341,7 +336,10 @@ impl Python {
                 .stderr(Stdio::inherit()),
         )
         .await;
-        Self { address: format!("http://{address}"), process }
+        Self {
+            address: format!("http://{address}"),
+            process,
+        }
     }
 
     pub async fn close(mut self) -> std::process::ExitStatus {

@@ -73,7 +73,10 @@ async fn configured(source: &Manual) -> Runtime<App> {
             attempt_timeout: LOAD,
             ..GrpcPluginPolicy::default().load
         };
-        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings { policy: GrpcPluginPolicy { load }, ..Default::default() });
+        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings {
+            policy: GrpcPluginPolicy { load },
+            ..Default::default()
+        });
     })
     .await
 }
