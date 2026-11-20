@@ -777,11 +777,12 @@ pub mod instance_client {
                 .insert(GrpcMethod::new("harmos.plugin.v1.Instance", "Invoke"));
             self.inner.streaming(req, path, codec).await
         }
-        /// One declared stream. The host opens the call with a harmos.plugin.v1.SamplesSelection;
-        /// opening it is the demand for the stream and closing it ends the demand.
+        /// One declared stream or collection, selected by its lexicographically first member.
+        /// The host opens with SamplesSelection. Ordinary streams take demand from open/close;
+        /// collections take listened members from CollectionDemand, acknowledged after listener hooks.
         /// For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
-        /// the plugin answers each with harmos.plugin.v1.SampleBatch parts, the final part marked
-        /// last. Only one window may be unanswered.
+        /// the plugin answers with SampleBatch column parts or one CollectionBatch per tick;
+        /// the final part or tick is marked last. Only one window may be unanswered.
         /// Between receiving a window and sending its last part, the plugin may send ChildRequest,
         /// ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
         /// same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
@@ -889,11 +890,12 @@ pub mod instance_server {
             >
             + std::marker::Send
             + 'static;
-        /// One declared stream. The host opens the call with a harmos.plugin.v1.SamplesSelection;
-        /// opening it is the demand for the stream and closing it ends the demand.
+        /// One declared stream or collection, selected by its lexicographically first member.
+        /// The host opens with SamplesSelection. Ordinary streams take demand from open/close;
+        /// collections take listened members from CollectionDemand, acknowledged after listener hooks.
         /// For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
-        /// the plugin answers each with harmos.plugin.v1.SampleBatch parts, the final part marked
-        /// last. Only one window may be unanswered.
+        /// the plugin answers with SampleBatch column parts or one CollectionBatch per tick;
+        /// the final part or tick is marked last. Only one window may be unanswered.
         /// Between receiving a window and sending its last part, the plugin may send ChildRequest,
         /// ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
         /// same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's

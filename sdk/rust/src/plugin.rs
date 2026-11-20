@@ -26,7 +26,7 @@ pub use crate::context::{Context, Watching};
 pub use crate::native::Listener;
 
 pub use crate::operation::Operation;
-pub use crate::stream::{Observer, Publisher, Stream, Window};
+pub use crate::stream::{Collection, CollectionOutput, Observer, Publisher, Stream, Window};
 
 /* === Imports === */
 
@@ -37,6 +37,9 @@ use std::{
 };
 
 // Third Party Imports
+use prost_reflect::DescriptorPool;
+use prost_types::FileDescriptorSet;
+use semver::Version;
 
 // Local Imports
 use crate::{Error, Message, Result, message::merge_types, stream::StreamDefinition};
@@ -47,9 +50,7 @@ use harmos_protocol::model::SettingsDeclarations;
 use harmos_protocol::model::StorageTransferSettings;
 use harmos_protocol::model::Visibility;
 use harmos_protocol::model::{Declarations, LaneDeclaration, lane_declaration};
-
-use prost_reflect::DescriptorPool;
-use prost_types::FileDescriptorSet;
+use harmos_protocol::schema;
 
 /* === Constants === */
 
@@ -178,7 +179,7 @@ impl Plugin {
         if !id_valid {
             return Err(Error::Invalid("Plugin Identity Must Be Lowercase with Dots or Underscores".into()));
         }
-        semver::Version::parse(&self.version).map_err(|error| Error::Invalid(format!("Invalid Plugin Version: {error}")))?;
+        Version::parse(&self.version).map_err(|error| Error::Invalid(format!("Invalid Plugin Version: {error}")))?;
         let mut declarations = Declarations {
             lanes: self.lanes.iter().map(|lane| lane.declaration.clone()).collect(),
             ..Default::default()
@@ -217,19 +218,18 @@ impl Plugin {
                 return Err(Error::Invalid(format!("Invalid Visibility: {}", operation.contract.id)));
             }
             let mut contract = operation.contract.clone();
-            contract.fingerprint =
-                harmos_protocol::schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
-                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            contract.fingerprint = schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
+                .map_err(|error| Error::Invalid(error.to_string()))?;
             if contract.visibility == Visibility::Private as i32 {
                 continue;
             }
-            harmos_protocol::schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
+            schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
             declarations.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
         }
         let mut requires = HashSet::new();
         for requirement in &self.requirements {
-            harmos_protocol::schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;
+            schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;
             if self
                 .operations
                 .iter()
@@ -240,7 +240,7 @@ impl Plugin {
             if !requires.insert(&requirement.id) {
                 return Err(Error::Invalid(format!("Duplicate Requirement: {}", requirement.id)));
             }
-            let fingerprint = harmos_protocol::schema::host_fingerprint(
+            let fingerprint = schema::host_fingerprint(
                 &requirement.id,
                 &Protobuf {
                     descriptors: prost::Message::encode_to_vec(&requirement.types),
@@ -260,7 +260,14 @@ impl Plugin {
                 return Err(Error::Invalid(format!("Duplicate or Empty Stream: {}", stream.declaration.id)));
             }
             let mut declaration = stream.declaration.clone();
-            let observers = self.observers.iter().filter(|observer| observer.stream == declaration.id).collect::<Vec<_>>();
+            let observers = self
+                .observers
+                .iter()
+                .filter(|observer| {
+                    observer.stream == declaration.id
+                        || observer.members.lock().expect("collection members lock is healthy").contains_key(&declaration.id)
+                })
+                .collect::<Vec<_>>();
             if observers.len() > 1 || (!observers.is_empty() && stream.producer.is_some()) {
                 return Err(Error::Invalid(format!("Multiple Stream Producers: {}", declaration.id)));
             }
@@ -271,7 +278,7 @@ impl Plugin {
                 if invalid_default || missing_interval {
                     return Err(Error::Invalid(format!("Positive Observer Interval Required: {}", declaration.id)));
                 }
-                if let Err(error) = &observer.columns {
+                if let Some(Err(error)) = &observer.columns {
                     return Err(Error::Invalid(format!("{error} (stream {})", declaration.id)));
                 }
                 declaration.interval = observer.interval;
@@ -316,7 +323,7 @@ impl Plugin {
             messages.extend(&message.nested_type);
         }
         if message_options && !validation.file.iter().any(|file| file.name.as_deref() == Some("google/protobuf/descriptor.proto")) {
-            merge_types(&mut validation, harmos_protocol::schema::descriptor_options())?;
+            merge_types(&mut validation, schema::descriptor_options())?;
         }
         let pool = DescriptorPool::from_file_descriptor_set(validation)
             .map_err(|error| Error::Invalid(format!("Invalid Protobuf Definitions: {error}")))?;
@@ -333,8 +340,9 @@ impl Plugin {
             }
         }
         declarations.types = Some(types);
-        harmos_protocol::schema::plugin_lanes(&self.id, &declarations).map_err(|error| Error::Invalid(error.to_string()))?;
-        declarations.digest = harmos_protocol::schema::declarations_digest(&declarations);
+        schema::plugin_lanes(&self.id, &declarations).map_err(|error| Error::Invalid(error.to_string()))?;
+        schema::plugin_collections(&declarations).map_err(|error| Error::Invalid(error.to_string()))?;
+        declarations.digest = schema::declarations_digest(&declarations);
         Ok(declarations)
     }
 

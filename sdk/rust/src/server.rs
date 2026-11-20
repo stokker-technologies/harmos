@@ -20,8 +20,9 @@ mod tests;
 
 // Standard Library Imports
 use std::{
-    collections::{HashMap, VecDeque},
-    future::Future,
+    collections::{BTreeSet, HashMap, VecDeque},
+    future::{self, Future},
+    net,
     pin::{Pin, pin},
     result,
     sync::{
@@ -44,7 +45,12 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming, transport};
 
 // Local Imports
-use crate::{Context, Error, Operation, Plugin, Result, columns::Columns, context::ChildOutput, operation::Handler};
+use crate::{
+    Context, Error, Operation, Plugin, Result, columns,
+    context::ChildOutput,
+    operation::Handler,
+    stream::{Lifecycle, Observer},
+};
 use harmos_protocol::{
     model::{Declarations, Visibility},
     plugin::{
@@ -54,6 +60,7 @@ use harmos_protocol::{
         instance_server::{self, InstanceServer},
         response,
     },
+    transfer,
 };
 
 /* === Constants === */
@@ -93,7 +100,7 @@ pub(crate) struct Cleanup {
 }
 
 struct Publication {
-    observer: Option<(Arc<dyn Handler>, Columns)>,
+    observer: Option<Observer>,
     producer: Option<Arc<dyn Handler>>,
 }
 
@@ -230,14 +237,14 @@ impl instance_server::Instance for Server {
 /* === Public Functions === */
 
 pub(crate) async fn run(
-    plugin: Plugin, declarations: Declarations, listener: std::net::TcpListener, shutdown: watch::Sender<bool>,
+    plugin: Plugin, declarations: Declarations, listener: net::TcpListener, shutdown: watch::Sender<bool>,
     mut stopped: watch::Receiver<bool>, ready: oneshot::Sender<()>, cleanup: Arc<Cleanup>,
 ) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
-    harmos_protocol::transfer::message_bytes(&plugin.transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
+    transfer::message_bytes(&plugin.transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
         Error::Invalid("Start Plugin: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing".into())
     })?;
-    let message_bytes = harmos_protocol::transfer::default_message_bytes().get();
+    let message_bytes = transfer::default_message_bytes().get();
     let listener = TcpListener::from_std(listener)?;
     let (jobs, receiver) = mpsc::channel(1);
     let executor = tokio::task::spawn_local(execute(receiver));
@@ -247,11 +254,7 @@ pub(crate) async fn run(
         .into_iter()
         .map(|stream| {
             // Declarations Refused Every Observer Without Columns Before Serving.
-            let observer = plugin
-                .observers
-                .iter()
-                .find(|observer| observer.stream == stream.declaration.id)
-                .and_then(|observer| Some((observer.handler.clone(), observer.columns.clone().ok()?)));
+            let observer = plugin.observers.iter().find(|observer| observer.stream == stream.declaration.id).cloned();
             (stream.declaration.id, Publication { observer, producer: stream.producer })
         })
         .collect();
@@ -405,7 +408,7 @@ async fn invoke(
 }
 
 async fn samples(
-    jobs: mpsc::Sender<Job>, observer: Option<(Arc<dyn Handler>, Columns)>, producer: Option<Arc<dyn Handler>>, mut context: Context,
+    jobs: mpsc::Sender<Job>, observer: Option<Observer>, producer: Option<Arc<dyn Handler>>, mut context: Context,
     input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<result::Result<InstanceSamplesResponse, Status>>,
     message_bytes: usize,
 ) -> result::Result<(), Status> {
@@ -415,13 +418,19 @@ async fn samples(
         Some(producer) => Some(dispatch(&jobs, producer, context.clone(), Vec::new()).await?),
         None => None,
     };
-    let mut observing = None;
+    let mut observing: Option<(u64, Completion)> = None;
     let mut sample = None;
     // Parts of the Answered Window Still to Send, in Order.
     let mut parts = VecDeque::new();
     let mut sequence = 0;
+    let collection = observer.as_ref().is_some_and(|observer| observer.columns.is_none());
+    let mut active = false;
     let result = async {
     loop {
+        // A Final Tick Answers the Window Only After Its Handler Has Completed Successfully.
+        let can_send_part = parts.front().is_some_and(|part: &InstanceSamplesResponse| {
+            observing.is_none() || !matches!(&part.frame, Some(plugin::instance_samples_response::Frame::Collection(batch)) if batch.last)
+        });
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
@@ -431,10 +440,43 @@ async fn samples(
             frame = input.message() => {
                 let Some(frame) = frame? else { return Ok(()); };
                 match frame.frame {
+                    Some(instance_samples_request::Frame::Demand(demand)) if collection => {
+                        let observer = observer.as_ref().expect("collection observer");
+                        let members = observer.members.lock().expect("collection members lock is healthy").clone();
+                        let mut selected = BTreeSet::new();
+                        for stream in &demand.streams {
+                            if !members.contains_key(stream) || !selected.insert(stream) {
+                                return Err(Status::invalid_argument("Change Collection Demand: select each declared member at most once"));
+                            }
+                        }
+                        let wanted = !demand.streams.is_empty();
+                        if (observing.is_some() || !parts.is_empty()) && wanted {
+                            return Err(Status::invalid_argument("Change Collection Demand: wait for the current window to finish"));
+                        }
+                        if let Some((_, complete)) = observing.take() {
+                            if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
+                            context.cancellation.send_replace(Some("Collection Demand Ended".into()));
+                            context.cancel_calls(false, "Collection Demand Ended", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+                            complete.cancel().await;
+                        }
+                        parts.clear();
+                        while rows.try_recv().is_ok() {}
+                        if active != wanted {
+                            if !wanted { active = false; }
+                            transition(&jobs, &observer.lifecycle, &context, wanted, Some(&mut *input), output).await?;
+                            active = wanted;
+                        }
+                        output.send(Ok(InstanceSamplesResponse {
+                            samples: Vec::new(), frame: Some(plugin::instance_samples_response::Frame::Demand(plugin::CollectionDemandResponse {})),
+                        })).await.map_err(|_| Status::cancelled("Collection Demand Closed"))?;
+                    }
                     Some(instance_samples_request::Frame::Window(window)) => {
-                        let Some((handler, _)) = &observer else {
+                        let Some(observer) = &observer else {
                             return Err(Status::invalid_argument("Sample Window: a device stream takes no windows"));
                         };
+                        if collection && !active {
+                            return Err(Status::invalid_argument("Sample Collection Window: acquire listener demand before granting a window"));
+                        }
                         if observing.is_some() || !parts.is_empty() {
                             return Err(Status::invalid_argument("Sample Window: the previous window is unanswered"));
                         }
@@ -455,13 +497,14 @@ async fn samples(
                         window_context.calls = context.calls.clone();
                         window_context.call_changes = context.call_changes.clone();
                         window_context.local = context.local.clone();
+                        window_context.samples = context.samples.clone();
                         window_context.sequence = window.sequence;
                         window_context.output = Some(ChildOutput::Samples {
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
                         });
                         context = window_context;
                         let payload = Message::encode_to_vec(&window);
-                        observing = Some((window.count, dispatch(&jobs, handler.clone(), context.clone(), payload).await?));
+                        observing = Some((window.count, dispatch(&jobs, observer.handler.clone(), context.clone(), payload).await?));
                     }
                     Some(instance_samples_request::Frame::Child(child)) if observing.is_some() => context.reply(child).await?,
                     _ => return Err(Status::invalid_argument("Receive Samples: Expected a Window or an Active Child Reply")),
@@ -473,7 +516,7 @@ async fn samples(
                 let (row, at) = sample.take().expect("Sample Ready");
                 permit.send(Ok(InstanceSamplesResponse { samples: vec![Sample { at, row, sequence }], frame: None }));
             }
-            permit = output.reserve(), if !parts.is_empty() => {
+            permit = output.reserve(), if can_send_part => {
                 let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
                 permit.send(Ok(parts.pop_front().expect("Part Ready")));
             }
@@ -482,13 +525,27 @@ async fn samples(
                 if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
                 context.cancellation.send_replace(Some("Samples Window Answered".into()));
                 context.cancel_calls(false, "Samples Window Answered", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
-                let columns = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
-                let (_, layout) = observer.as_ref().expect("Validated Window Observer");
-                parts.extend(crate::columns::parts(layout, columns, count, message_bytes)?);
+                let columns = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| match error {
+                    Error::Transport(status) if collection => status,
+                    error => Status::internal(error.to_string()),
+                })?;
+                if let Some(layout) = &observer.as_ref().expect("Validated Window Observer").columns {
+                    let layout = layout.as_ref().expect("validated observer columns");
+                    parts.extend(columns::parts(layout, columns, count, message_bytes)?);
+                } else {
+                    // A Completed Handler May Still Own the Final Tick in Its Bounded Output Channel.
+                    while let Ok((bytes, _)) = rows.try_recv() {
+                        parts.push_back(collection_part(&bytes, message_bytes)?);
+                    }
+                }
             }
-            row = rows.recv(), if observer.is_none() && sample.is_none() => {
+            row = rows.recv(), if (observer.is_none() || collection && observing.is_some()) && sample.is_none() => {
                 let Some(row) = row else { return Ok(()); };
-                sample = Some(row);
+                if collection {
+                    parts.push_back(collection_part(&row.0, message_bytes)?);
+                } else {
+                    sample = Some(row);
+                }
             }
             result = async { producing.as_mut().expect("Producer Active").await }, if producing.is_some() => {
                 result.map_err(|_| Status::internal("Producer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
@@ -509,8 +566,88 @@ async fn samples(
     if let Some(complete) = producing {
         complete.cancel().await;
     }
+    let stopped = if active {
+        transition(&jobs, &observer.as_ref().expect("collection observer").lifecycle, &context, false, None, output).await
+    } else {
+        Ok(())
+    };
+    if let Err(error) = &stopped {
+        tracing::warn!(%error, "Collection Listener Cleanup Failed");
+    }
     result?;
-    cancellation.map_err(|error| Status::unavailable(error.to_string()))
+    cancellation.map_err(|error| Status::unavailable(error.to_string()))?;
+    stopped
+}
+
+async fn transition(
+    jobs: &mpsc::Sender<Job>, lifecycle: &Lifecycle, context: &Context, start: bool, input: Option<&mut Streaming<InstanceSamplesRequest>>,
+    output: &mpsc::Sender<result::Result<InstanceSamplesResponse, Status>>,
+) -> result::Result<(), Status> {
+    let mut active = lifecycle.active.lock().await;
+    let hook = if start {
+        if *active == 0 {
+            lifecycle.start.as_ref()
+        } else {
+            None
+        }
+    } else {
+        *active -= 1;
+        if *active == 0 {
+            lifecycle.stop.as_ref()
+        } else {
+            None
+        }
+    };
+    if let Some(hook) = hook {
+        lifecycle.completed.store(false, Ordering::Release);
+        let mut context = context.clone();
+        context.output = None;
+        context.cancellation = watch::channel(None).0;
+        let mut complete = dispatch(jobs, hook.clone(), context, Vec::new()).await?;
+        let closing = async {
+            if let Some(input) = input
+                && start
+            {
+                let _ = input.message().await;
+                return;
+            }
+            future::pending::<()>().await;
+        };
+        let result = tokio::select! {
+            biased;
+            result = &mut complete => Some(result),
+            () = output.closed() => None,
+            () = closing => None,
+        };
+        let Some(result) = result else {
+            complete.cancel().await;
+            // Preserve Completed Hook Effects When Their Reply Lost the Race With Cancellation.
+            if lifecycle.completed.load(Ordering::Acquire) {
+                if start {
+                    *active += 1;
+                }
+                return Ok(());
+            }
+            return Err(Status::cancelled("Collection Listener Hook: demand ended before hook completion"));
+        };
+        result.map_err(|_| Status::internal("Collection Listener Hook Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
+    }
+    if start {
+        *active += 1;
+    }
+    Ok(())
+}
+
+fn collection_part(bytes: &[u8], message_bytes: usize) -> result::Result<InstanceSamplesResponse, Status> {
+    let batch = plugin::CollectionBatch::decode(bytes).map_err(|error| Status::internal(error.to_string()))?;
+    let response = InstanceSamplesResponse {
+        samples: Vec::new(),
+        frame: Some(plugin::instance_samples_response::Frame::Collection(batch)),
+    };
+    if response.encoded_len() > message_bytes {
+        return Err(Status::resource_exhausted("Publish Collection Tick: reduce rows per tick to fit the carrier message ceiling"));
+    }
+    Ok(response)
 }
 
 /* === Tests === */

@@ -96,7 +96,7 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
     cancels and settles an in-flight handler before cleanup. Only an empty demand
     transition may interrupt a window; late cancelled-window frames are discarded
     until its acknowledgement. Transport end releases its demand share exactly once.
-    For an interval stream the host resolves the interval and grants Window frames;
+    For an ordinary interval stream the host resolves the interval and grants Window frames;
     the plugin MUST answer each window once, in order, with SampleBatch parts whose
     offsets are contiguous from 0, whose counts are at least one and sum to
     Window.count, and whose final part alone sets last. Child-only frames do not
@@ -116,7 +116,7 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
     a supplied device timestamp is source time and MUST NOT replace host evidence
     time. conformance.device emits one Value containing UTF-8 device, sequence 1,
     with at absent immediately after open, then awaits demand closure.
-13. **Demand and Reopen.** Opening Instance.Samples is demand; closing/cancelling it ends
+13. **Demand and Reopen.** For ordinary streams, opening Instance.Samples is demand; closing/cancelling it ends
     demand and releases its work. The fixture MUST also close output after input
     EOF. Reopening is a fresh call with sequence 1, independent of previous calls.
     Closing one demand MUST leave the connection usable. Disconnected samples

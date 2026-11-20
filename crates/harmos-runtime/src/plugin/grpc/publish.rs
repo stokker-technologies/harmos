@@ -18,29 +18,35 @@
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
-    error, future, mem, fmt,
+    error, fmt, future, mem,
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, SystemTime},
 };
 
 // Third Party Imports
 use futures_util::stream;
+use serde_json::{Map, Value};
 use tokio::{
     sync::{self, mpsc, watch},
+    task::JoinSet,
     time::Instant,
 };
 
 // Local Imports
 use super::{Activation, Error, PlacementSettings, model};
+use crate::operations::Manager;
 use crate::operations::clock::{Unit, WindowCall};
 use crate::streams::protobuf::Row;
 use crate::{
-    Application,
-    clock::Clock,
-    streams::{ConnectionStreams, PublicationRow, StreamManager, StreamPublicationError, StreamWriter},
+    Application, Identifier, Metadata, Scope,
+    clock::{Activity, Clock},
+    streams::{self, ConnectionStreams, PublicationRow, StreamManager, StreamPublicationError, StreamWriter},
 };
+use harmos_protocol::columns::{self, batch};
 use harmos_protocol::plugin::instance_samples_request::Frame;
-use harmos_protocol::plugin::{CollectionDemand, InstanceSamplesRequest, InstanceSamplesResponse, SamplesSelection, Window, instance_samples_response};
+use harmos_protocol::plugin::{
+    CollectionDemand, InstanceSamplesRequest, InstanceSamplesResponse, SamplesSelection, Window, instance_samples_response,
+};
 
 /* === Constants === */
 
@@ -53,7 +59,7 @@ use harmos_protocol::plugin::{CollectionDemand, InstanceSamplesRequest, Instance
 pub(super) struct Publications {
     plugin: String,
     close: watch::Sender<bool>,
-    jobs: tokio::task::JoinSet<Result<(), Error>>,
+    jobs: JoinSet<Result<(), Error>>,
     /// Failures of Unscoped Demands, Which Their Attachment Reports.
     failures: mpsc::UnboundedReceiver<Arc<Error>>,
     registration: Arc<ConnectionStreams>,
@@ -65,9 +71,9 @@ pub(super) struct ScopeSource {
     pub(super) registration: Arc<ConnectionStreams>,
     pub(super) close: watch::Receiver<bool>,
     pub(super) settings: PlacementSettings,
-    pub(super) operations: crate::operations::Manager,
+    pub(super) operations: Manager,
     pub(super) bindings: Mutex<Bindings>,
-    /// Scopes Sampling Each Declared Stream; a Stream's Unscoped Demand Grants No Windows While Any Do.
+    /// Scoped Sampling Shares; Every Member of a Collection Shares Its Unscoped Suppression.
     pub(super) sampling: BTreeMap<String, watch::Sender<usize>>,
 }
 
@@ -79,7 +85,7 @@ pub(super) struct Sampling(Vec<watch::Sender<usize>>);
 pub(super) struct Bindings {
     pub(super) closed: bool,
     pub(super) scopes: BTreeMap<String, watch::Receiver<Option<super::Outcome>>>,
-    pub(super) tasks: tokio::task::JoinSet<()>,
+    pub(super) tasks: JoinSet<()>,
 }
 
 pub(super) struct PreparedPublications {
@@ -90,7 +96,7 @@ struct PreparedDemand {
     id: String,
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
-    row: Row,
+    row: Option<Row>,
     cadence: Option<Cadence>,
     members: BTreeMap<String, Row>,
     selected: BTreeSet<String>,
@@ -107,13 +113,13 @@ struct Cadence {
 /// What Lets the Unscoped Demand Grant: Something Watches Its Stream and No Scope of Its Activation Samples It.
 struct Gate {
     sampling: watch::Receiver<usize>,
-    interest: BTreeMap<String, crate::streams::Demand>,
+    interest: BTreeMap<String, streams::Demand>,
 }
 
 struct Demand {
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
-    row: Row,
+    row: Option<Row>,
     cadence: Option<Cadence>,
     gate: Option<Gate>,
     lease: Arc<StreamWriter>,
@@ -121,7 +127,7 @@ struct Demand {
     close: watch::Receiver<bool>,
     parent: Option<watch::Receiver<bool>>,
     closed: watch::Receiver<bool>,
-    operations: crate::operations::Manager,
+    operations: Manager,
     caller: Arc<super::CallingPlugin>,
     members: BTreeMap<String, (Row, Arc<StreamWriter>)>,
     selected: BTreeSet<String>,
@@ -135,16 +141,15 @@ struct Demand {
 
 impl Publications {
     pub(super) async fn open<A: Application>(
-        streams: &StreamManager<A>, activation: &Activation, clock: &Clock, settings: &PlacementSettings,
-        operations: &crate::operations::Manager,
+        streams: &StreamManager<A>, activation: &Activation, clock: &Clock, settings: &PlacementSettings, operations: &Manager,
     ) -> Result<Self, Error> {
         let prepared = Self::prepare(streams, activation, settings, operations, false, None).await?;
         Self::activate(prepared, streams, activation, clock, operations, settings, false)
     }
     /// Validate Every Declared Stream and Open Demand for the `selected` Ones, or for All Without a Selection.
     pub(super) async fn prepare<A: Application>(
-        streams: &StreamManager<A>, activation: &Activation, settings: &PlacementSettings, operations: &crate::operations::Manager,
-        replace: bool, selected: Option<&BTreeSet<String>>,
+        streams: &StreamManager<A>, activation: &Activation, settings: &PlacementSettings, operations: &Manager, replace: bool,
+        selected: Option<&BTreeSet<String>>,
     ) -> Result<PreparedPublications, Error> {
         let catalog = activation.description.declarations.as_ref().expect("admitted description");
         let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(catalog.types.clone().unwrap_or_default()).map_err(invalid)?;
@@ -157,14 +162,14 @@ impl Publications {
             let cadence = cadence(stream, &activation.settings, settings)?;
             // An Interval Stream Stores One Batch Row per Part: Its Row's Columns and Their Times.
             let row = match cadence {
-                Some(_) if stream.collection.is_empty() => Row::new(harmos_protocol::columns::derive(&descriptor).map_err(invalid)?.batch)?,
+                Some(_) if stream.collection.is_empty() => Row::new(columns::derive(&descriptor).map_err(invalid)?.batch)?,
                 _ => Row::new(descriptor)?,
             };
             declarations.push(harmos_operations::StreamDeclaration {
                 id: stream.id.clone(),
                 window: settings.stream_window.get(),
                 row: row.schema.clone(),
-                metadata: crate::Metadata::new(crate::Identifier::new(&stream.id).map_err(invalid)?, stream.id.clone(), None),
+                metadata: Metadata::new(Identifier::new(&stream.id).map_err(invalid)?, stream.id.clone(), None),
                 row_metadata: Vec::new(),
             });
             rows.push((stream.id.clone(), stream.collection.clone(), row, cadence));
@@ -176,7 +181,7 @@ impl Publications {
             let key = if collection.is_empty() { id.clone() } else { collection };
             groups.entry(key).or_default().push((id, row, cadence));
         }
-        for (id, group) in groups {
+        for (id, mut group) in groups {
             let listened = group
                 .iter()
                 .filter(|(id, _, _)| selected.is_none_or(|selected| selected.contains(id)))
@@ -199,14 +204,14 @@ impl Publications {
                     shared.lag = settings.interval_lag.of(shared.window);
                 }
             }
-            let row = Row::new(group[0].1.descriptor.clone())?;
+            let row = if collection { None } else { Some(group.pop().expect("ordinary stream group").1) };
             let members = if collection { group.into_iter().map(|(id, row, _)| (id, row)).collect() } else { BTreeMap::new() };
             let (output, input) = mpsc::channel(1);
             output
                 .send(InstanceSamplesRequest {
                     frame: Some(Frame::Open(SamplesSelection {
                         stream: id.clone(),
-                        scope: operations.call_context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
+                        scope: operations.call_context().get::<Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
                     })),
                 })
                 .await
@@ -227,8 +232,8 @@ impl Publications {
         Ok(PreparedPublications { declarations, demands })
     }
     pub(super) fn activate<A: Application>(
-        prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock,
-        operations: &crate::operations::Manager, settings: &PlacementSettings, replace: bool,
+        prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock, operations: &Manager,
+        settings: &PlacementSettings, replace: bool,
     ) -> Result<Self, Error> {
         let mut groups = BTreeMap::new();
         let catalog = activation.description.declarations.as_ref().expect("admitted description");
@@ -260,15 +265,12 @@ impl Publications {
     }
 
     /// A Scope's Publications Before Its Samples Start: No Demand, but Settlement Still Covers Its Calls.
-    pub(super) fn idle(
-        source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock, operations: &crate::operations::Manager,
-    ) -> Self {
+    pub(super) fn idle(source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock, operations: &Manager) -> Self {
         Self::start(Vec::new(), source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()), None)
     }
 
     pub(super) fn scoped(
-        prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock,
-        operations: &crate::operations::Manager,
+        prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock, operations: &Manager,
     ) -> Self {
         Self::start(prepared.demands, source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()), None)
     }
@@ -276,15 +278,14 @@ impl Publications {
     #[allow(clippy::too_many_arguments)]
     fn start(
         demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock, host: &Clock,
-        operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>,
-        sampling: Option<&BTreeMap<String, watch::Sender<usize>>>,
+        operations: &Manager, parent: Option<watch::Receiver<bool>>, sampling: Option<&BTreeMap<String, watch::Sender<usize>>>,
     ) -> Self {
         let close = watch::channel(false).0;
         let (failed, failures) = mpsc::unbounded_channel();
         let mut publications = Self {
             plugin: activation.description.id.clone(),
             close,
-            jobs: tokio::task::JoinSet::new(),
+            jobs: JoinSet::new(),
             failures,
             registration,
             parent,
@@ -359,7 +360,7 @@ impl Publications {
                 tracing::warn!(%error, "plugin publication ended");
                 // A Stream's Own Failure Ends Its Demand Only; a Transport Failure Ends the Connection.
                 if !matches!(
-                    error, future, mem, fmt,
+                    error,
                     Error::Invalid(_)
                         | Error::Lagging { .. }
                         | Error::PoolFull { .. }
@@ -466,8 +467,10 @@ impl Publications {
 impl Gate {
     fn open(&mut self) -> bool {
         let sampled = *self.sampling.borrow_and_update() > 0;
-        let watched =
-            self.interest.values_mut().map(|interest| *interest.borrow_and_update() > 0).fold(false, |any, watched| any || watched);
+        let mut watched = false;
+        for interest in self.interest.values_mut() {
+            watched |= *interest.borrow_and_update() > 0;
+        }
         watched && !sampled
     }
 
@@ -483,7 +486,9 @@ impl Gate {
         while self.open() != open {
             tokio::select! {
                 changed = self.sampling.changed() => if changed.is_err() { future::pending::<()>().await },
-                _ = futures_util::future::select_all(self.interest.values_mut().map(|interest| Box::pin(interest.changed()))) => {},
+                _ = futures_util::future::select_all(self.interest.values_mut().map(|interest| Box::pin(async move {
+                    if interest.changed().await.is_err() { future::pending::<()>().await; }
+                }))) => {},
             }
         }
     }
@@ -583,8 +588,8 @@ fn admission(stream: &str, error: StreamPublicationError) -> Error {
     match error {
         StreamPublicationError::Capacity => Error::PoolFull {
             stream: stream.to_owned(),
-            bytes: crate::streams::RETAINED_BYTES,
-            rows: crate::streams::RETAINED_ROWS,
+            bytes: streams::RETAINED_BYTES,
+            rows: streams::RETAINED_ROWS,
         },
         error => invalid(error),
     }
@@ -617,26 +622,24 @@ fn span(nanos: u128) -> Result<Duration, Error> {
     Ok(Duration::new(seconds, (nanos % 1_000_000_000) as u32))
 }
 
-fn unix_nanos(date: SystemTime) -> Result<i64, Error> {
+fn unix_nanos(date: SystemTime) -> Result<i128, Error> {
     let nanos = match date.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(after) => i128::try_from(after.as_nanos()).ok(),
         Err(before) => i128::try_from(before.duration().as_nanos()).ok().map(|nanos| -nanos),
     };
-    nanos
-        .and_then(|nanos| i64::try_from(nanos).ok())
-        .ok_or_else(|| invalid("Grant Sample Window: sample times must fall between 1678 and 2262; move the clock's date"))
+    nanos.ok_or_else(|| invalid("Grant Sample Window: move the clock's date into the supported timestamp range"))
 }
 
 /// The Context JSON Each Stored Row Carries: the Trusted Scope and a Device's Own Time.
-fn row_context(operations: &crate::operations::Manager, source_time: Option<prost_types::Timestamp>) -> Option<String> {
-    match operations.call_context().get::<crate::Scope>() {
+fn row_context(operations: &Manager, source_time: Option<prost_types::Timestamp>) -> Option<String> {
+    match operations.call_context().get::<Scope>() {
         Some(scope) => {
-            let mut context = serde_json::Map::new();
+            let mut context = Map::new();
             context.insert("scope".into(), serde_json::json!(scope.as_str()));
             if let Some(at) = source_time {
                 context.insert("source_time".into(), serde_json::json!({"seconds": at.seconds, "nanos": at.nanos}));
             }
-            Some(serde_json::Value::Object(context).to_string())
+            Some(Value::Object(context).to_string())
         }
         None => source_time.map(|at| format!("{{\"source_time\":{{\"seconds\":{},\"nanos\":{}}}}}", at.seconds, at.nanos)),
     }
@@ -673,14 +676,24 @@ async fn change_demand(
             return Ok(());
         }
         // Discard Frames Already in Flight When the Last Listener Cancelled Its Window.
-        if listened.is_empty() && response.frame.is_some() {
+        if listened.is_empty()
+            && matches!(
+                response.frame,
+                Some(
+                    instance_samples_response::Frame::Collection(_)
+                        | instance_samples_response::Frame::Child(_)
+                        | instance_samples_response::Frame::ChildDemand(_)
+                        | instance_samples_response::Frame::ChildCancel(_)
+                )
+            )
+        {
             continue;
         }
         return Err(invalid("Change Collection Demand: acknowledge listener hooks before sampling"));
     }
 }
 
-async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
+async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
         output,
         input,
@@ -715,6 +728,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     let outcome = {
         let work = async {
             let Some(Cadence { period, window, lag }) = cadence else {
+                let row = row.as_ref().expect("device stream row");
                 // A Device Stream Publishes Whenever Its Device Produces a Sample.
                 let mut sequence = 0;
                 loop {
@@ -835,15 +849,15 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 }
                 let count = u64::try_from(through - granted).map_err(|_| invalid("Grant Sample Window: too many samples are due"))?;
                 // A Window Even the Empty Shared Pool Cannot Hold Is Refused Before the Plugin Samples It.
-                let (rows, payload) = if members.is_empty() { row.least(count) } else { (0, 0) };
-                let (needed, fits) = crate::streams::claim(rows, payload);
+                let (rows, payload) = row.as_ref().map_or((0, 0), |row| row.least(count));
+                let (needed, fits) = streams::claim(rows, payload);
                 if !fits {
                     return Err(Error::WindowExceedsPool {
                         stream: stream.clone(),
                         samples: count,
                         needed,
-                        bytes: crate::streams::RETAINED_BYTES,
-                        rows: crate::streams::RETAINED_ROWS,
+                        bytes: streams::RETAINED_BYTES,
+                        rows: streams::RETAINED_ROWS,
                     });
                 }
                 if !members.is_empty() {
@@ -856,10 +870,15 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                         continue;
                     }
                 }
-                let start = origin.date + span((granted + 1) * period_nanos)?;
-                let start_nanos = unix_nanos(start)?;
+                // Keep the Grid in Nanoseconds Even Where SystemTime Addition Has Coarser Precision.
+                let first = unix_nanos(origin.date)? + i128::try_from((granted + 1) * period_nanos).map_err(invalid)?;
+                let start_nanos = i64::try_from(first).map_err(|_| invalid("Grant Sample Window: move the clock before 2262"))?;
+                let start = prost_types::Timestamp {
+                    seconds: start_nanos.div_euclid(1_000_000_000),
+                    nanos: start_nanos.rem_euclid(1_000_000_000) as i32,
+                };
                 let grant = Window {
-                    start: Some(start.into()),
+                    start: Some(start),
                     period: Some(wire_period),
                     count,
                     sequence: sequence + 1,
@@ -875,17 +894,25 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 };
                 let answer = activity.wait(operations.call_native::<super::samples::Window>(request));
                 let parts = if members.is_empty() {
-                    answer.await.map_err(sample_error)?
+                    Some(answer.await.map_err(sample_error)?)
                 } else {
                     tokio::select! {
-                        result = answer => result.map_err(sample_error)?,
+                        result = answer => Some(result.map_err(sample_error)?),
                         () = async {
                             match &mut gate {
                                 Some(gate) => gate.until(false).await,
                                 None => future::pending().await,
                             }
-                        } => continue,
+                        } => None,
                     }
+                };
+                let Some(parts) = parts else {
+                    // A Last-Listener Transition Must Complete Even If a New Listener Has Already Joined.
+                    change_demand(&input, &output, &stream, &BTreeSet::new()).await?;
+                    active.clear();
+                    origin = clock.read();
+                    granted = 0;
+                    continue;
                 };
                 // Accepted Ingestion Is Host Work: It Holds Both the Demand's and the Runtime Clock.
                 let _window = clock.activity("plugin window ingest");
@@ -899,6 +926,14 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                     for tick in ticks {
                         let at = i128::from(start_nanos) + i128::from(tick.offset) * period_nanos as i128;
                         let at = i64::try_from(at).map_err(|_| invalid("Publish Collection Rows: move the clock before 2262"))?;
+                        // Preserve Exact Tick Time on the Existing Source-Time Field.
+                        let context = row_context(
+                            &operations,
+                            Some(prost_types::Timestamp {
+                                seconds: at.div_euclid(1_000_000_000),
+                                nanos: at.rem_euclid(1_000_000_000) as i32,
+                            }),
+                        );
                         for group in tick.streams {
                             let (row, writer) = &members[&group.stream];
                             if !active.contains(&group.stream) {
@@ -908,7 +943,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                                 let payload = row.decode(&bytes)?;
                                 payload_bytes = payload_bytes
                                     .saturating_add(payload.capacity() as u128 + context.as_ref().map_or(0, String::capacity) as u128);
-                                if !crate::streams::claim(staged.len() as u64 + 1, payload_bytes).1 {
+                                if !streams::claim(staged.len() as u64 + 1, payload_bytes).1 {
                                     return Err(admission(&stream, StreamPublicationError::Capacity));
                                 }
                                 staged.push((
@@ -933,14 +968,15 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                         writer.ingested_at(receipt).await.map_err(invalid)?;
                     }
                 } else if let super::samples::Answer::Columns(parts) = parts {
+                    let row = row.as_ref().expect("ordinary observer row");
                     for part in parts {
                         let first = i128::from(start_nanos) + i128::try_from(u128::from(part.offset) * period_nanos).map_err(invalid)?;
                         let first = i64::try_from(first).map_err(|_| invalid("Grant Sample Window: sample times must fall before 2262"))?;
                         let mut stored = Vec::with_capacity(part.columns.len() + 32);
-                        prost::encoding::int64::encode(harmos_protocol::columns::batch::START_UNIX_NANOS, &first, &mut stored);
-                        prost::encoding::uint64::encode(harmos_protocol::columns::batch::PERIOD_NANOS, &(period_nanos as u64), &mut stored);
-                        prost::encoding::uint64::encode(harmos_protocol::columns::batch::COUNT, &part.count, &mut stored);
-                        prost::encoding::bytes::encode(harmos_protocol::columns::batch::COLUMNS, &part.columns, &mut stored);
+                        prost::encoding::int64::encode(batch::START_UNIX_NANOS, &first, &mut stored);
+                        prost::encoding::uint64::encode(batch::PERIOD_NANOS, &(period_nanos as u64), &mut stored);
+                        prost::encoding::uint64::encode(batch::COUNT, &part.count, &mut stored);
+                        prost::encoding::bytes::encode(batch::COLUMNS, &part.columns, &mut stored);
                         for (first, _, payload) in row.decode_batch(&stored, part.count, period_nanos as u64)? {
                             receipt = Some(
                                 lease

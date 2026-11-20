@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::iter;
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -26,6 +27,8 @@ use std::{
 use futures_util::stream;
 use prost::Message;
 use prost_reflect::ReflectMessage;
+use prost_types::{FileDescriptorSet, Timestamp};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tonic::{Code, Status};
 
@@ -38,8 +41,9 @@ use harmos_protocol::{
     host::TimeGetResponse,
     model,
     plugin::{self, instance_samples_request, instance_samples_response},
+    schema,
 };
-use harmos_runtime::clock::Clock;
+use harmos_runtime::clock::{Clock, Source};
 use harmos_runtime::plugin::grpc::{Error, Placement, PlacementSettings};
 
 /* === Constants === */
@@ -62,11 +66,11 @@ struct Fixture {
 /* === Implementations === */
 
 impl Fixture {
-    async fn start(fail: bool, silent: bool) -> Self {
+    async fn start(fail: bool, silent: bool, interval_nanos: i32) -> Self {
         let remote = Remote::start().await;
         let pool = TimeGetResponse::default().descriptor().parent_pool().clone();
         let mut declarations = model::Declarations {
-            types: Some(prost_types::FileDescriptorSet {
+            types: Some(FileDescriptorSet {
                 file: pool.files().map(|file| file.file_descriptor_proto().clone()).collect(),
             }),
             streams: ["alpha", "beta", "silent"]
@@ -83,12 +87,23 @@ impl Fixture {
         };
         declarations.sections.push(model::Section {
             r#type: "harmos.model.v1.SettingsDeclarations".into(),
-            payload: model::SettingsDeclarations { values: [("interval", 1), ("window", 4)].map(|(name, seconds)| model::SettingDeclaration {
-                name: name.into(), default: Some(model::SettingValue { value: Some(model::setting_value::Value::Duration(prost_types::Duration { seconds, nanos: 0 })) }),
-                ..Default::default()
-            }).into() }.encode_to_vec(),
+            payload: model::SettingsDeclarations {
+                values: [("interval", 1), ("window", 4)]
+                    .map(|(name, seconds)| model::SettingDeclaration {
+                        name: name.into(),
+                        default: Some(model::SettingValue {
+                            value: Some(model::setting_value::Value::Duration(prost_types::Duration {
+                                seconds: if name == "interval" && interval_nanos > 0 { 0 } else { seconds },
+                                nanos: if name == "interval" { interval_nanos } else { 0 },
+                            })),
+                        }),
+                        ..Default::default()
+                    })
+                    .into(),
+            }
+            .encode_to_vec(),
         });
-        declarations.digest = harmos_protocol::schema::declarations_digest(&declarations);
+        declarations.digest = schema::declarations_digest(&declarations);
         remote.declarations(declarations);
         let ticks = Arc::new(Mutex::new(BTreeMap::new()));
         let counts = ticks.clone();
@@ -109,7 +124,7 @@ impl Fixture {
                             for offset in 0..window.count {
                                 *counts.lock().unwrap().entry(open.scope.clone()).or_default() += 1;
                                 let row = TimeGetResponse {
-                                    now: Some(prost_types::Timestamp {
+                                    now: Some(Timestamp {
                                         seconds: (window.sequence + offset) as i64,
                                         nanos: 0,
                                     }),
@@ -122,13 +137,20 @@ impl Fixture {
                                         vec![]
                                     } else {
                                         vec![
-                                            plugin::CollectionRows {
-                                                stream: "alpha".into(),
-                                                rows: vec![row.clone()],
-                                            },
+                                            plugin::CollectionRows { stream: "alpha".into(), rows: vec![row] },
                                             plugin::CollectionRows {
                                                 stream: "beta".into(),
-                                                rows: vec![row.clone(), row.clone(), row],
+                                                rows: (0..3)
+                                                    .map(|index| {
+                                                        TimeGetResponse {
+                                                            now: Some(Timestamp {
+                                                                seconds: (window.sequence + offset) as i64 * 10 + index,
+                                                                nanos: 0,
+                                                            }),
+                                                        }
+                                                        .encode_to_vec()
+                                                    })
+                                                    .collect(),
                                             },
                                         ]
                                     },
@@ -191,14 +213,18 @@ fn settings() -> PlacementSettings {
 #[tokio::test]
 async fn collection_ticks_are_shared_sparse_ordered_and_host_stamped() {
     let host = HostFixture::new().await;
-    let fixture = Fixture::start(false, false).await;
+    let fixture = Fixture::start(false, false, 0).await;
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings()).await.unwrap();
-    let origin = host.clock.read().instant;
+    let reading = host.clock.read();
+    let origin = reading.instant;
+    let start: Timestamp = reading.date.into();
+    let start_micros = start.seconds * 1_000_000 + i64::from(start.nanos).div_euclid(1000);
     let watches = [host.watch("alpha"), host.watch("beta"), host.watch("silent")];
     host.clock.registered_at(origin + Duration::from_secs(4)).await;
     host.clock.advance_by(Duration::from_secs(4));
     stored(&host, 16).await;
     assert_eq!(fixture.ticks.lock().unwrap().get(""), Some(&4));
+    let values = host.values();
     let rows = host.stored.lock().unwrap();
     for (id, per_tick) in [("alpha", 1), ("beta", 3), ("silent", 0)] {
         let actual = rows
@@ -206,9 +232,16 @@ async fn collection_ticks_are_shared_sparse_ordered_and_host_stamped() {
             .filter(|(definition, _)| definition.id() == id)
             .map(|(_, row)| row.published_unix_micros.unwrap())
             .collect::<Vec<_>>();
-        let expected = (1..=4).flat_map(|tick| std::iter::repeat_n(tick * 1_000_000, per_tick)).collect::<Vec<_>>();
+        let expected = (1..=4).flat_map(|tick| iter::repeat_n(start_micros + tick * 1_000_000, per_tick)).collect::<Vec<_>>();
         assert_eq!(actual, expected);
     }
+    let beta = rows
+        .iter()
+        .zip(values)
+        .filter(|((definition, _), _)| definition.id() == "beta")
+        .map(|(_, value)| value["now"]["seconds"].as_i64().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(beta, (1..=4).flat_map(|tick| (0..3).map(move |index| tick * 10 + index)).collect::<Vec<_>>());
     drop(rows);
     drop(watches);
     attached.stop("Story Complete").await.unwrap();
@@ -218,7 +251,7 @@ async fn collection_ticks_are_shared_sparse_ordered_and_host_stamped() {
 #[tokio::test]
 async fn collection_handler_failure_discards_the_whole_unanswered_window() {
     let host = HostFixture::new().await;
-    let fixture = Fixture::start(true, false).await;
+    let fixture = Fixture::start(true, false, 0).await;
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings()).await.unwrap();
     let origin = host.clock.read().instant;
     let watches = [host.watch("alpha"), host.watch("beta")];
@@ -237,7 +270,7 @@ async fn collection_handler_failure_discards_the_whole_unanswered_window() {
 #[tokio::test]
 async fn collection_scopes_share_members_but_keep_independent_clocks_and_selection() {
     let host = HostFixture::new().await;
-    let fixture = Fixture::start(false, false).await;
+    let fixture = Fixture::start(false, false, 0).await;
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings()).await.unwrap();
     let (first_clock, first_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let (second_clock, second_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
@@ -252,7 +285,7 @@ async fn collection_scopes_share_members_but_keep_independent_clocks_and_selecti
     stored(&host, 16).await;
     assert_eq!(*fixture.ticks.lock().unwrap(), BTreeMap::from([("first".into(), 4), ("second".into(), 4)]));
     assert!(host.stored.lock().unwrap().iter().all(|(definition, row)| {
-        let scope = serde_json::from_str::<serde_json::Value>(row.context.as_ref().unwrap()).unwrap();
+        let scope = serde_json::from_str::<Value>(row.context.as_ref().unwrap()).unwrap();
         (definition.id() == "alpha" && scope["scope"] == "first") || (definition.id() == "beta" && scope["scope"] == "second")
     }));
     first.close().await.unwrap();
@@ -264,7 +297,7 @@ async fn collection_scopes_share_members_but_keep_independent_clocks_and_selecti
 #[tokio::test]
 async fn entirely_silent_collection_windows_complete_without_publication() {
     let host = HostFixture::new().await;
-    let fixture = Fixture::start(false, true).await;
+    let fixture = Fixture::start(false, true, 0).await;
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings()).await.unwrap();
     let watching = host.watch("silent");
     let origin = host.clock.read().instant;
@@ -282,8 +315,11 @@ async fn entirely_silent_collection_windows_complete_without_publication() {
 #[tokio::test]
 async fn collection_window_uses_the_shortest_member_even_when_that_member_is_idle() {
     let host = HostFixture::new().await;
-    let fixture = Fixture::start(false, false).await;
-    let settings = PlacementSettings { interval_window: Duration::from_secs(8), ..settings() };
+    let fixture = Fixture::start(false, false, 0).await;
+    let settings = PlacementSettings {
+        interval_window: Duration::from_secs(8),
+        ..settings()
+    };
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings).await.unwrap();
     let watching = host.watch("alpha");
     let origin = host.clock.read().instant;
@@ -293,6 +329,53 @@ async fn collection_window_uses_the_shortest_member_even_when_that_member_is_idl
     assert_eq!(fixture.ticks.lock().unwrap().get(""), Some(&4));
     assert!(host.stored.lock().unwrap().iter().all(|(definition, _)| definition.id() == "alpha"));
     drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn collection_rows_preserve_submicrosecond_tick_times() {
+    let host = HostFixture::new().await;
+    let fixture = Fixture::start(false, false, 10).await;
+    let settings = PlacementSettings {
+        interval_window: Duration::from_nanos(30),
+        ..settings()
+    };
+    let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings).await.unwrap();
+    let watches = [host.watch("alpha"), host.watch("beta")];
+    let reading = host.clock.read();
+    let origin = reading.instant;
+    host.clock.registered_at(origin + Duration::from_nanos(30)).await;
+    host.clock.advance_by(Duration::from_nanos(30));
+    stored(&host, 12).await;
+    let rows = host.stored.lock().unwrap();
+    for (id, per_tick) in [("alpha", 1), ("beta", 3)] {
+        let times = rows
+            .iter()
+            .filter(|(definition, _)| definition.id() == id)
+            .map(|(_, row)| {
+                let context = serde_json::from_str::<Value>(row.context.as_ref().unwrap()).unwrap();
+                Timestamp {
+                    seconds: context["source_time"]["seconds"].as_i64().unwrap(),
+                    nanos: context["source_time"]["nanos"].as_i64().unwrap() as i32,
+                }
+            })
+            .collect::<Vec<_>>();
+        let expected = (1..=3)
+            .flat_map(|tick| {
+                let start: Timestamp = reading.date.into();
+                let nanos = i128::from(start.seconds) * 1_000_000_000 + i128::from(start.nanos) + tick * 10;
+                let at = Timestamp {
+                    seconds: nanos.div_euclid(1_000_000_000) as i64,
+                    nanos: nanos.rem_euclid(1_000_000_000) as i32,
+                };
+                iter::repeat_n(at, per_tick)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(times, expected);
+    }
+    drop(rows);
+    drop(watches);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.stop().await.unwrap();
 }
