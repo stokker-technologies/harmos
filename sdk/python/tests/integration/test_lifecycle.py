@@ -158,16 +158,18 @@ class Lifecycle(IsolatedAsyncioTestCase):
             async def run(self, ctx: Context, request: Empty) -> Empty:
                 return Empty()
 
-        plugin = Plugin(id="reserved", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Invalid())))
-        self.assertRaises(ValueError, plugin.declarations)
+        self.assertRaises(
+            ValueError, lambda: Plugin(id="reserved", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Invalid()))).declarations()
+        )
 
     async def test_hooks_must_be_async(self) -> None:
         class Invalid:
             def initialize(self, ctx: Context) -> None:
                 pass
 
-        plugin = Plugin(id="reserved", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Invalid())))
-        self.assertRaises(ValueError, plugin.declarations)
+        self.assertRaises(
+            ValueError, lambda: Plugin(id="reserved", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Invalid()))).declarations()
+        )
 
     async def test_plugin_without_hooks_has_no_lifecycle_operations(self) -> None:
         declarations = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object()))).declarations()
