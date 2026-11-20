@@ -36,13 +36,18 @@ async fn segmented_snapshot_matches_full_replay() {
     for _ in 0..4 {
         harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(512))).await.unwrap();
     }
+    // Preserve an Independent Replay Source Before Snapshot Compaction.
+    storage.flush_recovery().await.unwrap();
+    let full = Store::new();
+    *full.recovery.entries.lock().unwrap() = store.recovery.entries.lock().unwrap().clone();
+    full.recovery.saved.store(store.recovery.saved.load(Ordering::SeqCst), Ordering::SeqCst);
     crate::support::app::stop(&runtime).await.unwrap();
     let snapshot = store.snapshot();
     assert_eq!(snapshot.payload.manifest().position, Position(12));
     assert!(snapshot.payload.manifest().count > 3);
     assert!(snapshot.payload.manifest().segments.iter().all(|segment| segment.bytes <= policy.max_bytes.get()));
-    // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.
-    let storage = store.manager(config());
+    // Append Beyond the Checkpoint on the Independent Journal.
+    let storage = full.manager(config());
     let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
@@ -55,10 +60,10 @@ async fn segmented_snapshot_matches_full_replay() {
     .unwrap();
     runtime.state.as_principal(who.clone()).commit(deposit(7)).await.unwrap();
     crate::support::app::stop(&runtime).await.unwrap();
-    let full = Store::new();
-    *full.recovery.entries.lock().unwrap() = store.recovery.entries.lock().unwrap().clone();
-    // The Fixture's Durable Frontier Is Reconstructed By Its Open Method.
-    full.recovery.saved.store(store.recovery.saved.load(Ordering::SeqCst), Ordering::SeqCst);
+    // Materialize Only the Uncovered Suffix Beside the Complete Snapshot.
+    let suffix = full.recovery.entries.lock().unwrap().get(&13).unwrap().clone();
+    store.recovery.entries.lock().unwrap().insert(13, suffix);
+    store.recovery.saved.store(full.recovery.saved.load(Ordering::SeqCst), Ordering::SeqCst);
 
     let mut results = Vec::new();
     for (store, snapshots) in [(&store, Some(policy.clone())), (&full, None)] {
