@@ -43,6 +43,7 @@ use harmos_protocol::schema;
 /* === Public Functions === */
 
 pub(super) fn verify(declarations: &Declarations) -> Result<(), Error> {
+    schema::plugin_collections(declarations).map_err(|error| Error::Invalid(error.to_string()))?;
     if declarations.digest != schema::declarations_digest(declarations) {
         return Err(Error::Invalid("Declarations Digest Mismatch".into()));
     }

@@ -45,6 +45,25 @@ message SampleBatch {
   // Set on the part that completes the window. It answers the window and ends its child calls.
   bool last = 4;
 }
+// Changes the listened members of a collection between windows. Empty releases demand.
+message CollectionDemand {
+  repeated string streams = 1;
+}
+// Acknowledges completed first-listener acquisition or last-listener cleanup.
+message CollectionDemandResponse {}
+// Answers exactly one tick of a collection window, including a tick with no rows.
+message CollectionBatch {
+  // Zero-based tick index within the outstanding window; consecutive from zero.
+  uint64 offset = 1;
+  repeated CollectionRows streams = 2;
+  // Set exactly on the final tick of the window.
+  bool last = 3;
+}
+// Rows published to one declared member, in publication order, at the tick's host timestamp.
+message CollectionRows {
+  string stream = 1;
+  repeated bytes rows = 2;
+}
 // Opens demand for one declared plugin stream under an opaque invocation scope.
 message SamplesSelection {
   // Identity of the declared stream, resolved under the current caller/activation.

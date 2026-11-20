@@ -29,10 +29,10 @@ active listener demand rather than process lifetime or idle transport lifetime.
 No changes belong under `docs/`, `.github/` or runtime state ownership. Generated
 sources remain tracked and are changed only by generation tasks.
 
-## Proposed Decisions
+## Implementation Decisions
 
-These are reviewable design choices, not implemented contracts. The orchestrator
-must activate the agreed change before implementation.
+The direction is accepted and active. The following describes the implemented
+source; validation remains separately tracked in `tasks.md`.
 
 ### Identity and Scheduling
 
@@ -66,7 +66,7 @@ unscoped schedule as a group, preventing a device read on a second unscoped
 schedule. Other collections retain their schedules. Resume the unscoped group
 from a fresh origin when its scoped demand ends, following the current rule.
 
-### Proposed Wire Shape
+### Wire Shape
 
 Extend current stream declarations and Samples frames; the following shows only
 the new fields and messages. Field numbers must be allocated against the combined
@@ -86,15 +86,13 @@ message CollectionDemand {
 // The host waits for first-start or last-stop cleanup before proceeding.
 message CollectionDemandResponse {}
 
-// A new InstanceSamplesResponse frame, answering part of a collection window.
+// A new InstanceSamplesResponse frame, answering one complete collection tick.
 message CollectionBatch {
   // Tick index within the outstanding Window, starting at zero.
   uint64 offset = 1;
   repeated CollectionRows streams = 2;
-  // Finishes this tick, including one with no rows in any stream.
-  bool end_tick = 3;
-  // Completes the granted window; requires end_tick on its final tick.
-  bool last = 4;
+  // Completes the granted window on its final tick, including an empty tick.
+  bool last = 3;
 }
 
 // Rows for one declared member, in publication order.
@@ -110,12 +108,15 @@ therefore share exactly one timestamp. Missing stream entries or empty row lists
 mean silence; they do not produce rows, sequence gaps or failure markers. An empty
 completed tick must still be acknowledged so scoped waits can settle.
 
-Parts remain ordered; split large results at row boundaries using the current
-transport message ceiling. Multiple parts may share an offset until `end_tick`;
-the next part then advances the offset by one. Reject undeclared stream IDs,
-duplicate groups within a part, skipped/completed tick offsets, invalid terminal
-flags and any traffic outside an active window. A single row exceeding the
-transport ceiling fails with an actionable resource-exhausted status.
+One batch answers one complete tick. Offsets are consecutive from zero; only
+its final tick sets `last`. Reject undeclared or duplicate stream groups, skipped
+or repeated offsets, invalid terminal flags and traffic outside an active window.
+A tick exceeding the transport ceiling fails with an actionable resource-exhausted
+status rather than adding multipart collection splitting. A handler may answer
+several ticks through the existing bounded output channel, but the host stages the
+complete unanswered window before publishing any rows. Empty ticks also claim
+staging capacity. Actual decoded row bytes and row counts are checked with the
+existing publication-pool accounting before ingestion.
 
 Keep dense `SampleBatch` columns for `Observer::window`, which has real bulk
 semantics. Share demand, scheduling, context, validation and lifecycle ownership;
@@ -144,8 +145,11 @@ report the missing capability before adding a competing mechanism.
 
 ### First and Last Listener Hooks
 
-The host sends an explicit collection-demand transition when the listened member
-set changes. Idle eagerly opened Samples calls have an empty set and acquire no
+The host sends a collection-demand transition when demand first starts or ends,
+and refreshes the member snapshot before each granted window. A final empty
+transition may cancel an in-flight window; the SDK settles its handler and children
+before acknowledging cleanup. The host discards cancelled-window frames already
+in flight while awaiting that acknowledgement. Idle eagerly opened Samples calls have an empty set and acquire no
 resources. Count active demands across the collection's scopes within the SDK's
 existing served plugin instance; do not count individual rows or member streams.
 
@@ -170,7 +174,7 @@ spans all active scopes; per-scope data continues to belong to the scoped Contex
 Hooks and collection handler execution must be coordinated so last-stop never
 releases a resource still in use.
 
-### Proposed Rust Authoring Shape
+### Rust Authoring Shape
 
 ```rust,ignore
 let collection = Collection::operation(async |ctx, out| {
@@ -213,8 +217,7 @@ authoring parity; bindings alone are an explicit partial SDK outcome.
 
 ## Implementation Inventory After Activation
 
-The orchestrator must establish the checkbox inventory in `tasks.md` after
-activating this change; none of the following is complete:
+The source and proof inventory is tracked in `tasks.md`:
 
 1. Admit grouping and intervals; extend the wire and its behavior contract;
    regenerate every tracked binding and digest affected by the contract.
@@ -226,7 +229,7 @@ activating this change; none of the following is complete:
    zero/many rows, exact timestamps, errors, overlapping listeners, independent
    scopes, demand transitions, hook failures and bounded teardown.
 5. Inspect non-Rust SDK adapters, implement only thin authoring, and record any
-   missing capability. Regenerate combined outputs with the state worker's change.
+   missing capability. Keep generated outputs tracked; reconcile shared bindings with the state delivery at integration.
 6. Run format, touched-package test-target compilation, workspace test-target
    compilation when public signatures require it, focused tests, tooling tests,
    generation drift, repository checks and strict OpenSpec validation once on the
@@ -274,3 +277,15 @@ owns intervals, windows and scope clocks. Once verified in that repository,
 delete the product's periodic producer task, sleeps, tick timer, listener counting
 and cancellation glue whose sole purpose was scheduling that same device read.
 Preserve independent device event producers and unrelated lifecycle behavior.
+
+## Other SDK Authoring Boundary
+
+Python (`sdk/python/src/harmos/_authoring.py`), C#
+(`sdk/csharp/src/Harmos/PluginService.cs`) and C++ (`sdk/cpp/src/samples.hpp`)
+own their observer execution loops and currently accept dense columns or device
+rows. Generated messages alone do not supply grouped execution or first/last
+listener ownership. Collection authoring there would require implementing those
+mechanisms, rather than wrapping generated code. This delivery therefore stops at
+regenerated bindings for those languages, as authorized. Rust is the collection
+authoring implementation; ordinary observers in every SDK retain their current
+wire behavior.

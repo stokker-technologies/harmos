@@ -409,6 +409,39 @@ pub struct SampleBatch {
     #[prost(bool, tag = "4")]
     pub last: bool,
 }
+/// Changes the listened members of a collection between windows. Empty releases demand.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CollectionDemand {
+    #[prost(string, repeated, tag = "1")]
+    pub streams: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Acknowledges completed first-listener acquisition or last-listener cleanup.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CollectionDemandResponse {}
+/// Answers exactly one tick of a collection window, including a tick with no rows.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CollectionBatch {
+    /// Zero-based tick index within the outstanding window; consecutive from zero.
+    #[prost(uint64, tag = "1")]
+    pub offset: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub streams: ::prost::alloc::vec::Vec<CollectionRows>,
+    /// Set exactly on the final tick of the window.
+    #[prost(bool, tag = "3")]
+    pub last: bool,
+}
+/// Rows published to one declared member, in publication order, at the tick's host timestamp.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CollectionRows {
+    #[prost(string, tag = "1")]
+    pub stream: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    pub rows: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
 /// Opens demand for one declared plugin stream under an opaque invocation scope.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -528,7 +561,7 @@ pub mod instance_invoke_response {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceSamplesRequest {
     /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 3, 4")]
+    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 3, 4, 5")]
     pub frame: ::core::option::Option<instance_samples_request::Frame>,
 }
 /// Nested message and enum types in `InstanceSamplesRequest`.
@@ -546,6 +579,9 @@ pub mod instance_samples_request {
         /// Grants one window of an interval stream; never while another is unanswered.
         #[prost(message, tag = "4")]
         Window(super::Window),
+        /// Collection listeners, changed only between windows; await acknowledgement.
+        #[prost(message, tag = "5")]
+        Demand(super::CollectionDemand),
     }
 }
 /// Carries device rows, window parts or child traffic for the unanswered window within the active demand call.
@@ -556,14 +592,14 @@ pub struct InstanceSamplesResponse {
     #[prost(message, repeated, tag = "1")]
     pub samples: ::prost::alloc::vec::Vec<Sample>,
     /// Child frames do not answer the window.
-    #[prost(oneof = "instance_samples_response::Frame", tags = "2, 3, 4, 5")]
+    #[prost(oneof = "instance_samples_response::Frame", tags = "2, 3, 4, 5, 6, 7")]
     pub frame: ::core::option::Option<instance_samples_response::Frame>,
 }
 /// Nested message and enum types in `InstanceSamplesResponse`.
 pub mod instance_samples_response {
     /// Child frames do not answer the window.
     #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Frame {
         #[prost(message, tag = "2")]
         Child(super::ChildRequest),
@@ -574,6 +610,12 @@ pub mod instance_samples_response {
         /// Interval streams only: one part of the unanswered window.
         #[prost(message, tag = "5")]
         Batch(super::SampleBatch),
+        /// Collection interval streams only: one complete tick of the window.
+        #[prost(message, tag = "6")]
+        Collection(super::CollectionBatch),
+        /// Acknowledges a collection listener transition.
+        #[prost(message, tag = "7")]
+        Demand(super::CollectionDemandResponse),
     }
 }
 /// Carries the reason text for Instance.Stop.

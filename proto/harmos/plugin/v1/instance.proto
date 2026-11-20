@@ -121,6 +121,8 @@ message InstanceSamplesRequest {
     harmos.plugin.v1.ChildResponse child = 3;
     // Grants one window of an interval stream; never while another is unanswered.
     harmos.plugin.v1.Window window = 4;
+    // Collection listeners, changed only between windows; await acknowledgement.
+    harmos.plugin.v1.CollectionDemand demand = 5;
   }
 }
 
@@ -135,6 +137,10 @@ message InstanceSamplesResponse {
     harmos.plugin.v1.ChildDemand child_demand = 4;
     // Interval streams only: one part of the unanswered window.
     harmos.plugin.v1.SampleBatch batch = 5;
+    // Collection interval streams only: one complete tick of the window.
+    harmos.plugin.v1.CollectionBatch collection = 6;
+    // Acknowledges a collection listener transition.
+    harmos.plugin.v1.CollectionDemandResponse demand = 7;
   }
 }
 

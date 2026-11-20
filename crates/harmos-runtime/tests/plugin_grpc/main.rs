@@ -18,6 +18,7 @@ mod cancellation;
 mod catalog_admission;
 mod child_calls;
 mod client_invoke;
+mod collections;
 mod connection_loss;
 mod context_watch;
 mod deadline;

@@ -34,7 +34,7 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use crate::model::{Declarations, Protobuf, lane_declaration};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /* === Constants === */
 
@@ -127,6 +127,31 @@ pub fn plugin_lanes(plugin: &str, declarations: &Declarations) -> Result<(), Err
         }
         if !names.contains(operation.lane.as_str()) {
             return Err(Error(format!("{context}: Declare This Lane in the Plugin")));
+        }
+    }
+    Ok(())
+}
+
+/// Validate Collection Identities and Interval Declarations Before Admission.
+pub fn plugin_collections(declarations: &Declarations) -> Result<(), Error> {
+    let mut groups = BTreeMap::<&str, Vec<_>>::new();
+    for stream in &declarations.streams {
+        if !stream.collection.is_empty() {
+            groups.entry(&stream.collection).or_default().push(stream);
+        }
+    }
+    for (id, members) in groups {
+        let first = members.iter().map(|stream| stream.id.as_str()).min();
+        if first != Some(id) {
+            return Err(Error(format!("Declare Collection `{id}`: use its lexicographically first member stream as its identity")));
+        }
+        for stream in &members {
+            if stream.interval.is_none() && stream.interval_setting.is_empty() {
+                return Err(Error(format!(
+                    "Declare Collection `{id}`: give member `{}` a positive interval or duration setting",
+                    stream.id
+                )));
+            }
         }
     }
     Ok(())

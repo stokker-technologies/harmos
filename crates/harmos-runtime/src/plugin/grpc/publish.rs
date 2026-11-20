@@ -18,8 +18,8 @@
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
-    error,
-    sync::{Arc, Mutex},
+    error, future, mem, fmt,
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, SystemTime},
 };
 
@@ -40,7 +40,7 @@ use crate::{
     streams::{ConnectionStreams, PublicationRow, StreamManager, StreamPublicationError, StreamWriter},
 };
 use harmos_protocol::plugin::instance_samples_request::Frame;
-use harmos_protocol::plugin::{InstanceSamplesRequest, InstanceSamplesResponse, SamplesSelection, Window, instance_samples_response};
+use harmos_protocol::plugin::{CollectionDemand, InstanceSamplesRequest, InstanceSamplesResponse, SamplesSelection, Window, instance_samples_response};
 
 /* === Constants === */
 
@@ -58,7 +58,7 @@ pub(super) struct Publications {
     failures: mpsc::UnboundedReceiver<Arc<Error>>,
     registration: Arc<ConnectionStreams>,
     parent: Option<watch::Receiver<bool>>,
-    source: Option<Arc<std::sync::OnceLock<ScopeSource>>>,
+    source: Option<Arc<OnceLock<ScopeSource>>>,
 }
 
 pub(super) struct ScopeSource {
@@ -92,6 +92,8 @@ struct PreparedDemand {
     input: tonic::Streaming<InstanceSamplesResponse>,
     row: Row,
     cadence: Option<Cadence>,
+    members: BTreeMap<String, Row>,
+    selected: BTreeSet<String>,
 }
 
 /// An Interval Stream's Sample Period, Window Length and the Lag Its Windows Tolerate.
@@ -105,7 +107,7 @@ struct Cadence {
 /// What Lets the Unscoped Demand Grant: Something Watches Its Stream and No Scope of Its Activation Samples It.
 struct Gate {
     sampling: watch::Receiver<usize>,
-    interest: crate::streams::Demand,
+    interest: BTreeMap<String, crate::streams::Demand>,
 }
 
 struct Demand {
@@ -121,6 +123,8 @@ struct Demand {
     closed: watch::Receiver<bool>,
     operations: crate::operations::Manager,
     caller: Arc<super::CallingPlugin>,
+    members: BTreeMap<String, (Row, Arc<StreamWriter>)>,
+    selected: BTreeSet<String>,
 }
 
 /* === Enums === */
@@ -153,8 +157,8 @@ impl Publications {
             let cadence = cadence(stream, &activation.settings, settings)?;
             // An Interval Stream Stores One Batch Row per Part: Its Row's Columns and Their Times.
             let row = match cadence {
-                Some(_) => Row::new(harmos_protocol::columns::derive(&descriptor).map_err(invalid)?.batch)?,
-                None => Row::new(descriptor)?,
+                Some(_) if stream.collection.is_empty() => Row::new(harmos_protocol::columns::derive(&descriptor).map_err(invalid)?.batch)?,
+                _ => Row::new(descriptor)?,
             };
             declarations.push(harmos_operations::StreamDeclaration {
                 id: stream.id.clone(),
@@ -163,14 +167,40 @@ impl Publications {
                 metadata: crate::Metadata::new(crate::Identifier::new(&stream.id).map_err(invalid)?, stream.id.clone(), None),
                 row_metadata: Vec::new(),
             });
-            rows.push((stream.id.clone(), row, cadence));
+            rows.push((stream.id.clone(), stream.collection.clone(), row, cadence));
         }
         streams.validate_connection(activation.owner(), &declarations, replace).map_err(invalid)?;
         let mut demands = Vec::new();
-        for (id, row, cadence) in rows {
-            if selected.is_some_and(|selected| !selected.contains(&id)) {
+        let mut groups = BTreeMap::<String, Vec<_>>::new();
+        for (id, collection, row, cadence) in rows {
+            let key = if collection.is_empty() { id.clone() } else { collection };
+            groups.entry(key).or_default().push((id, row, cadence));
+        }
+        for (id, group) in groups {
+            let listened = group
+                .iter()
+                .filter(|(id, _, _)| selected.is_none_or(|selected| selected.contains(id)))
+                .map(|(id, _, _)| id.clone())
+                .collect::<BTreeSet<_>>();
+            if listened.is_empty() {
                 continue;
             }
+            let collection = catalog.streams.iter().any(|stream| stream.collection == id);
+            let mut cadence = group[0].2;
+            if collection {
+                for (_, _, member) in &group {
+                    let (Some(shared), Some(member)) = (&mut cadence, member) else {
+                        return Err(invalid(format!("Prepare Collection `{id}`: declare a positive interval for every member")));
+                    };
+                    if shared.period != member.period {
+                        return Err(invalid(format!("Prepare Collection `{id}`: use the same interval for every member")));
+                    }
+                    shared.window = shared.window.min(member.window);
+                    shared.lag = settings.interval_lag.of(shared.window);
+                }
+            }
+            let row = Row::new(group[0].1.descriptor.clone())?;
+            let members = if collection { group.into_iter().map(|(id, row, _)| (id, row)).collect() } else { BTreeMap::new() };
             let (output, input) = mpsc::channel(1);
             output
                 .send(InstanceSamplesRequest {
@@ -184,7 +214,15 @@ impl Publications {
             let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
             let input =
                 activation.connection.client().samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
-            demands.push(PreparedDemand { id, output, input, row, cadence });
+            demands.push(PreparedDemand {
+                id,
+                output,
+                input,
+                row,
+                cadence,
+                members,
+                selected: listened,
+            });
         }
         Ok(PreparedPublications { declarations, demands })
     }
@@ -192,7 +230,17 @@ impl Publications {
         prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock,
         operations: &crate::operations::Manager, settings: &PlacementSettings, replace: bool,
     ) -> Result<Self, Error> {
-        let sampling = prepared.declarations.iter().map(|declaration| (declaration.id.clone(), watch::channel(0).0)).collect();
+        let mut groups = BTreeMap::new();
+        let catalog = activation.description.declarations.as_ref().expect("admitted description");
+        let sampling = catalog
+            .streams
+            .iter()
+            .map(|stream| {
+                let key = if stream.collection.is_empty() { &stream.id } else { &stream.collection };
+                let count = groups.entry(key).or_insert_with(|| watch::channel(0).0);
+                (stream.id.clone(), count.clone())
+            })
+            .collect();
         let registration = Arc::new(streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?);
         let mut publications =
             Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None, Some(&sampling));
@@ -260,8 +308,28 @@ impl Publications {
             // Only the Unscoped Demand Has a Gate; Its Failures Go to the Attachment, a Scope's to Its Settlement.
             let gate = sampling.map(|sampling| Gate {
                 sampling: sampling[&prepared.id].subscribe(),
-                interest: lease.stream().demand(),
+                interest: publications
+                    .registration
+                    .leases()
+                    .iter()
+                    .filter(|lease| prepared.selected.contains(lease.stream().definition().id()))
+                    .map(|lease| (lease.stream().definition().id().to_owned(), lease.stream().demand()))
+                    .collect(),
             });
+            let members = prepared
+                .members
+                .into_iter()
+                .map(|(id, row)| {
+                    let lease = publications
+                        .registration
+                        .leases()
+                        .iter()
+                        .find(|lease| lease.stream().definition().id() == id)
+                        .expect("collection member lease")
+                        .clone();
+                    (id, (row, lease))
+                })
+                .collect();
             let failed = gate.is_some().then(|| failed.clone());
             let caller = Arc::new(super::CallingPlugin {
                 name: activation.entry_name.clone(),
@@ -283,13 +351,15 @@ impl Publications {
                     closed: connection.closed.subscribe(),
                     operations,
                     caller,
+                    members,
+                    selected: prepared.selected,
                 };
                 let result = run(&clock, activity, demand).await;
                 let Err(error) = result else { return Ok(()) };
                 tracing::warn!(%error, "plugin publication ended");
                 // A Stream's Own Failure Ends Its Demand Only; a Transport Failure Ends the Connection.
                 if !matches!(
-                    error,
+                    error, future, mem, fmt,
                     Error::Invalid(_)
                         | Error::Lagging { .. }
                         | Error::PoolFull { .. }
@@ -320,7 +390,7 @@ impl Publications {
             let mut bindings = source.bindings.lock().expect("scoped bindings lock is healthy");
             bindings.closed = true;
             let open = bindings.scopes.values().filter(|outcome| outcome.borrow().is_none()).cloned().collect::<Vec<_>>();
-            (std::mem::take(&mut bindings.tasks), open)
+            (mem::take(&mut bindings.tasks), open)
         });
         self.close.send_replace(true);
         let pending = unit.map(Unit::stop).unwrap_or_default();
@@ -388,7 +458,7 @@ impl Publications {
     pub(super) async fn failure(&mut self) -> Arc<Error> {
         match self.failures.recv().await {
             Some(failure) => failure,
-            None => std::future::pending().await,
+            None => future::pending().await,
         }
     }
 }
@@ -396,16 +466,24 @@ impl Publications {
 impl Gate {
     fn open(&mut self) -> bool {
         let sampled = *self.sampling.borrow_and_update() > 0;
-        let watched = *self.interest.borrow_and_update() > 0;
+        let watched =
+            self.interest.values_mut().map(|interest| *interest.borrow_and_update() > 0).fold(false, |any, watched| any || watched);
         watched && !sampled
+    }
+
+    fn listened(&self) -> BTreeSet<String> {
+        if *self.sampling.borrow() > 0 {
+            return BTreeSet::new();
+        }
+        self.interest.iter().filter(|(_, interest)| *interest.borrow() > 0).map(|(id, _)| id.clone()).collect()
     }
 
     /// Wait Until the Gate Is `open`; a Closed Channel Never Changes It Again.
     async fn until(&mut self, open: bool) {
         while self.open() != open {
             tokio::select! {
-                changed = self.sampling.changed() => if changed.is_err() { std::future::pending::<()>().await },
-                changed = self.interest.changed() => if changed.is_err() { std::future::pending::<()>().await },
+                changed = self.sampling.changed() => if changed.is_err() { future::pending::<()>().await },
+                _ = futures_util::future::select_all(self.interest.values_mut().map(|interest| Box::pin(interest.changed()))) => {},
             }
         }
     }
@@ -441,7 +519,7 @@ impl Drop for Publications {
 
 /* === Private Functions === */
 
-fn invalid(error: impl std::fmt::Display) -> Error {
+fn invalid(error: impl fmt::Display) -> Error {
     Error::Invalid(error.to_string())
 }
 
@@ -564,6 +642,44 @@ fn row_context(operations: &crate::operations::Manager, source_time: Option<pros
     }
 }
 
+async fn change_demand(
+    input: &sync::Mutex<tonic::Streaming<InstanceSamplesResponse>>, output: &mpsc::Sender<InstanceSamplesRequest>, stream: &str,
+    listened: &BTreeSet<String>,
+) -> Result<(), Error> {
+    output
+        .send(InstanceSamplesRequest {
+            frame: Some(Frame::Demand(CollectionDemand {
+                streams: listened.iter().cloned().collect(),
+            })),
+        })
+        .await
+        .map_err(invalid)?;
+    loop {
+        let response = input
+            .lock()
+            .await
+            .message()
+            .await
+            .map_err(|status| Error::WindowFailed {
+                stream: stream.to_owned(),
+                status: status.code(),
+                message: status.message().to_owned(),
+            })?
+            .ok_or_else(|| invalid("Change Collection Demand: keep Samples open until cleanup is acknowledged"))?;
+        if !response.samples.is_empty() {
+            return Err(invalid("Change Collection Demand: acknowledge listener hooks with a demand response"));
+        }
+        if matches!(response.frame, Some(instance_samples_response::Frame::Demand(_))) {
+            return Ok(());
+        }
+        // Discard Frames Already in Flight When the Last Listener Cancelled Its Window.
+        if listened.is_empty() && response.frame.is_some() {
+            continue;
+        }
+        return Err(invalid("Change Collection Demand: acknowledge listener hooks before sampling"));
+    }
+}
+
 async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
         output,
@@ -578,11 +694,14 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
         closed,
         operations,
         caller,
+        members,
+        selected,
     } = demand;
     let stream = lease.stream().definition().id().to_owned();
     let input = Arc::new(sync::Mutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
+    let mut ingested_members = BTreeMap::new();
     // A Scoped Interval Demand Joins Its Unit's Window Schedule; Its Windows' Call Trees Are Marked.
     let unit = cadence.and(operations.call_context().get::<Arc<Unit>>().cloned());
     let operations = match &unit {
@@ -651,7 +770,15 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
             let mut granted = 0_u128;
             let mut sequence = 0_u64;
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
+            let mut active = BTreeSet::new();
             loop {
+                if !members.is_empty() {
+                    let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
+                    if active != listened {
+                        change_demand(&input, &output, &stream, &listened).await?;
+                        active = listened;
+                    }
+                }
                 // The Unscoped Demand Grants Only While Its Stream Is Watched and No Scope of Its Activation
                 // Samples That Stream; It Resumes From a Fresh Origin.
                 if let Some(gate) = &mut gate
@@ -668,13 +795,13 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 let paused = async {
                     match &mut gate {
                         Some(gate) => gate.until(false).await,
-                        None => std::future::pending().await,
+                        None => future::pending().await,
                     }
                 };
                 let cut = async {
                     match &schedule {
                         Some(schedule) => schedule.cut(due).await,
-                        None => std::future::pending().await,
+                        None => future::pending().await,
                     }
                 };
                 let wake = async {
@@ -708,7 +835,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 }
                 let count = u64::try_from(through - granted).map_err(|_| invalid("Grant Sample Window: too many samples are due"))?;
                 // A Window Even the Empty Shared Pool Cannot Hold Is Refused Before the Plugin Samples It.
-                let (rows, payload) = row.least(count);
+                let (rows, payload) = if members.is_empty() { row.least(count) } else { (0, 0) };
                 let (needed, fits) = crate::streams::claim(rows, payload);
                 if !fits {
                     return Err(Error::WindowExceedsPool {
@@ -719,6 +846,16 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                         rows: crate::streams::RETAINED_ROWS,
                     });
                 }
+                if !members.is_empty() {
+                    let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
+                    if active != listened {
+                        change_demand(&input, &output, &stream, &listened).await?;
+                        active = listened;
+                    }
+                    if active.is_empty() {
+                        continue;
+                    }
+                }
                 let start = origin.date + span((granted + 1) * period_nanos)?;
                 let start_nanos = unix_nanos(start)?;
                 let grant = Window {
@@ -727,48 +864,102 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                     count,
                     sequence: sequence + 1,
                 };
-                let parts = activity
-                    .wait(operations.call_native::<super::samples::Window>(super::samples::Request {
-                        input: input.clone(),
-                        output: output.clone(),
-                        caller: caller.clone(),
-                        seen: seen.clone(),
-                        lease: lease.clone(),
-                        window: grant,
-                    }))
-                    .await
-                    .map_err(sample_error)?;
+                let request = super::samples::Request {
+                    input: input.clone(),
+                    output: output.clone(),
+                    caller: caller.clone(),
+                    seen: seen.clone(),
+                    lease: lease.clone(),
+                    window: grant,
+                    collection: members.keys().cloned().collect(),
+                };
+                let answer = activity.wait(operations.call_native::<super::samples::Window>(request));
+                let parts = if members.is_empty() {
+                    answer.await.map_err(sample_error)?
+                } else {
+                    tokio::select! {
+                        result = answer => result.map_err(sample_error)?,
+                        () = async {
+                            match &mut gate {
+                                Some(gate) => gate.until(false).await,
+                                None => future::pending().await,
+                            }
+                        } => continue,
+                    }
+                };
                 // Accepted Ingestion Is Host Work: It Holds Both the Demand's and the Runtime Clock.
                 let _window = clock.activity("plugin window ingest");
                 let _ingesting = host.activity("Ingest Accepted Samples");
                 let context = row_context(&operations, None);
                 let mut receipt = None;
-                for part in parts {
-                    let first = i128::from(start_nanos) + i128::try_from(u128::from(part.offset) * period_nanos).map_err(invalid)?;
-                    let first = i64::try_from(first).map_err(|_| invalid("Grant Sample Window: sample times must fall before 2262"))?;
-                    let mut stored = Vec::with_capacity(part.columns.len() + 32);
-                    prost::encoding::int64::encode(harmos_protocol::columns::batch::START_UNIX_NANOS, &first, &mut stored);
-                    prost::encoding::uint64::encode(harmos_protocol::columns::batch::PERIOD_NANOS, &(period_nanos as u64), &mut stored);
-                    prost::encoding::uint64::encode(harmos_protocol::columns::batch::COUNT, &part.count, &mut stored);
-                    prost::encoding::bytes::encode(harmos_protocol::columns::batch::COLUMNS, &part.columns, &mut stored);
-                    for (first, _, payload) in row.decode_batch(&stored, part.count, period_nanos as u64)? {
-                        receipt = Some(
-                            lease
-                                .admit_clocked_row(
+                if let super::samples::Answer::Rows(ticks) = parts {
+                    // Decode and Bound the Complete Successful Window Before Publishing Any of Its Rows.
+                    let mut staged = Vec::new();
+                    let mut payload_bytes = 0_u128;
+                    for tick in ticks {
+                        let at = i128::from(start_nanos) + i128::from(tick.offset) * period_nanos as i128;
+                        let at = i64::try_from(at).map_err(|_| invalid("Publish Collection Rows: move the clock before 2262"))?;
+                        for group in tick.streams {
+                            let (row, writer) = &members[&group.stream];
+                            if !active.contains(&group.stream) {
+                                continue;
+                            }
+                            for bytes in group.rows {
+                                let payload = row.decode(&bytes)?;
+                                payload_bytes = payload_bytes
+                                    .saturating_add(payload.capacity() as u128 + context.as_ref().map_or(0, String::capacity) as u128);
+                                if !crate::streams::claim(staged.len() as u64 + 1, payload_bytes).1 {
+                                    return Err(admission(&stream, StreamPublicationError::Capacity));
+                                }
+                                staged.push((
+                                    writer.clone(),
                                     PublicationRow {
                                         payload,
-                                        published_unix_micros: Some(first.div_euclid(1000)),
+                                        published_unix_micros: Some(at.div_euclid(1000)),
                                         context: context.clone(),
                                     },
-                                    &[clock, &host],
-                                )
-                                .map_err(|error| admission(&stream, error))?,
-                        );
+                                ));
+                            }
+                        }
                     }
+                    let mut receipts = BTreeMap::new();
+                    for (writer, row) in staged {
+                        let id = writer.stream().definition().id().to_owned();
+                        let receipt = writer.admit_clocked_row(row, &[clock, &host]).map_err(|error| admission(&id, error))?;
+                        receipts.insert(id, (writer, receipt));
+                    }
+                    for (_, (writer, receipt)) in receipts {
+                        ingested_members.insert(writer.stream().definition().id().to_owned(), (writer.clone(), receipt));
+                        writer.ingested_at(receipt).await.map_err(invalid)?;
+                    }
+                } else if let super::samples::Answer::Columns(parts) = parts {
+                    for part in parts {
+                        let first = i128::from(start_nanos) + i128::try_from(u128::from(part.offset) * period_nanos).map_err(invalid)?;
+                        let first = i64::try_from(first).map_err(|_| invalid("Grant Sample Window: sample times must fall before 2262"))?;
+                        let mut stored = Vec::with_capacity(part.columns.len() + 32);
+                        prost::encoding::int64::encode(harmos_protocol::columns::batch::START_UNIX_NANOS, &first, &mut stored);
+                        prost::encoding::uint64::encode(harmos_protocol::columns::batch::PERIOD_NANOS, &(period_nanos as u64), &mut stored);
+                        prost::encoding::uint64::encode(harmos_protocol::columns::batch::COUNT, &part.count, &mut stored);
+                        prost::encoding::bytes::encode(harmos_protocol::columns::batch::COLUMNS, &part.columns, &mut stored);
+                        for (first, _, payload) in row.decode_batch(&stored, part.count, period_nanos as u64)? {
+                            receipt = Some(
+                                lease
+                                    .admit_clocked_row(
+                                        PublicationRow {
+                                            payload,
+                                            published_unix_micros: Some(first.div_euclid(1000)),
+                                            context: context.clone(),
+                                        },
+                                        &[clock, &host],
+                                    )
+                                    .map_err(|error| admission(&stream, error))?,
+                            );
+                        }
+                    }
+                    let receipt = receipt.expect("an answered window has at least one part");
+                    ingested_through = Some(receipt);
+                    lease.ingested_at(receipt).await.map_err(invalid)?;
                 }
-                let receipt = receipt.expect("an answered window has at least one part");
-                ingested_through = Some(receipt);
-                lease.ingested_at(receipt).await.map_err(invalid)?;
                 granted = through;
                 sequence += count;
                 if let Some(schedule) = &schedule {
@@ -789,7 +980,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
             () = async {
                 match &mut parent {
                     Some(parent) => super::disconnected(parent.clone()).await,
-                    None => std::future::pending().await,
+                    None => future::pending().await,
                 }
             } => Ok(()),
             result = &mut work => {
@@ -804,6 +995,14 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
             },
         }
     };
+    for (_, (writer, receipt)) in ingested_members {
+        let _ingesting = host.activity("Drain Accepted Collection Rows");
+        if parent.is_some() {
+            writer.drained_at(receipt).await.map_err(invalid)?;
+        } else {
+            writer.ingested_at(receipt).await.map_err(invalid)?;
+        }
+    }
     if let Some(published) = ingested_through {
         // Accepted Ingestion Is Host Work, So It Holds the Runtime Clock Until It Completes.
         let _ingesting = host.activity("Drain Accepted Samples");
