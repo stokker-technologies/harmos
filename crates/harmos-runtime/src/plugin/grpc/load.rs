@@ -18,6 +18,7 @@
 // Standard Library Imports
 use std::{
     future::Future,
+    mem,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -67,7 +68,7 @@ pub struct Request {
 
 impl MemorySize for Request {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
     }
 }
 
@@ -140,3 +141,51 @@ pub(super) async fn load<T: Send + 'static>(
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::{io, sync::Arc, time::SystemTime};
+
+    use tokio::sync;
+
+    use super::{Error, LoadOptions, load};
+    use crate::{Runtime, clock::Clock, clock::tests::Model};
+
+    #[tokio::test]
+    async fn failed_readiness_settles_load_and_releases_its_process_owner_without_advancing_time() {
+        // Start With a Clock That Cannot Consume the Readiness Deadline.
+        let (clock, _controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+        let runtime = Runtime::<Model>::start_with((), (), |setup| {
+            setup.settings().clock(clock.clone());
+        })
+        .await
+        .unwrap();
+        let origin = clock.now();
+        let process = Arc::new(sync::Mutex::new(()));
+        let held = process.clone();
+        let (entered, entering) = sync::oneshot::channel();
+        let (fail, failing) = sync::oneshot::channel();
+        let operations = runtime.operations.clone();
+
+        // Fail a Readiness Read While Staging Owns the Process Lock.
+        let loading = tokio::spawn(async move {
+            let work = async move {
+                let _process = held.lock().await;
+                entered.send(()).unwrap();
+                failing.await.unwrap();
+                Err::<(), _>(Error::Io(io::ErrorKind::UnexpectedEof.into()))
+            };
+            load(&operations, "managed", LoadOptions::default(), work).await
+        });
+        entering.await.unwrap();
+        assert!(process.try_lock().is_err());
+        fail.send(()).unwrap();
+
+        // Return the Readiness Failure and Its Owner Before Any Deadline Elapses.
+        let result = loading.await.unwrap();
+        assert!(matches!(result, Err(Error::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof));
+        assert!(process.try_lock().is_ok());
+        assert_eq!(clock.now(), origin);
+        runtime.stop().await.unwrap();
+    }
+}
