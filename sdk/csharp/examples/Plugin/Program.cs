@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Threading.Tasks;
+using System;
 using Google.Protobuf.WellKnownTypes;
 using Harmos.Plugins;
 using Harmos;
@@ -15,4 +16,11 @@ var plugin = new Plugin("example", "1.0.0")
       var settings = await context.Host.Plugins.Settings.List();
       return new StringValue { Value = settings.Value.Values["prefix"].Text + request.Value };
     }));
-await plugin.RunAsync();
+if (Environment.GetEnvironmentVariable("HARMOS_ADDRESS") is not null)
+{
+  await plugin.RunAsync();
+  return;
+}
+await using var listener = await plugin.StartAsync("127.0.0.1:0");
+Console.WriteLine($"Listening on {listener.Address}");
+await listener.WaitAsync();

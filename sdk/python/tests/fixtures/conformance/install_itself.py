@@ -38,9 +38,7 @@ class Echo:
 
 async def run(arguments: list[str]) -> None:
     if arguments == ["serve"]:
-        endpoint = await Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Echo()))).start("127.0.0.1:0")
-        print(f"harmos listening {endpoint.address}", flush=True)
-        await endpoint.server.wait_for_termination()
+        await Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Echo()))).run()
         return
     transfer = StorageTransferSettings()
     client = Client.connect(arguments[0], transfer=transfer)

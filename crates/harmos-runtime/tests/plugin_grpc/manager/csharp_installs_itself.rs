@@ -51,5 +51,5 @@ async fn csharp_installs_itself() {
             .expect("Build the C# Fixture: mise run build -- --language csharp");
         sdk.join(path.trim_start_matches('\u{feff}').trim())
     };
-    super::support::installs_itself(&program, &[]).await;
+    super::support::installs_itself(&program, &[], None).await;
 }

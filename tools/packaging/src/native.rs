@@ -57,7 +57,7 @@ pub(crate) fn describe(path: &Path, cancellation: &BuildCancellation) -> Result<
 fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetResponse, Error> {
     // Start the Exact Stamped Executable in Managed Mode
     let mut command = Command::new(std::path::absolute(path)?);
-    command.env_remove("HARMOS_ADDRESS").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
+    command.env("HARMOS_ADDRESS", "127.0.0.1:0").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
     let mut process = Process::spawn(command, cancellation)?;
     let stdout = process.stdout();
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);

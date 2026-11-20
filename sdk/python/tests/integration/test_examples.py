@@ -11,6 +11,7 @@
 # === Imports === #
 
 import asyncio
+import os
 import sys
 from asyncio import Event
 from asyncio.subprocess import PIPE
@@ -162,6 +163,8 @@ class Examples(IsolatedAsyncioTestCase):
     async def test_plugin_example_serves_one_operation_to_host(self) -> None:
         # Run the Actual Program; Its Bound Endpoint Is the Readiness Handshake.
         program = Path(__file__).resolve().parents[2] / "examples/plugin.py"
+        environment = dict(os.environ)
+        environment.pop("HARMOS_ADDRESS", None)
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             str(program),
@@ -169,12 +172,14 @@ class Examples(IsolatedAsyncioTestCase):
             "127.0.0.1:0",
             stdout=PIPE,
             stderr=PIPE,
+            env=environment,
             creationflags=spawn_flags(),
         )
         try:
             assert process.stdout is not None
             # This Bounds a Transport Startup Hang; It Does Not Advance Story Time.
-            address = (await asyncio.wait_for(process.stdout.readline(), timeout=30)).decode().strip()
+            line = (await asyncio.wait_for(process.stdout.readline(), timeout=30)).decode().strip()
+            address = line.removeprefix("Listening on ")
             if not address:
                 stdout, stderr = await process.communicate()
                 self.fail(stdout.decode() + stderr.decode())

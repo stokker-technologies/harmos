@@ -247,9 +247,12 @@ impl Drop for Peer {
 
 /* === Public Functions === */
 
-pub async fn installs_itself(program: &Path, arguments: &[&str]) {
+pub async fn installs_itself(program: &Path, arguments: &[&str], directory: Option<&Path>) {
     // Serve This Codebase's Plugin in Its Own Process
     let mut command = Command::from(fixtures::command(program));
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
     let mut peer = command
         .args(arguments)
         .args(["--install-itself", "serve"])
@@ -271,6 +274,9 @@ pub async fn installs_itself(program: &Path, arguments: &[&str]) {
     host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
     let address = format!("http://{}", host._listener.local_addr());
     let mut command = Command::from(fixtures::command(program));
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
     let result = command.args(arguments).args(["--install-itself", &address, &endpoint]).kill_on_drop(true).output().await.unwrap();
     assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
     assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "hello");

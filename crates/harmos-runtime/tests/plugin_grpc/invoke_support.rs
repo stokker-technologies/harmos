@@ -293,6 +293,7 @@ impl HostFixture {
     pub async fn sdk(&self, mode: &str) -> Sdk {
         let mut process = tokio::process::Command::new(support::binary("harmos-sdk-invoke-fixture"))
             .args([mode, self.types.path().join("host.pb").to_str().unwrap(), &self.request, &self.response])
+            .env("HARMOS_ADDRESS", "127.0.0.1:0")
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true)
@@ -347,6 +348,7 @@ impl Python {
         let mut process = tokio::process::Command::new(python)
             .args(["-m", "tests.fixtures.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
             .args(arguments)
+            .env("HARMOS_ADDRESS", "127.0.0.1:0")
             .current_dir(sdk)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

@@ -11,6 +11,7 @@
 # === Imports === #
 
 import asyncio
+import os
 from argparse import ArgumentParser
 
 from google.protobuf.wrappers_pb2 import BytesValue
@@ -52,8 +53,11 @@ async def run(address: str) -> None:
             )
         ),
     )
+    if "HARMOS_ADDRESS" in os.environ:
+        await plugin.run(address)
+        return
     endpoint = await plugin.start(address)
-    print(endpoint.address, flush=True)
+    print(f"Listening on {endpoint.address}", flush=True)
     try:
         await endpoint.server.wait_for_termination()
     finally:
@@ -62,7 +66,7 @@ async def run(address: str) -> None:
 
 def main() -> None:
     parser = ArgumentParser(description=__doc__)
-    parser.add_argument("--address", required=True)
+    parser.add_argument("--address", default="127.0.0.1:0")
     options = parser.parse_args()
     asyncio.run(run(options.address))
 

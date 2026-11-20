@@ -44,5 +44,5 @@
 #[tokio::test]
 async fn rust_installs_itself() {
     let program = super::super::support::binary("harmos-sdk-conformance-plugin");
-    super::support::installs_itself(&program, &[]).await;
+    super::support::installs_itself(&program, &[], None).await;
 }

@@ -162,13 +162,14 @@ public:
   Listener &operator=(Listener &&) noexcept;
   ~Listener();
   const std::string &address() const;
+  // Await Transport Shutdown Without Requesting It.
+  void wait();
   void close();
 
 private:
   friend class Plugin;
   struct State;
   explicit Listener(std::unique_ptr<State> state);
-  void wait();
   std::unique_ptr<State> state_;
 };
 

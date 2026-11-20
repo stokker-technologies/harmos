@@ -68,6 +68,14 @@ struct Echo {
 /* === Tests === */
 
 #[tokio::test]
+async fn addressable_listener_waits_for_clean_stop() {
+    let mut listener = Plugin::new("example", "1.0.0").start("127.0.0.1:0").await.unwrap();
+    let mut client = InstanceClient::connect(format!("http://{}", listener.address())).await.unwrap();
+    client.stop(InstanceStopRequest { reason: "Story Stop".into() }).await.unwrap();
+    listener.wait().await.unwrap();
+}
+
+#[tokio::test]
 async fn owned_listener_drains_and_restarts() {
     // Gate an Accepted Invocation Without Depending on Scheduler Timing.
     let entered = Arc::new(Notify::new());

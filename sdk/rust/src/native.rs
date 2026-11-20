@@ -77,7 +77,8 @@ impl Listener {
         self.wait().await
     }
 
-    async fn wait(&mut self) -> Result<()> {
+    /// Await Transport Shutdown Without Requesting It.
+    pub async fn wait(&mut self) -> Result<()> {
         let Some(finished) = self.finished.as_mut() else {
             return Ok(());
         };
@@ -144,12 +145,15 @@ impl Plugin {
     }
 
     pub fn run(self) -> Result<()> {
+        let managed = env::var_os("HARMOS_ADDRESS").is_some();
         let address = env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
         let runtime = Builder::new_current_thread().enable_all().build()?;
         runtime.block_on(async move {
             let mut listener = self.start(address).await?;
-            println!("harmos listening {}", listener.address());
-            io::stdout().flush()?;
+            if managed {
+                println!("harmos listening {}", listener.address());
+                io::stdout().flush()?;
+            }
             listener.wait().await
         })
     }

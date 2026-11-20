@@ -134,6 +134,9 @@ impl Process {
         if let Some(directory) = &placement.directory {
             command.current_dir(directory);
         }
+        if env::var_os("HARMOS_ADDRESS").is_none() {
+            command.env("HARMOS_ADDRESS", "127.0.0.1:0");
+        }
         command
             .args(&placement.arguments)
             .envs(&placement.environment)

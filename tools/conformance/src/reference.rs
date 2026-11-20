@@ -16,8 +16,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
 use std::result;
+use std::{collections::BTreeMap, env};
 use std::{io::Write, pin::Pin, sync::Arc, time::SystemTime};
 
 // Third Party Imports
@@ -175,8 +175,10 @@ pub async fn serve(remote: bool) -> Result<()> {
         let accepted = listener.accept().await.map(|(socket, _)| socket);
         Some((accepted, listener))
     });
-    println!("harmos listening {address}");
-    std::io::stdout().flush()?;
+    if env::var_os("HARMOS_ADDRESS").is_some() {
+        println!("harmos listening {address}");
+        std::io::stdout().flush()?;
+    }
     tonic::transport::Server::builder()
         .add_service(
             InstanceServer::new(reference)

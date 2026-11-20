@@ -451,21 +451,22 @@ Listener Plugin::start(string address, bool remote) const {
 
 void Plugin::run(string address) const {
   const bool remote = !address.empty();
-  if (address.empty()) {
 #ifdef _WIN32
-    char *raw = nullptr;
-    size_t length = 0;
-    if (_dupenv_s(&raw, &length, "HARMOS_ADDRESS") != 0)
-      throw runtime_error("Cannot Read HARMOS_ADDRESS");
-    const unique_ptr<char, decltype(&std::free)> configured(raw, &std::free);
+  char *raw = nullptr;
+  size_t length = 0;
+  if (_dupenv_s(&raw, &length, "HARMOS_ADDRESS") != 0)
+    throw runtime_error("Read Plugin Address: Check HARMOS_ADDRESS in the Process Environment");
+  const unique_ptr<char, decltype(&std::free)> configured(raw, &std::free);
+  if (address.empty())
     address = configured ? configured.get() : "127.0.0.1:0";
 #else
-    const char *configured = std::getenv("HARMOS_ADDRESS");
+  const char *configured = std::getenv("HARMOS_ADDRESS");
+  if (address.empty())
     address = configured ? configured : "127.0.0.1:0";
 #endif
-  }
   auto listener = start(std::move(address), remote);
-  std::cout << "harmos listening " << listener.address() << std::endl;
+  if (configured)
+    std::cout << "harmos listening " << listener.address() << std::endl;
   listener.wait();
 }
 } // namespace harmos::plugin

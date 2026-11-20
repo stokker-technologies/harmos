@@ -13,6 +13,7 @@
 # Standard Library Imports
 import asyncio
 import inspect
+import os
 import re
 from asyncio import Queue, Task
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
@@ -322,9 +323,13 @@ class Plugin:
         host = address.rsplit(":", 1)[0]
         return Endpoint(server, f"{host}:{port}")
 
-    async def run(self, address: str) -> None:
-        endpoint = await self.start(address)
+    async def run(self, address: str | None = None) -> None:
+        configured = os.environ.get("HARMOS_ADDRESS")
+        selected = configured if configured is not None else address
+        endpoint = await self.start(selected if selected is not None else "127.0.0.1:0")
         try:
+            if configured is not None:
+                print(f"harmos listening {endpoint.address}", flush=True)
             await endpoint.server.wait_for_termination()
         finally:
             await endpoint.stop()

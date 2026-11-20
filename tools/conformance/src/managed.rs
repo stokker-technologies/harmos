@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{net::SocketAddr, path::PathBuf, process::Stdio, time::Duration};
+use std::{env, net::SocketAddr, path::PathBuf, process::Stdio, time::Duration};
 
 // Third Party Imports
 use tokio::{
@@ -54,8 +54,11 @@ pub async fn run(target: Target) -> Result<bool> {
     let address = match target {
         Target::Address(address) => endpoint(&address)?,
         Target::Executable { path, arguments } => {
-            let mut process =
-                Command::new(path).args(arguments).stdout(Stdio::piped()).stderr(Stdio::inherit()).kill_on_drop(true).spawn()?;
+            let mut command = Command::new(path);
+            if env::var_os("HARMOS_ADDRESS").is_none() {
+                command.env("HARMOS_ADDRESS", "127.0.0.1:0");
+            }
+            let mut process = command.args(arguments).stdout(Stdio::piped()).stderr(Stdio::inherit()).kill_on_drop(true).spawn()?;
             let stdout = process.stdout.take().ok_or_else(|| Error::Invalid("Missing Plugin Standard Output".into()))?;
             let mut lines = BufReader::new(stdout).lines();
             let announced = tokio::time::timeout(Duration::from_secs(30), async {
