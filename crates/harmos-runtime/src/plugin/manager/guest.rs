@@ -27,7 +27,7 @@ use super::{
     actor::{Actor, changed, is_guest, unavailable},
     persistence::{SavedEntry, problem},
 };
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 use prost::Message;
 use std::collections::BTreeMap;
 
@@ -68,7 +68,7 @@ impl Actor {
             PluginEntry {
                 name: name.clone(),
                 placement: Some(PluginPlacement {
-                    kind: Some(wire::plugin_placement::Kind::Guest(PluginGuest {})),
+                    kind: Some(host::plugin_placement::Kind::Guest(PluginGuest {})),
                 }),
                 value: Some(PluginValue { enabled: true }),
                 revision: registry.revision()?,
@@ -85,6 +85,9 @@ impl Actor {
                 name,
                 SavedEntry {
                     entry: entry.encode_to_vec(),
+                    state_key: u64::from_be_bytes(
+                        entry.revision.as_slice().try_into().expect("issued entry revisions contain eight bytes"),
+                    ),
                     executable: None,
                     executable_digest: None,
                     generation: 0,

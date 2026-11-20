@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// State
+//
+// Durable State of the Calling Plugin Entry
+
+syntax = "proto3";
+
+package harmos.host.v1.plugins;
+
+// === Imports === //
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Host.V1.PluginsResources";
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// Reads only the trusted calling plugin entry's durable state.
+message StateGetRequest {}
+
+// Returns opaque bytes and the revision to compare on the next Put; zero is unwritten.
+message StateGetResponse {
+  bytes value = 1;
+  uint64 revision = 2;
+}
+
+// Replaces the calling entry's opaque state; empty bytes clear it without resetting the revision.
+message StatePutRequest {
+  uint64 expected_revision = 1;
+  bytes value = 2;
+}
+
+// Issued only after the replacement is durable in recovery storage.
+message StatePutResponse {
+  uint64 revision = 1;
+}
+
+// === Resources === //
+
+// === Enums === //

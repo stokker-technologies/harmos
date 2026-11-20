@@ -22,8 +22,8 @@ use super::{Definition, Registry};
 use crate::state::dispatch::Dispatch;
 use crate::storage::SchemaKey;
 use crate::{
-    Application, Error, Result, state::Position, state::Prepared, state::PrincipalId, state::Receipt, state::Recorded, state::StateManager,
-    state::SystemFact,
+    Application, Error, Result, state::FactSource, state::Position, state::Prepared, state::PrincipalId, state::Receipt, state::Recorded,
+    state::StateManager, state::SystemFact,
 };
 
 /* === Constants === */
@@ -103,6 +103,12 @@ impl<A: Application> RecordManager<A> {
     }
 
     pub async fn publish_system(&self, fact: SystemFact) -> Result<Receipt> {
+        if fact.source == FactSource::Work("plugins".into()) && fact.name == "state" {
+            return Err(Error::InvalidInput {
+                field: "system fact",
+                reason: "plugin state belongs to the admitted State operations",
+            });
+        }
         let preparation =
             Arc::clone(&self.preparing).acquire_owned().await.expect("record preparation admission remains owned by the original state");
         let prepared = Prepared::system(&fact).map_err(Error::Preparation)?;

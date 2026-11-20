@@ -894,12 +894,14 @@ impl<A: Application> Builder<A> {
         let mut recovered = replay(Some(&catalog), entries, &mut state, &mut undos, inverses.clone(), tail).map_err(Incompatible::of)?;
         let stored = recovery.encoded.into_iter().filter(|(position, _)| *position > anchor).collect();
         state.position = state.position.max(recovery.frontier).max(anchor);
+        let mut plugins = crate::state::plugin::Values::new();
         let mut managed_durable = None;
         if let Some(settings) = managed_storage {
             let storage = boot.storage.as_ref().expect("managed state requires storage");
             let loaded =
                 StateManager::recover(storage, state, &catalog, inverses.clone(), tail, settings.replay, snapshots.as_ref()).await?;
             state = loaded.state;
+            plugins = loaded.plugins;
             undos = loaded.undos;
             recovered = loaded.tail;
             managed_durable = Some(loaded.durable);
@@ -919,6 +921,7 @@ impl<A: Application> Builder<A> {
         let catalog = Arc::new(catalog);
         let (journal, writer, requests) = StateManager::start(
             state,
+            plugins,
             inverses.clone(),
             undos,
             REQUESTS,

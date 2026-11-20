@@ -269,6 +269,7 @@ pub fn language_binary(name: &str, local: &str) -> PathBuf {
 
 pub fn settings(root: &Path) -> PluginManagerSettings {
     PluginManagerSettings {
+        state: Default::default(),
         namespace: "plugin-manager-story".into(),
         directory: root.join("plugins"),
         target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),

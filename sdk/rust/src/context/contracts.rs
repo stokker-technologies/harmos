@@ -16,6 +16,10 @@ use harmos_protocol::host::TimeSleepRequest;
 use harmos_protocol::host::TimeSleepResponse;
 use harmos_protocol::host::plugins::SettingsListRequest;
 use harmos_protocol::host::plugins::SettingsListResponse;
+use harmos_protocol::host::plugins::StateGetRequest;
+use harmos_protocol::host::plugins::StateGetResponse;
+use harmos_protocol::host::plugins::StatePutRequest;
+use harmos_protocol::host::plugins::StatePutResponse;
 use harmos_protocol::model::SettingDeclaration;
 use harmos_protocol::model::SettingsDeclarations;
 use prost_types::FileDescriptorSet;
@@ -163,6 +167,42 @@ impl Message for SettingsListResponse {
             .expect("generated context wrapper")
     }
 }
+impl Message for StateGetRequest {
+    fn name() -> String {
+        "harmos.host.v1.plugins.StateGetRequest".into()
+    }
+    fn types() -> FileDescriptorSet {
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.plugins.StateGetRequest.bin")[..])
+            .expect("generated context wrapper")
+    }
+}
+impl Message for StateGetResponse {
+    fn name() -> String {
+        "harmos.host.v1.plugins.StateGetResponse".into()
+    }
+    fn types() -> FileDescriptorSet {
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.plugins.StateGetResponse.bin")[..])
+            .expect("generated context wrapper")
+    }
+}
+impl Message for StatePutRequest {
+    fn name() -> String {
+        "harmos.host.v1.plugins.StatePutRequest".into()
+    }
+    fn types() -> FileDescriptorSet {
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.plugins.StatePutRequest.bin")[..])
+            .expect("generated context wrapper")
+    }
+}
+impl Message for StatePutResponse {
+    fn name() -> String {
+        "harmos.host.v1.plugins.StatePutResponse".into()
+    }
+    fn types() -> FileDescriptorSet {
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.plugins.StatePutResponse.bin")[..])
+            .expect("generated context wrapper")
+    }
+}
 impl Message for SettingDeclaration {
     fn name() -> String {
         "harmos.model.v1.SettingDeclaration".into()
@@ -209,6 +249,16 @@ impl OperationRequest for OperationsGetRequest {
 impl OperationRequest for SettingsListRequest {
     type Response = SettingsListResponse;
     const ID: &'static str = "harmos.plugin.v1.plugins.Settings/List";
+    const WATCH: bool = false;
+}
+impl OperationRequest for StateGetRequest {
+    type Response = StateGetResponse;
+    const ID: &'static str = "harmos.plugin.v1.plugins.State/Get";
+    const WATCH: bool = false;
+}
+impl OperationRequest for StatePutRequest {
+    type Response = StatePutResponse;
+    const ID: &'static str = "harmos.plugin.v1.plugins.State/Put";
     const WATCH: bool = false;
 }
 impl OperationRequest for TimeGetRequest {

@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use super::plugin;
+
 // Standard Library Imports
 use std::collections::HashMap;
 use std::future::Future;
@@ -67,7 +69,8 @@ pub(crate) enum Request<A: Application> {
         prepared: Prepared,
         preparation: tokio::sync::OwnedSemaphorePermit,
         context: Context,
-        reply: oneshot::Sender<Result<Receipt, PreparationError>>,
+        reply: oneshot::Sender<Result<Receipt, RecordRefusal>>,
+        plugin: Option<(plugin::Mutation, Option<u64>)>,
     },
     Revert {
         principal: PrincipalId,
@@ -81,6 +84,11 @@ pub(crate) enum Request<A: Application> {
         focus: Focus<A>,
         reply: oneshot::Sender<At<Reversals>>,
     },
+}
+
+pub(crate) enum RecordRefusal {
+    Preparation(PreparationError),
+    Plugin(harmos_operations::plugins::Error),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -384,10 +392,24 @@ async fn run_admissions<A: Application>(
                     preparation: _preparation,
                     context,
                     reply,
+                    plugin,
                 } => {
+                    if let Some((mutation, Some(expected))) = &plugin {
+                        let values = tracked.plugins.read().await;
+                        let revision = values.get(&mutation.key).map_or(0, |value| value.revision);
+                        if revision != *expected {
+                            let error = harmos_operations::plugins::Error::new(
+                                "state_revision_conflict",
+                                "Put Plugin State: Revision Conflict",
+                                "get state again and retry with its current revision",
+                            );
+                            let _ = reply.send(Err(RecordRefusal::Plugin(error)));
+                            return true;
+                        }
+                    }
                     if !context_fits(&context, None) {
                         tracing::Span::current().record("outcome", "refused");
-                        let _ = reply.send(Err(PreparationError::Limit));
+                        let _ = reply.send(Err(RecordRefusal::Preparation(PreparationError::Limit)));
                         return true;
                     }
                     let draft = Unsealed::mint(&context, None, None, &tracked.clock);
@@ -401,7 +423,7 @@ async fn run_admissions<A: Application>(
                         .checked_add(1)
                     else {
                         tracing::Span::current().record("outcome", "refused");
-                        let _ = reply.send(Err(PreparationError::Limit));
+                        let _ = reply.send(Err(RecordRefusal::Preparation(PreparationError::Limit)));
                         return true;
                     };
                     let permit = match reserve(capture, &prepared, std::iter::empty(), &draft, (Position(next), value.kind(), false)).await
@@ -410,7 +432,7 @@ async fn run_admissions<A: Application>(
                         Err(error) => {
                             let failed = error == PreparationError::CaptureFailed;
                             tracing::Span::current().record("outcome", "refused");
-                            let _ = reply.send(Err(error));
+                            let _ = reply.send(Err(RecordRefusal::Preparation(error)));
                             if failed {
                                 return false;
                             }
@@ -427,12 +449,12 @@ async fn run_admissions<A: Application>(
                             && let Err(error) = capture.check()
                         {
                             tracing::Span::current().record("outcome", "refused");
-                            let _ = reply.send(Err(error));
+                            let _ = reply.send(Err(RecordRefusal::Preparation(error)));
                             return false;
                         }
                         let Some(next) = state.position.0.checked_add(1) else {
                             tracing::Span::current().record("outcome", "refused");
-                            let _ = reply.send(Err(PreparationError::Limit));
+                            let _ = reply.send(Err(RecordRefusal::Preparation(PreparationError::Limit)));
                             return true;
                         };
                         let position = Position(next);
@@ -441,6 +463,9 @@ async fn run_admissions<A: Application>(
                     };
 
                     let (state, position) = sealed;
+                    if let Some((mutation, _)) = plugin {
+                        mutation.apply(&mut *tracked.plugins.write().await);
+                    }
                     let receipt = publish(tracked, stored, position, draft, value, prepared, capture.zip(permit)).await;
                     drop(state);
 

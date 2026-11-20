@@ -27,6 +27,7 @@ use std::task::Poll;
 // Third Party Imports
 use serde::{Serialize, de::DeserializeOwned};
 // Local Imports
+use super::plugin;
 use super::snapshot_codec;
 use crate::state::{Tail, TrackedState, Undos, dispatch::Dispatch};
 use crate::storage::state::SnapshotPayload;
@@ -49,6 +50,7 @@ type Encoding<A> = fn(
     &Undos<A>,
     &Tail<A>,
     &HashMap<RequestKey, Receipt>,
+    &plugin::Values,
 ) -> Result<SnapshotPayload>;
 type Decoding<A> = fn(&SnapshotPayload, &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
 
@@ -71,6 +73,7 @@ pub(crate) struct Snapshots<A: Application> {
 
 pub(crate) struct Restored<A: Application> {
     pub(crate) state: At<A::State>,
+    pub(crate) plugins: plugin::Values,
     pub(crate) undos: Undos<A>,
     pub(crate) receipts: HashMap<RequestKey, Receipt>,
     pub(crate) tail: VecDeque<Arc<Entry<Recorded<A>>>>,
@@ -145,11 +148,14 @@ impl<A: Application> Snapshots<A> {
                 };
             let state = tracked.state.read().await;
             let tail = tracked.tail.read().await;
-            let payload = catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &tracked.catalog, &state, undos, &tail, receipts)))
-                .map_err(|_| Error::InvalidInput {
-                    field: "state snapshot",
-                    reason: "serializer panicked",
-                })??;
+            let plugins = tracked.plugins.read().await;
+            let payload =
+                catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &tracked.catalog, &state, undos, &tail, receipts, &plugins)))
+                    .map_err(|_| Error::InvalidInput {
+                        field: "state snapshot",
+                        reason: "serializer panicked",
+                    })??;
+            drop(plugins);
             drop(tail);
             drop(state);
             size_bytes = Some(payload.len());

@@ -231,6 +231,13 @@ pub mod host {
     unary!(Streams, host::Streams);
 }
 
+pub mod plugin_state {
+    use super::*;
+    use crate::plugins::state;
+    unary!(Get, state::Get);
+    unary!(Put, state::Put);
+}
+
 pub mod settings {
     use super::*;
     use crate::plugins::settings;

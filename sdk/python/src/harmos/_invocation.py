@@ -47,7 +47,7 @@ from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
 from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 
-from ._generated.host import HostRoot
+from ._generated.host import HostPluginsStateResource, HostRoot
 
 # === Public Exports === #
 
@@ -133,6 +133,11 @@ class Context:
     @property
     def host(self) -> HostRoot:
         return HostRoot(self)
+
+    @property
+    def state(self) -> HostPluginsStateResource:
+        """Read and Durably Replace This Entry's Opaque State With an Expected Revision."""
+        return self.host.plugins.state
 
     def set[T](self, value: T) -> None:
         self._resources[type(value)] = value

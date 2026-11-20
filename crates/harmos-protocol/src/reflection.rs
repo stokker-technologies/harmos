@@ -478,6 +478,30 @@ impl ReflectMessage for crate::host::plugins::SettingsSetResponse {
     }
 }
 
+impl ReflectMessage for crate::host::plugins::StateGetRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.plugins.StateGetRequest").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::host::plugins::StateGetResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.plugins.StateGetResponse").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::host::plugins::StatePutRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.plugins.StatePutRequest").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::host::plugins::StatePutResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.plugins.StatePutResponse").expect("generated message")
+    }
+}
+
 impl ReflectMessage for crate::host::status::DiagnosticsGetRequest {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.host.v1.status.DiagnosticsGetRequest").expect("generated message")

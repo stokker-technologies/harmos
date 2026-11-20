@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Channels;
+using Harmos.Internal.Plugin;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
@@ -15,6 +18,31 @@ namespace Harmos.Tests.Unit;
 
 public sealed class ResourceRoots
 {
+  [Fact]
+  public async Task InitializeContextStatePreservesBytesAndRevision()
+  {
+    var declarations = new Harmos.Plugins.Plugin("example", "1.0.0")
+        .Register(ctx => ctx.Register(HostOperation.PluginsStateGet))
+        .Register(ctx => ctx.Register(HostOperation.PluginsStatePut)).Declarations();
+    var frames = Channel.CreateUnbounded<InstanceInvokeResponse>();
+    using var cancellation = new CancellationTokenSource();
+    var context = new Harmos.Plugins.Context(new Request { Operation = "example.initialize" }, "example",
+        declarations.Requires.ToDictionary(requirement => requirement.Id, requirement => requirement.Fingerprint), cancellation, frames.Writer);
+    var getting = context.State.Get();
+    var child = (await frames.Reader.ReadAsync()).Child;
+    Assert.Equal("harmos.plugin.v1.plugins.State/Get", child.Operation);
+    await context.Reply(new ChildResponse { Call = child.Call, Payload = new StateGetResponse { Value = ByteString.CopyFromUtf8("old"), Revision = 3 }.ToByteString() });
+    var saved = await getting;
+    Assert.Equal(ByteString.CopyFromUtf8("old"), saved.Value);
+    var putting = context.State.Put(saved.Revision, ByteString.CopyFromUtf8("intent"));
+    child = (await frames.Reader.ReadAsync()).Child;
+    var request = StatePutRequest.Parser.ParseFrom(child.Payload);
+    Assert.Equal(3UL, request.ExpectedRevision);
+    Assert.Equal(ByteString.CopyFromUtf8("intent"), request.Value);
+    await context.Reply(new ChildResponse { Call = child.Call, Payload = new StatePutResponse { Revision = 4 }.ToByteString() });
+    Assert.Equal(4UL, await putting);
+  }
+
   [Fact]
   public void CallerSurfacesExposeSharedOperationsAndKeepAdministrationOnClients()
   {

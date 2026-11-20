@@ -21,9 +21,11 @@ async fn snapshot_resumes_durable() {
     let earlier = store.snapshot();
     assert_eq!(earlier.through.sequence, 2);
     runtime.state.commit(deposit(7)).await.unwrap();
+    storage.flush_recovery().await.unwrap();
+    let suffix = store.recovery.entries.lock().unwrap().get(&3).unwrap().clone();
     crate::support::app::stop(&runtime).await.unwrap();
     *store.recovery.snapshot.lock().unwrap() = Some(earlier);
-    store.recovery.entries.lock().unwrap().retain(|at, _| *at > 2);
+    store.recovery.entries.lock().unwrap().insert(3, suffix);
 
     let storage = store.manager(config());
     let runtime = start(policy(2), &storage).await;
