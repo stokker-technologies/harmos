@@ -141,7 +141,7 @@ async fn credentialed_external_run_survives_removal_and_registers_again() {
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    let address = launch.announced().await.unwrap().to_string();
+    let address = format!("http://{}", launch.announced().await.unwrap());
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
     let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
@@ -159,7 +159,7 @@ async fn credentialed_external_run_survives_removal_and_registers_again() {
     assert!(!activation.is_connected());
     assert!(child.try_wait().unwrap().is_none());
     assert!(!cleaned.exists());
-    let mut client = InstanceClient::connect(format!("http://{address}")).await.unwrap();
+    let mut client = InstanceClient::connect(address.clone()).await.unwrap();
     let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
     assert_eq!(description.started_at, activation.description.started_at);
 
