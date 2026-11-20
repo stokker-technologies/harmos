@@ -13,6 +13,7 @@
 # Standard Library Imports
 import asyncio
 import inspect
+import os
 import re
 from asyncio import Queue, Task
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
@@ -46,6 +47,8 @@ from harmos._wire.plugin.v1.instance_pb2 import (
     InstanceStopResponse,
 )
 from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
+from harmos._wire.plugin.v1.launches_pb2 import LaunchesAnnounceRequest
+from harmos._wire.plugin.v1.launches_pb2_grpc import LaunchesStub
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 
 from ._columns import OversizedSampleError, append, batches, extract
@@ -322,9 +325,13 @@ class Plugin:
         host = address.rsplit(":", 1)[0]
         return Endpoint(server, f"{host}:{port}")
 
-    async def run(self, address: str) -> None:
+    async def run(self, address: str = "127.0.0.1:0") -> None:
+        """Serve Until Stop; With Launch Credentials, Announce the Bound Address to the Host Once."""
+        launch = _launch()
         endpoint = await self.start(address)
         try:
+            if launch is not None:
+                await _announce(*launch, endpoint.address)
             await endpoint.server.wait_for_termination()
         finally:
             await endpoint.stop()
@@ -499,6 +506,28 @@ class _Service:
 # === Public Functions === #
 
 # === Private Functions === #
+
+
+def _launch() -> tuple[str, str] | None:
+    endpoint = os.environ.get("HARMOS_HOST_ENDPOINT")
+    token = os.environ.get("HARMOS_LAUNCH_TOKEN")
+    if endpoint is None and token is None:
+        return None
+    if token is None:
+        raise ValueError("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT")
+    if endpoint is None:
+        raise ValueError("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN")
+    return endpoint, token
+
+
+async def _announce(endpoint: str, token: str, address: str) -> None:
+    channel = grpc.aio.insecure_channel(endpoint)
+    try:
+        await LaunchesStub(channel).Announce(LaunchesAnnounceRequest(token=token, address=address))
+    except grpc.aio.AioRpcError as error:
+        raise RuntimeError(f"Announce Plugin Launch: {error.details()}") from None
+    finally:
+        await channel.close()
 
 
 def _lifecycle(hooks: Sequence[Hook]) -> Handler:

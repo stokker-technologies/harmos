@@ -17,9 +17,7 @@
 
 // Standard Library Imports
 use std::{
-    env,
-    io::{self, Write},
-    mem,
+    env, mem,
     net::SocketAddr,
     result,
     sync::{Arc, OnceLock},
@@ -39,6 +37,7 @@ use tonic::Status;
 use crate::{Context, Error, Plugin, Result, server};
 use harmos_protocol::plugin::ChildResponse;
 use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::{LaunchesAnnounceRequest, launches_client::LaunchesClient};
 
 /* === Constants === */
 
@@ -77,7 +76,8 @@ impl Listener {
         self.wait().await
     }
 
-    async fn wait(&mut self) -> Result<()> {
+    /// Await Transport Shutdown Without Requesting It.
+    pub async fn wait(&mut self) -> Result<()> {
         let Some(finished) = self.finished.as_mut() else {
             return Ok(());
         };
@@ -143,13 +143,21 @@ impl Plugin {
         Ok(listener)
     }
 
+    /// Serve on `127.0.0.1:0`; with launch credentials, announce the bound address to the host once.
     pub fn run(self) -> Result<()> {
-        let address = env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
+        let launch = launch()?;
         let runtime = Builder::new_current_thread().enable_all().build()?;
         runtime.block_on(async move {
-            let mut listener = self.start(address).await?;
-            println!("harmos listening {}", listener.address());
-            io::stdout().flush()?;
+            let mut listener = self.start("127.0.0.1:0").await?;
+            if let Some((endpoint, token)) = launch {
+                let address = listener.address().to_string();
+                LaunchesClient::connect(format!("http://{endpoint}"))
+                    .await
+                    .map_err(|error| Error::Invalid(format!("Announce Plugin Launch: Check HARMOS_HOST_ENDPOINT {endpoint}: {error}")))?
+                    .announce(LaunchesAnnounceRequest { token, address })
+                    .await
+                    .map_err(|status| Error::Invalid(format!("Announce Plugin Launch: {}", status.message())))?;
+            }
             listener.wait().await
         })
     }
@@ -208,5 +216,14 @@ impl Context {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn launch() -> Result<Option<(String, String)>> {
+    match (env::var("HARMOS_HOST_ENDPOINT").ok(), env::var("HARMOS_LAUNCH_TOKEN").ok()) {
+        (Some(endpoint), Some(token)) => Ok(Some((endpoint, token))),
+        (None, None) => Ok(None),
+        (Some(_), None) => Err(Error::Invalid("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT".into())),
+        (None, Some(_)) => Err(Error::Invalid("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN".into())),
+    }
+}
 
 /* === Tests === */

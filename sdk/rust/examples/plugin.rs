@@ -60,15 +60,15 @@ fn main() -> Result<()> {
             }),
         }],
     };
-    Plugin::new("echo", "1.0.0")
+    let plugin = Plugin::new("echo", "1.0.0")
         .register(|ctx| {
             ctx.register(settings)?;
             ctx.register(HostOperation::PluginsSettingsList)?;
             ctx.register(Operation::new("example.echo", echo).visibility(Visibility::Public))?;
             Ok(())
         })
-        .expect("Register Plugin Declarations")
-        .run()
+        .expect("Register Plugin Declarations");
+    plugin.run()
 }
 
 /* === Private Functions === */

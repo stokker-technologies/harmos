@@ -52,7 +52,8 @@
 //! background work is invisible to virtual time and must be driven in real time.
 //!
 //! `run` defaults to managed lifecycle. `Plugin::remote` keeps the endpoint alive
-//! after Stop. Both honor `HARMOS_ADDRESS`; cleanup hooks run before Stop replies.
+//! after Stop. Both bind `127.0.0.1:0`; with `HARMOS_HOST_ENDPOINT` and `HARMOS_LAUNCH_TOKEN` set,
+//! `run` announces the bound address once through `Launches/Announce`. Cleanup hooks run before Stop replies.
 //! `Plugin::start(address).await` returns an owned `plugin::Listener` with its bound
 //! `address()` and an idempotent `close().await` that runs stop hooks before draining accepted calls.
 //! The listener owns its runtime, so callers do not need a `LocalSet`.

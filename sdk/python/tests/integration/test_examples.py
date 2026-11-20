@@ -11,6 +11,7 @@
 # === Imports === #
 
 import asyncio
+import os
 import sys
 from asyncio import Event
 from asyncio.subprocess import PIPE
@@ -39,7 +40,7 @@ from harmos._wire.host.v1.status_pb2 import (
 )
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from tests.support import calls
+from tests.support import bootstrap, calls
 
 # === Public Exports === #
 
@@ -160,24 +161,21 @@ class Examples(IsolatedAsyncioTestCase):
         self.assertEqual(update.resolved_at.sequence, 1)
 
     async def test_plugin_example_serves_one_operation_to_host(self) -> None:
-        # Run the Actual Program; Its Bound Endpoint Is the Readiness Handshake.
+        # Run the Actual Program as a Managed Launch; Its Announce Is the Readiness Handshake.
         program = Path(__file__).resolve().parents[2] / "examples/plugin.py"
+        launches = await bootstrap.start()
+        self.addAsyncCleanup(launches.stop)
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             str(program),
-            "--address",
-            "127.0.0.1:0",
             stdout=PIPE,
             stderr=PIPE,
+            env=launches.environment(dict(os.environ)),
             creationflags=spawn_flags(),
         )
         try:
-            assert process.stdout is not None
             # This Bounds a Transport Startup Hang; It Does Not Advance Story Time.
-            address = (await asyncio.wait_for(process.stdout.readline(), timeout=30)).decode().strip()
-            if not address:
-                stdout, stderr = await process.communicate()
-                self.fail(stdout.decode() + stderr.decode())
+            address = (await asyncio.wait_for(launches.announces.get(), timeout=30)).address
             channel = grpc.aio.insecure_channel(address)
             self.addAsyncCleanup(channel.close)
             host = InstanceStub(channel)

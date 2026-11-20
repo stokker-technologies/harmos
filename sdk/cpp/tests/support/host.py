@@ -49,12 +49,9 @@ def run_managed(*, host: Path | None = None, plugin: Path | None = None, timeout
         raise FileNotFoundError("Build the Host: mise run build -- --package harmos-conformance")
     if not plugin.is_file():
         raise FileNotFoundError("Build the SDK: mise run build -- --language cpp")
-    environment = dict(os.environ)
-    environment.pop("HARMOS_ADDRESS", None)
     # The Bound Is a Transport Hang Guard; the Scenario Uses Protocol Events and Literal Windows.
     result = subprocess.run(
         [str(host), "--plugin", str(plugin)],
-        env=environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

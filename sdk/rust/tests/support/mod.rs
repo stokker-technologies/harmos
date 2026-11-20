@@ -18,6 +18,7 @@
 // Standard Library Imports
 use std::error::Error as StdError;
 use std::{
+    net::SocketAddr,
     path::{Path, PathBuf},
     process::Stdio,
 };
@@ -26,10 +27,14 @@ use std::{
 use futures_util::stream;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
+    net::TcpListener,
     process::{Child, Command},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
 };
-use tonic::{Streaming, transport::Channel};
+use tonic::{
+    Streaming,
+    transport::{Channel, Server},
+};
 
 // Local Imports
 use harmos_protocol::plugin::ChildRequest;
@@ -39,6 +44,8 @@ use harmos_protocol::plugin::Response;
 use harmos_protocol::plugin::SamplesSelection;
 use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::instance_samples_request;
+use harmos_protocol::plugin::launches_server::{self, LaunchesServer};
+use harmos_protocol::plugin::{LaunchesAnnounceRequest, LaunchesAnnounceResponse};
 use harmos_protocol::plugin::response;
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest, InstanceSamplesResponse,
@@ -60,6 +67,19 @@ pub struct Process {
     pub client: InstanceClient<Channel>,
     child: Child,
     events: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+    _bootstrap: Bootstrap,
+}
+
+/// A Minimal Host Bootstrap Listener: Serves `Launches/Announce` on Loopback and Records Each Call.
+pub struct Bootstrap {
+    endpoint: SocketAddr,
+    announces: mpsc::UnboundedReceiver<LaunchesAnnounceRequest>,
+    _shutdown: oneshot::Sender<()>,
+}
+
+struct Launches {
+    announces: mpsc::UnboundedSender<LaunchesAnnounceRequest>,
+    refusal: Option<&'static str>,
 }
 
 /* === Enums === */
@@ -70,20 +90,24 @@ pub struct Process {
 
 impl Process {
     pub async fn start(cleanup: &Path) -> Result<Self, Box<dyn StdError>> {
-        let path = binary("harmos-sdk-diagnostics-plugin");
-        let mut child = Command::new(path)
+        let mut bootstrap = Bootstrap::start(None).await?;
+        let mut child = bootstrap
+            .command("harmos-sdk-diagnostics-plugin")
             .arg(cleanup)
-            .env("HARMOS_ADDRESS", "127.0.0.1:0")
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true)
             .spawn()?;
         let stdout = child.stdout.take().ok_or("Missing Plugin Standard Output")?;
-        let mut events = BufReader::new(stdout).lines();
-        let line = events.next_line().await?.ok_or("Missing Readiness Line")?;
-        let address = line.strip_prefix("harmos listening ").ok_or("Invalid Readiness Line")?;
-        let client = InstanceClient::connect(format!("http://{address}")).await?;
-        Ok(Self { client, child, events })
+        let events = BufReader::new(stdout).lines();
+        let announce = bootstrap.announced().await?;
+        let client = InstanceClient::connect(format!("http://{}", announce.address)).await?;
+        Ok(Self {
+            client,
+            child,
+            events,
+            _bootstrap: bootstrap,
+        })
     }
 
     pub async fn event(&mut self) -> Result<String, Box<dyn StdError>> {
@@ -94,6 +118,64 @@ impl Process {
         self.child.kill().await?;
         self.child.wait().await?;
         Ok(())
+    }
+}
+
+impl Bootstrap {
+    pub const TOKEN: &str = "story-launch-token";
+
+    /// Serve Announce on a Loopback Port; a Refusal Answers Every Call With `UNAUTHENTICATED`.
+    pub async fn start(refusal: Option<&'static str>) -> Result<Self, Box<dyn StdError>> {
+        let socket = TcpListener::bind("127.0.0.1:0").await?;
+        let endpoint = socket.local_addr()?;
+        let (record, announces) = mpsc::unbounded_channel();
+        let (shutdown, stopped) = oneshot::channel::<()>();
+        let incoming = stream::unfold(socket, |socket| async {
+            let accepted = socket.accept().await.map(|(connection, _)| connection);
+            Some((accepted, socket))
+        });
+        let service = LaunchesServer::new(Launches { announces: record, refusal });
+        tokio::spawn(Server::builder().add_service(service).serve_with_incoming_shutdown(incoming, async {
+            let _ = stopped.await;
+        }));
+        Ok(Self {
+            endpoint,
+            announces,
+            _shutdown: shutdown,
+        })
+    }
+
+    /// A Plugin Command Carrying Both Launch Variables.
+    pub fn command(&self, name: &str) -> Command {
+        let mut command = Command::new(binary(name));
+        command.env("HARMOS_HOST_ENDPOINT", self.endpoint.to_string()).env("HARMOS_LAUNCH_TOKEN", Self::TOKEN);
+        command
+    }
+
+    pub async fn announced(&mut self) -> Result<LaunchesAnnounceRequest, Box<dyn StdError>> {
+        self.announces.recv().await.ok_or_else(|| "Bootstrap Closed Before Announce".into())
+    }
+
+    /// Announces Received So Far Without Waiting.
+    pub fn pending(&mut self) -> usize {
+        let mut count = 0;
+        while self.announces.try_recv().is_ok() {
+            count += 1;
+        }
+        count
+    }
+}
+
+#[tonic::async_trait]
+impl launches_server::Launches for Launches {
+    async fn announce(
+        &self, request: tonic::Request<LaunchesAnnounceRequest>,
+    ) -> Result<tonic::Response<LaunchesAnnounceResponse>, Status> {
+        let _ = self.announces.send(request.into_inner());
+        match self.refusal {
+            Some(message) => Err(Status::unauthenticated(message)),
+            None => Ok(tonic::Response::new(LaunchesAnnounceResponse {})),
+        }
     }
 }
 

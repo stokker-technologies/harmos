@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using System;
 using Harmos.Clients;
@@ -12,6 +13,15 @@ namespace Harmos.Tests.Unit;
 
 public sealed class UnaryPluginCalls
 {
+  [Fact]
+  public async Task StartReturnsTheBoundLoopbackAddress()
+  {
+    await using var listener = await new Harmos.Plugins.Plugin("example", "1.0.0").StartAsync("127.0.0.1:0");
+    var endpoint = IPEndPoint.Parse(listener.Address);
+    Assert.True(IPAddress.IsLoopback(endpoint.Address));
+    Assert.True(endpoint.Port > 0);
+  }
+
   [Fact]
   public void RefusedWatchRegistrationDoesNotReserveTheUnaryOperation()
   {
