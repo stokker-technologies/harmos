@@ -166,7 +166,7 @@ impl Plugin {
         self
     }
 
-    /// Remote processes remain available after Stop. HARMOS_ADDRESS controls binding in either mode.
+    /// Remote processes remain available after Stop.
     pub fn remote(mut self) -> Self {
         self.remote = true;
         self

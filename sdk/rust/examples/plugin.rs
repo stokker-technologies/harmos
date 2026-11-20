@@ -16,10 +16,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::env;
 
 // Third Party Imports
-use tokio::runtime::Builder;
 
 // Local Imports
 use harmos::plugin::{Context, HostOperation, Operation, Plugin};
@@ -70,15 +68,7 @@ fn main() -> Result<()> {
             Ok(())
         })
         .expect("Register Plugin Declarations");
-    if env::var_os("HARMOS_ADDRESS").is_some() {
-        return plugin.run();
-    }
-    let runtime = Builder::new_current_thread().enable_all().build()?;
-    runtime.block_on(async move {
-        let mut listener = plugin.remote().start("127.0.0.1:0").await?;
-        println!("Listening on {}", listener.address());
-        listener.wait().await
-    })
+    plugin.run()
 }
 
 /* === Private Functions === */
