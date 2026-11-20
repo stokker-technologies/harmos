@@ -161,15 +161,10 @@ impl Instance for Reference {
 
 /// Serve the Reference Plugin; Launch Credentials Make It Announce Its Listener in Either Lifecycle.
 ///
-/// The managed lifecycle requires credentials and ends after Stop. The remote lifecycle keeps serving after Stop on
-/// `address`, or on an ephemeral loopback port whose address it announces.
+/// The managed lifecycle ends after Stop; the remote lifecycle keeps serving after it. Both bind `address` or an
+/// ephemeral loopback port. Without credentials the plugin serves silently, as when its author runs it by hand.
 pub async fn serve(remote: bool, address: Option<String>) -> Result<()> {
     let credentials = credentials()?;
-    if credentials.is_none() && (!remote || address.is_none()) {
-        return Err(crate::Error::Invalid(
-            "Start the reference plugin through a host that supplies HARMOS_HOST_ENDPOINT and HARMOS_LAUNCH_TOKEN, or pass --remote with a listening address".into(),
-        ));
-    }
     let listener = TcpListener::bind(address.as_deref().unwrap_or("127.0.0.1:0")).await?;
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| crate::Error::Invalid(error.to_string()))?;
     let (shutdown, stopped) = oneshot::channel();

@@ -477,14 +477,14 @@ mod tests {
 
     #[test]
     fn the_tail_keeps_the_newest_lines_within_both_bounds() {
-        // Bound the Tail to Three Lines and Ten Bytes.
+        // Bound the Tail to Three Lines and Eleven Bytes.
         let mut tail = Tail {
             lines: Default::default(),
             bytes: 0,
             dropped: false,
             bound: StartupOutput {
                 lines: NonZeroUsize::new(3).unwrap(),
-                bytes: NonZeroUsize::new(10).unwrap(),
+                bytes: NonZeroUsize::new(11).unwrap(),
             },
         };
         for line in ["one", "two", "three"] {

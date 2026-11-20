@@ -157,8 +157,8 @@ async fn the_announcement_reply_precedes_admission() {
     let silent = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let placement = stub(&control.local_addr().unwrap().to_string(), &silent.local_addr().unwrap().to_string(), "announce");
-    let attaching = runtime.attach_grpc(placement, support::settings());
-    tokio::pin!(attaching);
+    // Boxed, So Dropping It Ends the Attachment Rather Than a Pinned Reference.
+    let mut attaching = Box::pin(runtime.attach_grpc(placement, support::settings()));
     let (stream, _) = tokio::select! {
         biased;
         _ = &mut attaching => panic!("Admit Only After the Plugin Describes Itself"),
@@ -219,8 +219,8 @@ async fn a_cancelled_launch_revokes_its_credential() {
     let runtime = configured(&source).await;
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let placement = stub(&control.local_addr().unwrap().to_string(), "127.0.0.1:9", "silent");
-    let attaching = runtime.attach_grpc(placement, support::settings());
-    tokio::pin!(attaching);
+    // Boxed, So Dropping It Ends the Attachment Rather Than a Pinned Reference.
+    let mut attaching = Box::pin(runtime.attach_grpc(placement, support::settings()));
     let (stream, _) = tokio::select! {
         biased;
         _ = &mut attaching => panic!("Wait for the Announcement"),

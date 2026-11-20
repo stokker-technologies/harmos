@@ -487,9 +487,9 @@ INVALID_ARGUMENT and fails the launch. Standard output carries no protocol. The 
 owns process cleanup on failures. Executable arguments follow --. Remote mode accepts a
 socket address or http:// URL, owns no process, and never kills the endpoint.
 
-The Rust fixture defaults to managed lifecycle and requires the launch variables; pass
---remote [address] to keep it running after Stop. With launch variables it announces
-in either lifecycle; without them --remote needs an explicit address. The host prints
+The Rust fixture defaults to managed lifecycle; pass --remote [address] to keep it
+running after Stop. With launch variables it announces in either lifecycle; without them
+it serves silently on the given or an ephemeral loopback address. The host prints
 one pass/fail table row per rule and exits 0 only if every case passes; exit 1 is
 case failure and exit 2 is setup/CLI failure. Each case and managed startup/shutdown
 has a 30-second transport hang guard. These guards do not advance scenario time.

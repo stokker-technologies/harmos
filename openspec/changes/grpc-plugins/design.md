@@ -391,8 +391,10 @@ admission to Ready (Get, catalog admission, initialize, publications) stays the 
 existing sequence. The reply is produced without waiting for the host to dial or admit, so
 there is no circular wait. A plugin started with credentials announces in either lifecycle;
 `--remote`/explicit-address lifecycles only change whether it keeps serving after Stop.
-A managed lifecycle without credentials, or with only one of the two variables, fails
-before serving. The plugin's standard output carries no protocol.
+A run without credentials serves silently (an author running the plugin by hand); a run
+with only one of the two variables fails before serving. A managed launch that never
+announces fails on the host through the existing load deadline. The plugin's standard
+output carries no protocol.
 
 Token rules:
 
