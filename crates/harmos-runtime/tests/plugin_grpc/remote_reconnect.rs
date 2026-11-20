@@ -17,8 +17,8 @@ use harmos_protocol::plugin::InstanceSamplesResponse;
 
 // Third Party Imports
 use futures_util::stream;
-use prost::Message as _;
-use prost_reflect::ReflectMessage as _;
+use prost::Message;
+use prost_reflect::ReflectMessage;
 use tokio::sync::mpsc;
 use tonic::Status;
 
@@ -26,7 +26,7 @@ use tonic::Status;
 use super::support::{self, Manual, Remote};
 use harmos_protocol::model;
 use harmos_runtime::{
-    clock::{Clock, Source as _},
+    clock::{Clock, Source},
     operations::NativeOperation,
     plugin::grpc::{Error, Load, Placement},
 };
@@ -129,9 +129,9 @@ async fn remote_reconnect_exposes_process_identity_and_retires_old_handles() {
     assert_eq!(third.previous_started_at, second.description.started_at);
     assert!(second.get().await.is_err());
 
-    // Removing A Remote Plugin Calls Stop And Leaves Its Server Running
+    // Removing a Remote Plugin Closes Only the Host Connection.
     attached.stop("Removed").await.unwrap();
-    assert_eq!(remote.stops(), 1);
+    assert_eq!(remote.stops(), 0);
     assert_eq!(remote.get().await.started_at, third.description.started_at);
     runtime.stop().await.unwrap();
 }

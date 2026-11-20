@@ -577,13 +577,13 @@ async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ign
     assert!(matches!(error.as_ref(), Error::Deadline { action: "Close Scoped Plugin" }), "Name the Bounded Action: {error}");
     assert_eq!(hung.released.recv().await.unwrap(), "unit/virtual");
 
-    // Stop Expires the Root Drain the Same Way, Then Still Tells the Plugin to Stop.
+    // Detach Expires the Root Drain Without Stopping the Unowned Process.
     let stopping = tokio::spawn(async move { attached.stop("Story Complete").await });
     assert_eq!(hung.half_closed.recv().await.unwrap(), "");
     time.advance_by(grace).await;
     let error = stopping.await.unwrap().unwrap_err();
     assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Root Drain Deadline: {error}");
-    assert_eq!(hung.remote.stops(), 1, "Tell the Plugin to Stop After Its Drain Deadline");
+    assert_eq!(hung.remote.stops(), 0);
     runtime.stop().await.unwrap();
 }
 
@@ -613,7 +613,7 @@ async fn a_bind_registered_before_attachment_stop_is_settled_by_the_stop() {
     assert!(matches!(error, Error::Invalid(_)), "Refuse as Invalid: {error}");
     binding.close().await.unwrap();
     abandoned.await.unwrap();
-    assert_eq!(remote.stops(), 1);
+    assert_eq!(remote.stops(), 0);
     host.runtime.stop().await.unwrap();
 }
 

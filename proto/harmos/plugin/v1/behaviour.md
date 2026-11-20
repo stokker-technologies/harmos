@@ -131,12 +131,18 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
     during an active invocation MUST return INVALID_ARGUMENT. IDs MAY be reused
     on another Invoke. The case sends both invalid-ID and duplicate-ID replies
     on separate conformance.children calls.
-16. **Stop and Cleanup.** The host MUST call Stop before removing a plugin or
-    shutting down, then close after replies or its grace period. The plugin MUST
-    complete stop/cleanup hooks before replying. A managed plugin MUST exit
-    successfully after the reply; a remote plugin MUST keep serving. The case
-    checks the reply; managed mode also checks successful process exit. Remote
-    mode calls Instance.Get again after Stop. No active demand remains at this stage.
+16. **Stop and Cleanup.** The host MUST call Stop only for a process it spawned
+    and still owns, before removal or shutdown, then close after replies or its
+    grace period and reap its child. For an externally spawned process the host
+    MUST settle work, finalize its activation and close only its connection,
+    without Stop. Launch credentials MUST NOT establish process ownership.
+    Disconnected RPCs end or are cancelled; the plugin's listener and run entry
+    MUST remain serving so the endpoint can register again.
+    The plugin MUST complete process cleanup before replying to an explicit Stop.
+    The conformance executable mode owns its child and checks successful exit
+    after the reply. Endpoint mode directly probes the remote SDK's explicit Stop
+    support and calls Instance.Get again afterwards; registry detach remains
+    connection-only. No active demand remains at this stage.
 
 17. **Schema Fingerprints.** The additional schema fixture below MUST use the
     general Schema Fingerprints rule. The case verifies both advertised hashes
