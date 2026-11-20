@@ -13,8 +13,6 @@ using Grpc.Core;
 using Harmos.Clients;
 using Harmos.Internal.Plugin;
 using Harmos;
-using Status = Grpc.Core.Status;
-using Type = System.Type;
 
 namespace Harmos.Plugins;
 
@@ -26,7 +24,7 @@ public sealed class Context
   private readonly IReadOnlyDictionary<string, ByteString> requires;
   private readonly CancellationTokenSource cancellation;
   private readonly TaskCompletionSource<string> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-  private readonly Dictionary<Type, object> resources = [];
+  private readonly Dictionary<System.Type, object> resources = [];
   private readonly IReadOnlyDictionary<string, Handler> local;
   private Context root;
   private readonly HashSet<ulong> owned = [];
@@ -54,6 +52,7 @@ public sealed class Context
   }
 
   public HostRoot Host => new(this);
+  public HostPluginsStateResource State => Host.Plugins.State;
 
   public string Operation
   {
@@ -150,7 +149,7 @@ public sealed class Context
           Background = background
         }
       }))
-        throw new RpcException(new Status(StatusCode.Unavailable, "Host Closed"));
+        throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Host Closed"));
     }
     using var registration = cancellationToken.Register(() =>
     {
@@ -176,7 +175,7 @@ public sealed class Context
     }
     catch (InvalidProtocolBufferException error)
     {
-      throw new RpcException(new Status(StatusCode.InvalidArgument, error.Message));
+      throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, error.Message));
     }
   }
 
@@ -373,7 +372,7 @@ public sealed class Context
     lock (pending)
     {
       if (child.ResultCase == ChildResponse.ResultOneofCase.None)
-        throw new RpcException(new Status(StatusCode.InvalidArgument, "Reply to Child: Result Is Required"));
+        throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, "Reply to Child: Result Is Required"));
       if (root.retired.Contains(child.Call))
         return;
       root.watches.TryGetValue(child.Call, out watching);
@@ -383,14 +382,14 @@ public sealed class Context
     if (watching.Channel is not null)
     {
       if ((ulong)child.Item.Length > watching.Limit || (ulong)child.Payload.Length > watching.Limit)
-        throw new RpcException(new Status(StatusCode.ResourceExhausted, "Watch: Item Exceeds Consumer Limit"));
+        throw new RpcException(new global::Grpc.Core.Status(StatusCode.ResourceExhausted, "Watch: Item Exceeds Consumer Limit"));
       await watching.Channel.Writer.WriteAsync(child);
       return;
     }
     lock (pending)
     {
       if (child.ResultCase is ChildResponse.ResultOneofCase.None or ChildResponse.ResultOneofCase.Item || !pending.Remove(child.Call, out var completion))
-        throw new RpcException(new Status(StatusCode.InvalidArgument, "Unknown, Duplicate or Empty Child Response"));
+        throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, "Unknown, Duplicate or Empty Child Response"));
       if (child.ResultCase == ChildResponse.ResultOneofCase.Failure)
         completion.SetException(new PluginFailureException(child.Failure));
       else
@@ -481,10 +480,10 @@ public sealed class Context
     {
       cancelReason ??= "Connection Closed";
       foreach (var completion in pending.Values)
-        completion.TrySetException(new RpcException(new Status(StatusCode.Unavailable, "Host Closed")));
+        completion.TrySetException(new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Host Closed")));
       pending.Clear();
       foreach (var watching in root.watches.Values)
-        watching.Channel.Writer.TryComplete(new RpcException(new Status(StatusCode.Unavailable, "Watch: Host Closed")));
+        watching.Channel.Writer.TryComplete(new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Watch: Host Closed")));
       root.watches.Clear();
       nested = children.ToArray();
     }

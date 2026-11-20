@@ -15,10 +15,13 @@
 mod contracts;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_output;
+mod state;
 #[cfg(target_arch = "wasm32")]
 mod wasm_output;
 
 /* === Re-Exports === */
+
+pub use state::StateHandle;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use native_output::ChildOutput;
@@ -35,14 +38,15 @@ use {
 };
 
 // Third Party Imports
-use prost::Message as _;
+use prost::Message;
 use prost_types::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tonic::Status;
 
 // Local Imports
+use crate::message;
 use crate::plugin::HostPluginsSettingsResource;
-use crate::{Error, Message, Operation, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
+use crate::{Error, Operation, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
 use harmos_protocol::host::{TimeGetRequest, TimeSleepRequest};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
@@ -229,7 +233,7 @@ impl Context {
             output.check()?;
         }
         if let Some(operation) = self.local.get(Q::ID) {
-            if operation.contract.request != Q::name() || operation.contract.response != Q::Response::name() {
+            if operation.contract.request != Q::name() || operation.contract.response != <Q::Response as message::Message>::name() {
                 return Err(Error::Invalid(format!("Call {}: Local Contract Differs", Q::ID)));
             }
             let payload = self.invoke_local(operation, request.encode_to_vec(), policy).await?;
@@ -549,14 +553,14 @@ impl Context {
 
 /// A Child Watch Holds at Most One Demanded Item; Dropping It Cancels Its Demand.
 #[must_use]
-pub struct Watching<R: Message> {
+pub struct Watching<R: message::Message> {
     context: Context,
     call: u64,
     receiver: mpsc::Receiver<WatchResult>,
     closed: bool,
     response: PhantomData<fn() -> R>,
 }
-impl<R: Message> Watching<R> {
+impl<R: message::Message> Watching<R> {
     pub async fn next(&mut self) -> Result<Option<R>> {
         if self.closed {
             return Ok(None);
@@ -577,7 +581,7 @@ impl<R: Message> Watching<R> {
         }
     }
 }
-impl<R: Message> Drop for Watching<R> {
+impl<R: message::Message> Drop for Watching<R> {
     fn drop(&mut self) {
         let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
         if let Some(watch) = calls.watches.remove(&self.call)
@@ -606,6 +610,7 @@ fn elapsed(started: &Timestamp, now: &Timestamp) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prost::Message;
 
     use crate::{
         Plugin, SettingValues,
@@ -664,6 +669,59 @@ mod tests {
         assert_eq!(requests[0].fingerprint, requests[1].fingerprint);
         assert_eq!(SettingsListRequest::decode(requests[0].payload.as_slice()).unwrap().name, None);
         assert_eq!(SettingsListRequest::decode(requests[1].payload.as_slice()).unwrap().name.as_deref(), Some("caller"));
+    }
+
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct OpaqueState {
+        #[prost(bytes = "vec", tag = "1")]
+        effects: Vec<u8>,
+    }
+
+    struct StateTransport {
+        value: Mutex<harmos_protocol::host::plugins::StateGetResponse>,
+    }
+
+    impl ChildTransport for StateTransport {
+        fn call<'a>(&'a self, request: ChildRequest, _: Vec<GuestValue>, _: bool) -> LocalFuture<'a, Result<Vec<u8>>> {
+            Box::pin(async move {
+                let mut saved = self.value.lock().unwrap();
+                if request.operation.ends_with("/Get") {
+                    return Ok(saved.encode_to_vec());
+                }
+                let request = harmos_protocol::host::plugins::StatePutRequest::decode(request.payload.as_slice()).unwrap();
+                if request.expected_revision != saved.revision {
+                    return Err(Error::Invalid("state_revision_conflict".into()));
+                }
+                saved.revision += 1;
+                saved.value = request.value;
+                Ok(harmos_protocol::host::plugins::StatePutResponse { revision: saved.revision }.encode_to_vec())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_state_get_put_clear_share_revision_and_preserve_conflicts() {
+        let declarations = Plugin::new("caller", "1.0.0")
+            .register(|ctx| {
+                ctx.register(HostOperation::PluginsStateGet)?;
+                ctx.register(HostOperation::PluginsStatePut)?;
+                Ok(())
+            })
+            .unwrap()
+            .declarations()
+            .unwrap();
+        let requires = declarations.requires.into_iter().map(|requirement| (requirement.id, requirement.fingerprint)).collect();
+        let mut context = Context::new(Request::default(), "caller".into(), Arc::new(requires));
+        context.child = Some(Arc::new(StateTransport { value: Mutex::new(Default::default()) }));
+        let state = context.state();
+        assert_eq!(state.get::<OpaqueState>().await.unwrap(), OpaqueState::default());
+        let value = OpaqueState { effects: vec![0, 255, 7] };
+        assert_eq!(state.put(&value).await.unwrap(), 1);
+        let retained = state.clone();
+        assert_eq!(retained.get::<OpaqueState>().await.unwrap(), value);
+        assert!(context.state().put(&value).await.is_err());
+        assert_eq!(retained.clear().await.unwrap(), 2);
+        assert_eq!(state.get::<OpaqueState>().await.unwrap(), OpaqueState::default());
     }
 
     #[test]

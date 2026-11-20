@@ -2,5 +2,6 @@
 pub use self::host::{
     HostInvocationsCancelOptions, HostInvocationsGetOptions, HostInvocationsResource, HostInvocationsWatch, HostInvocationsWatchOptions,
     HostOperation, HostOperationsGetOptions, HostOperationsListOptions, HostOperationsResource, HostPluginsResource,
-    HostPluginsSettingsListOptions, HostPluginsSettingsResource, HostRoot, HostTimeGetOptions, HostTimeResource, HostTimeSleepOptions,
+    HostPluginsSettingsListOptions, HostPluginsSettingsResource, HostPluginsStateGetOptions, HostPluginsStatePutOptions,
+    HostPluginsStateResource, HostRoot, HostTimeGetOptions, HostTimeResource, HostTimeSleepOptions,
 };

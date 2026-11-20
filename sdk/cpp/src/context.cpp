@@ -497,6 +497,10 @@ Timestamp Context::now() {
   return host().time.get();
 }
 
+HostPluginsStateResource Context::state() {
+  return host().plugins.state;
+}
+
 SettingsListResponse Context::settings() {
   return host().plugins.settings.list();
 }

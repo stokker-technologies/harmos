@@ -157,6 +157,6 @@
 - [x] 15.11 Run the SDK stories that launch through the host side once it lands: the Rust conformance and manager stories, the C# managed reference-host story, the C++ managed conformance story and the Python reference-host stories against the announcing host.
 - [x] 16.1 Specify opaque revisioned plugin state on the existing journal/snapshot path, self-only host calls, durable Put, operation-owned size policy and backend compaction.
 - [x] 16.2 Implement host messages, admission, StateManager fold/recovery/snapshots and entry retirement; prove restart, conflict, removal and durability with the real storage test backend.
-- [ ] 16.3 Generate four-language host bindings and add thin context state accessors with focused SDK proof; report any language stopped at bindings.
+- [x] 16.3 Generate four-language host bindings and add thin context state accessors with focused SDK proof; report any language stopped at bindings.
 - [ ] 16.4 Add explicit durable snapshot compaction to StateBackend and the in-memory backend; prove repeated snapshot cycles retain only the uncovered suffix.
 - [ ] 16.5 Complete final proof: focused tests, workspace test-target compilation, generation/drift, format, repository checks and strict OpenSpec validation. Resolve the shared whole-library SDK hash inventory REWORK recorded in design.md and retain native Linux proof as outstanding.

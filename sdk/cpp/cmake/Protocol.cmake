@@ -7,6 +7,7 @@ set(HARMOS_PROTOCOLS
     harmos/host/v1/operations.proto
     harmos/host/v1/plugins.proto
     harmos/host/v1/plugins/settings.proto
+    harmos/host/v1/plugins/state.proto
     harmos/host/v1/schema.proto
     harmos/host/v1/schemas.proto
     harmos/host/v1/status.proto
@@ -36,6 +37,7 @@ set(HARMOS_PROTOCOLS
     harmos/plugin/v1/operations.proto
     harmos/plugin/v1/invocations.proto
     harmos/plugin/v1/plugins/settings.proto
+    harmos/plugin/v1/plugins/state.proto
     harmos/plugin/v1/operation.proto
     harmos/plugin/v1/stream.proto)
 

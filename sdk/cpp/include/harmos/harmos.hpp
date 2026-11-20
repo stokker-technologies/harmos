@@ -45,6 +45,7 @@
 namespace harmos::plugin {
 enum class HostOperation;
 struct HostRoot;
+struct HostPluginsStateResource;
 class Context;
 class Registrar;
 template <class Q, class R> class Operation;
@@ -114,6 +115,7 @@ namespace harmos::plugin {
 class Context {
 public:
   HostRoot host();
+  HostPluginsStateResource state();
   std::string invocation;
   const std::string &scope() const;
   std::uint32_t attempt = 0;

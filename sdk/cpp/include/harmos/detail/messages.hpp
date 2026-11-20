@@ -7,6 +7,7 @@
 #include "harmos/host/v1/operations.pb.h"
 #include "harmos/host/v1/plugins.pb.h"
 #include "harmos/host/v1/plugins/settings.pb.h"
+#include "harmos/host/v1/plugins/state.pb.h"
 #include "harmos/host/v1/schema.pb.h"
 #include "harmos/host/v1/schemas.pb.h"
 #include "harmos/host/v1/status.pb.h"
@@ -191,6 +192,8 @@ using ::harmos::host::v1::OperationsListResponse;
 using ::harmos::host::v1::TimeGetResponse;
 using ::harmos::host::v1::TimeSleepResponse;
 using ::harmos::host::v1::plugins::SettingsListResponse;
+using ::harmos::host::v1::plugins::StateGetResponse;
+using ::harmos::host::v1::plugins::StatePutResponse;
 } // namespace plugin
 } // namespace payloads
 } // namespace harmos::detail

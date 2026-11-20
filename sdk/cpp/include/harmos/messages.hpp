@@ -161,6 +161,8 @@ using ::harmos::detail::payloads::plugin::InvocationsWatchResponse;
 using ::harmos::detail::payloads::plugin::OperationsGetResponse;
 using ::harmos::detail::payloads::plugin::OperationsListResponse;
 using ::harmos::detail::payloads::plugin::SettingsListResponse;
+using ::harmos::detail::payloads::plugin::StateGetResponse;
+using ::harmos::detail::payloads::plugin::StatePutResponse;
 using ::harmos::detail::payloads::plugin::TimeGetResponse;
 using ::harmos::detail::payloads::plugin::TimeSleepResponse;
 } // namespace harmos::plugin

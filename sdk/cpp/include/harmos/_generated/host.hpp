@@ -8,6 +8,8 @@ enum class HostOperation {
   OperationsList,
   OperationsGet,
   PluginsSettingsList,
+  PluginsStateGet,
+  PluginsStatePut,
   TimeGet,
   TimeSleep,
 };
@@ -39,6 +41,12 @@ struct HostPluginsSettingsListOptions {
   std::optional<::harmos::ReadCut> at;
   std::optional<OperationPolicy> policy;
 };
+struct HostPluginsStateGetOptions {
+  std::optional<OperationPolicy> policy;
+};
+struct HostPluginsStatePutOptions {
+  std::optional<OperationPolicy> policy;
+};
 struct HostTimeGetOptions {
   std::optional<OperationPolicy> policy;
 };
@@ -51,6 +59,12 @@ struct HostTimeResource {
   ::google::protobuf::Timestamp get(HostTimeGetOptions options = {});
   ::harmos::plugin::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, HostTimeSleepOptions options = {});
 };
+struct HostPluginsStateResource {
+  Context context;
+  HostPluginsStateResource(Context context_value) : context(context_value) {}
+  ::harmos::plugin::StateGetResponse get(HostPluginsStateGetOptions options = {});
+  std::uint64_t put(const std::uint64_t &expected_revision, const std::string &value, HostPluginsStatePutOptions options = {});
+};
 struct HostPluginsSettingsResource {
   Context context;
   HostPluginsSettingsResource(Context context_value) : context(context_value) {}
@@ -59,7 +73,8 @@ struct HostPluginsSettingsResource {
 struct HostPluginsResource {
   Context context;
   HostPluginsSettingsResource settings;
-  HostPluginsResource(Context context_value) : context(context_value), settings(context_value) {}
+  HostPluginsStateResource state;
+  HostPluginsResource(Context context_value) : context(context_value), settings(context_value), state(context_value) {}
 };
 struct HostOperationsResource {
   Context context;
