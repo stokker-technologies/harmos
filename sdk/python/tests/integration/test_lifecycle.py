@@ -33,7 +33,7 @@ from harmos.plugin import Catalog, Context, Endpoint, HostOperation, Plugin, Reg
 # Local Imports
 from tests.fixtures.conformance import Value
 from tests.fixtures.lifecycle import Author
-from tests.support import calls
+from tests.support import bootstrap, calls
 
 # Type Checking Imports
 
@@ -48,25 +48,43 @@ from tests.support import calls
 
 
 class Lifecycle(IsolatedAsyncioTestCase):
-    async def test_run_announces_only_managed_launches_and_stops_cleanly(self) -> None:
-        for configured in (None, "127.0.0.1:0"):
-            await self.assert_run_output(configured)
+    async def test_managed_run_announces_once_and_writes_nothing(self) -> None:
+        launches = await bootstrap.start()
+        self.addAsyncCleanup(launches.stop)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        plugin = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object())))
+        with patch.dict(os.environ, launches.environment({})), patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            serving = asyncio.create_task(plugin.run())
+            announce = await launches.announces.get()
+            self.assertEqual(announce.token, bootstrap.TOKEN)
+            host, port = announce.address.rsplit(":", 1)
+            self.assertEqual((host, port != "0"), ("127.0.0.1", True))
+            channel = grpc.aio.insecure_channel(announce.address)
+            self.addAsyncCleanup(channel.close)
+            self.assertEqual((await InstanceStub(channel).Get(InstanceGetRequest(revision=1))).id, "plain")
+            serving.cancel()
+            await asyncio.gather(serving, return_exceptions=True)
+        self.assertEqual((stdout.getvalue(), stderr.getvalue()), ("", ""))
+        self.assertTrue(launches.announces.empty())
 
-    async def assert_run_output(self, configured: str | None) -> None:
-        environment = patch.dict(os.environ)
-        environment.start()
-        if configured is None:
-            os.environ.pop("HARMOS_ADDRESS", None)
-        else:
-            os.environ["HARMOS_ADDRESS"] = configured
-        stdout = io.StringIO()
-        stderr = io.StringIO()
-        output = patch("sys.stdout", stdout)
-        diagnostics = patch("sys.stderr", stderr)
-        output.start()
-        diagnostics.start()
-        endpoint = None
-        serving = None
+    async def test_refused_announce_fails_the_start_with_the_host_message(self) -> None:
+        launches = await bootstrap.start(refusal="Launch Credential Is Invalid")
+        self.addAsyncCleanup(launches.stop)
+        plugin = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object())))
+        with patch.dict(os.environ, launches.environment({})):
+            with self.assertRaisesRegex(RuntimeError, "Launch Credential Is Invalid"):
+                await plugin.run()
+
+    async def test_one_launch_variable_is_a_start_error_naming_the_other(self) -> None:
+        plugin = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object())))
+        for present, missing in (("HARMOS_HOST_ENDPOINT", "HARMOS_LAUNCH_TOKEN"), ("HARMOS_LAUNCH_TOKEN", "HARMOS_HOST_ENDPOINT")):
+            with patch.dict(os.environ, {present: "127.0.0.1:9"}):
+                os.environ.pop(missing, None)
+                with self.assertRaisesRegex(ValueError, f"Set {missing}"):
+                    await plugin.run()
+
+    async def test_run_without_launch_variables_serves_silently(self) -> None:
+        stdout, stderr = io.StringIO(), io.StringIO()
         plugin = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object())))
         start = plugin.start
         started: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
@@ -76,26 +94,20 @@ class Lifecycle(IsolatedAsyncioTestCase):
             started.set_result(listener)
             return listener
 
-        binding = patch.object(plugin, "start", side_effect=capture)
-        binding.start()
-        try:
+        with (
+            patch.dict(os.environ),
+            patch.object(plugin, "start", side_effect=capture),
+            patch("sys.stdout", stdout),
+            patch("sys.stderr", stderr),
+        ):
+            os.environ.pop("HARMOS_HOST_ENDPOINT", None)
+            os.environ.pop("HARMOS_LAUNCH_TOKEN", None)
             serving = asyncio.create_task(plugin.run())
             endpoint = await started
+            self.assertNotEqual(endpoint.address.rsplit(":", 1)[1], "0")
             await endpoint.stop()
             await serving
-            expected = f"harmos listening {endpoint.address}\n" if configured is not None else ""
-            self.assertEqual(stdout.getvalue(), expected)
-            self.assertEqual(stderr.getvalue(), "")
-        finally:
-            if endpoint is not None:
-                await endpoint.stop()
-            if serving is not None:
-                serving.cancel()
-                await asyncio.gather(serving, return_exceptions=True)
-            binding.stop()
-            diagnostics.stop()
-            output.stop()
-            environment.stop()
+        self.assertEqual((stdout.getvalue(), stderr.getvalue()), ("", ""))
 
     async def test_hooks_use_empty_operations_and_share_instance_state(self) -> None:
         author = Author("success")
