@@ -8,6 +8,7 @@
     <InternalsVisibleTo Include="Harmos.Example.Client" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
     <None Include="$(RepoRoot)README.md" Pack="true" PackagePath="/" />

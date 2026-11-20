@@ -10,6 +10,8 @@ using System.Threading;
 using System;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
+using Grpc.Core;
+using Grpc.Net.Client;
 using Harmos.Internal.Plugin;
 using Harmos;
 using Microsoft.AspNetCore.Builder;
@@ -263,15 +265,28 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     }
   }
 
-  /// <summary>Serve plain gRPC. Only HARMOS_ADDRESS launches announce readiness; it overrides address.</summary>
-  public async Task RunAsync(string? address = null, bool remote = false, CancellationToken cancellationToken = default)
+  /// <summary>Serve plain gRPC until Stop; with launch credentials, announce the bound address to the host once.</summary>
+  public async Task RunAsync(string address = "127.0.0.1:0", bool remote = false, CancellationToken cancellationToken = default)
   {
-    var configured = Environment.GetEnvironmentVariable("HARMOS_ADDRESS");
-    await using var listener = await StartAsync(configured ?? address ?? "127.0.0.1:0", remote, cancellationToken);
-    if (configured is not null)
+    var endpoint = Environment.GetEnvironmentVariable("HARMOS_HOST_ENDPOINT");
+    var token = Environment.GetEnvironmentVariable("HARMOS_LAUNCH_TOKEN");
+    if (endpoint is not null && token is null)
+      throw new InvalidOperationException("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
+    if (endpoint is null && token is not null)
+      throw new InvalidOperationException("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
+    await using var listener = await StartAsync(address, remote, cancellationToken);
+    if (endpoint is not null && token is not null)
     {
-      Console.WriteLine($"harmos listening {listener.Address}");
-      await Console.Out.FlushAsync(cancellationToken);
+      using var channel = GrpcChannel.ForAddress($"http://{endpoint}");
+      try
+      {
+        await new Launches.LaunchesClient(channel).AnnounceAsync(new LaunchesAnnounceRequest { Token = token, Address = listener.Address },
+            cancellationToken: cancellationToken);
+      }
+      catch (RpcException error)
+      {
+        throw new InvalidOperationException($"Announce Plugin Launch: {error.Status.Detail}", error);
+      }
     }
     await listener.WaitAsync(cancellationToken);
   }
