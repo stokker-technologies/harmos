@@ -1,5 +1,59 @@
 # gRPC Plugins Design
 
+## Durable Plugin State
+
+The plugin host owns one opaque, revisioned value per persisted plugin entry.
+This is outstanding-effect recovery state, independent of application undo and
+settings. No durable `plugin.state` API exists in the starting source: context
+resources are process-local; the registry persists entries and settings only.
+The existing StateManager writer records library-owned system facts and folds
+them into a library-owned map alongside `A::State`. Recovery replays those facts;
+the existing complete snapshot includes the map. Thus `State = ()` receives the
+same facility without application transaction or record declarations. No second
+journal, storage queue or persistence backend is introduced.
+
+```rust,ignore
+// Proposed Host Contract (Calling Identity Comes From The Carrier)
+ctx.host().plugins.state.get().await?; // { value: bytes, revision: u64 }
+ctx.host().plugins.state.put(expected_revision, value).await?; // new revision
+// Proposed Rust Accessor (Prost, Like Existing Settings Wire Values)
+let state = ctx.state();
+let saved = state.get::<OutstandingEffects>().await?;
+state.put(&effects).await?;
+```
+
+Revision zero means no value has been written. Empty bytes clear the opaque value
+while advancing its revision, preventing ABA conflicts. Put compares the expected
+revision inside the single journal writer and returns `state_revision_conflict`
+on mismatch. The SDK handle retains the revision from Get or Put; callers must Get
+before updating an existing value. A clone shares the same revision observation.
+Put completes only after the recovery journal has been flushed durably. Missing
+managed recovery storage refuses rather than acknowledging memory-only durability.
+A plugin records intent before an external mutation and clears it only after undo.
+Initialize may read state through the same admitted host calls.
+
+The plugin state operation owns a configurable maximum opaque value size with a
+library default, as explicitly requested for this feature; callers supply no
+literal bounds. This task decision overrides the general consumer-owned budget
+rule for this one setting. The managed registry supplies entry identity and
+removal; state survives disable, replacement and plugin/host restart, and is
+retired with its entry. Get and Put accept no selector: the trusted calling entry
+is their sole authority. Direct attachments without a persisted entry refuse.
+
+Recovery compaction is a backend contract: after publishing and flushing a
+complete snapshot, retain that newest complete snapshot and only journal entries
+after its covered recovery position. The storage manager invokes the explicit
+backend compaction step after successful durable snapshot publication. Compaction
+must be idempotent, preserve the uncovered suffix, and leave recovery readable if
+interrupted. A product implements that trait method in its existing StateBackend;
+there is no product-side plugin persistence facility to add.
+
+The existing registry's object persistence remains entry/settings ownership, not
+an alternative plugin-state store. The task explicitly extends the retained host
+service family despite the broader product-policy transfer still pending under
+`plugin-boundary`; it does not implement that unrelated migration. Generated
+protocol bindings remain tracked. Documentation changes are reported to the owner.
+
 ## Product Integration Repair Contract
 
 The scoped integration repair adds
