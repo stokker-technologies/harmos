@@ -51,6 +51,8 @@ impl Manager {
             registry: Arc::new(Registry {
                 plugin_calls: OnceLock::new(),
                 plugin_load: plugins.policy.load,
+                startup_output: plugins.startup_output,
+                launches: crate::plugin::grpc::Launches::new(),
                 access: Arc::new(harmos_operations::access::AccessAccess::default()),
                 status: Arc::new(harmos_operations::status::StatusAccess::default()),
                 status_owner: std::sync::Mutex::new(None),

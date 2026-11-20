@@ -12,6 +12,8 @@
 // Standard Library Imports
 #include <atomic>
 #include <future>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -48,6 +50,7 @@ using harmos::plugin::v1::InstanceStopResponse;
 using std::async;
 using std::atomic;
 using std::launch;
+using std::ostringstream;
 using std::promise;
 using std::runtime_error;
 using std::stoi;
@@ -64,6 +67,20 @@ using std::string;
 /* === Templates === */
 
 /* === Public Functions === */
+
+TEST_CASE("Starting an Addressable Listener Writes No Output") {
+  ostringstream output;
+  auto *original = std::cout.rdbuf(output.rdbuf());
+  try {
+    auto listener = Plugin("example", "1.0.0").start("127.0.0.1:0");
+    listener.close();
+  } catch (...) {
+    std::cout.rdbuf(original);
+    throw;
+  }
+  std::cout.rdbuf(original);
+  REQUIRE(output.str().empty());
+}
 
 TEST_CASE("An Owned Listener Drains Invocations and Restarts") {
   // Gate the Handler With Events, Including a Once-Only Cleanup Observation.

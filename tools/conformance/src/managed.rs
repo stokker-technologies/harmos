@@ -16,16 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{net::SocketAddr, path::PathBuf, process::Stdio, time::Duration};
+use std::{path::PathBuf, process::Stdio, time::Duration};
 
 // Third Party Imports
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::{Child, Command},
-};
+use tokio::process::{Child, Command};
 
 // Local Imports
 use crate::{Error, Result, suite};
+use harmos_runtime::plugin::grpc::Launches;
 
 /* === Constants === */
 
@@ -50,25 +48,26 @@ pub enum Target {
 
 pub async fn run(target: Target) -> Result<bool> {
     let mut child = None;
-    let mut drain = None;
+    // The Launch Lives Until the Cases End, So Its Listener Outlives the Plugin's Announcement.
+    let launches = Launches::new();
     let address = match target {
         Target::Address(address) => endpoint(&address)?,
         Target::Executable { path, arguments } => {
-            let mut process =
-                Command::new(path).args(arguments).stdout(Stdio::piped()).stderr(Stdio::inherit()).kill_on_drop(true).spawn()?;
-            let stdout = process.stdout.take().ok_or_else(|| Error::Invalid("Missing Plugin Standard Output".into()))?;
-            let mut lines = BufReader::new(stdout).lines();
+            let mut launch = launches.reserve(path.display().to_string()).await.map_err(|error| Error::Invalid(error.to_string()))?;
+            // Standard Output Would Mix With the Case Table; Standard Error Stays Visible.
+            let mut process = Command::new(path)
+                .args(arguments)
+                .envs(launch.environment())
+                .stdout(Stdio::null())
+                .stderr(Stdio::inherit())
+                .kill_on_drop(true)
+                .spawn()?;
             let announced = tokio::time::timeout(Duration::from_secs(30), async {
-                while let Some(line) = lines.next_line().await? {
-                    if let Some(address) = line.strip_prefix("harmos listening ") {
-                        let socket: SocketAddr = address.parse().map_err(|_| Error::Invalid("Invalid Announced Address".into()))?;
-                        if !socket.ip().is_loopback() || socket.port() == 0 {
-                            return Err(Error::Invalid("Managed Address Must Be Loopback with a Bound Port".into()));
-                        }
-                        return Ok(address.to_owned());
-                    }
+                tokio::select! {
+                    biased;
+                    exit = process.wait() => Err(Error::Invalid(format!("Plugin Exited With {} Before Announcing Its Address", exit?))),
+                    announced = launch.announced() => announced.map_err(|error| Error::Invalid(error.to_string())),
                 }
-                Err(Error::Invalid("Plugin Exited Before Announcing Its Address".into()))
             })
             .await;
             let announced = match announced {
@@ -81,10 +80,8 @@ pub async fn run(target: Target) -> Result<bool> {
                     });
                 }
             };
-            drain = Some(tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} }));
             child = Some(process);
-            let address = std::env::var("HARMOS_ADDRESS").unwrap_or(announced);
-            endpoint(&address)?
+            endpoint(&announced.to_string())?
         }
     };
     let mut cases = suite::run(&address, child.is_some()).await?;
@@ -96,10 +93,7 @@ pub async fn run(target: Target) -> Result<bool> {
             stop.error = Some(format!("{previous}{error}"));
         }
     }
-    if let Some(drain) = drain {
-        drain.abort();
-        let _ = drain.await;
-    }
+    launches.shutdown().await;
     println!("| Rule | Case | Result |");
     println!("| --- | --- | --- |");
     for case in &cases {

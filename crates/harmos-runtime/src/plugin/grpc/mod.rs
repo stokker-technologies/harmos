@@ -16,6 +16,7 @@ mod config;
 mod connection;
 pub(crate) mod facade;
 pub(crate) mod invoke;
+mod launches;
 mod load;
 mod managed;
 mod publish;
@@ -24,9 +25,10 @@ mod scoped;
 
 /* === Re-Exports === */
 
-pub use config::{GrpcPluginPolicy, GrpcPluginSettings, IntervalLag, PlacementSettings};
+pub use config::{GrpcPluginPolicy, GrpcPluginSettings, IntervalLag, PlacementSettings, StartupOutput};
 pub use harmos_protocol::model;
 pub use invoke::CallError;
+pub use launches::{HOST_ENDPOINT, LAUNCH_TOKEN, Launch, Launches};
 pub use load::{Load, LoadOptions};
 pub use managed::Managed;
 pub use scoped::ScopedBinding;
@@ -218,10 +220,18 @@ pub enum Error {
     /// The Load Exceeded Its `plugins.load` Deadline; the Text Is the Plugin's Operator-Facing Status.
     ///
     /// A direct library caller can replace the deadline for one load with [`LoadOptions`].
+    ///
+    /// For a managed process that had not announced, `diagnostics` names it, its exit status and its standard-error tail.
     #[error(
         "Load Plugin {plugin}: the plugin did not load within {timeout:?} (configured by {configured_by}); check the plugin's startup, or raise the plugins.load deadline in the plugin settings (GrpcPluginSettings.policy.load)"
     )]
-    LoadDeadline { plugin: String, timeout: Duration, configured_by: &'static str },
+    LoadDeadline { plugin: String, timeout: Duration, configured_by: &'static str, diagnostics: String },
+
+    /// A Managed Process Ended Before Announcing; `diagnostics` Holds Its Standard-Error Tail.
+    #[error(
+        "Start Managed Plugin: process {process} exited with {status} before announcing its address; inspect the plugin's startup diagnostics, then restart it"
+    )]
+    Exited { process: String, status: ExitStatus, diagnostics: String },
 
     #[error("managed plugin exited with {0}")]
     Exit(ExitStatus),
@@ -235,6 +245,14 @@ pub enum Error {
 /* === Implementations === */
 
 impl Error {
+    /// Support Facts of a Failed Managed Startup: the Process, Its Exit Status and Its Standard-Error Tail.
+    pub fn diagnostics(&self) -> Option<&str> {
+        match self {
+            Self::LoadDeadline { diagnostics, .. } | Self::Exited { diagnostics, .. } if !diagnostics.is_empty() => Some(diagnostics),
+            _ => None,
+        }
+    }
+
     pub(crate) fn lifecycle_failure(&self, plugin: &str) -> Option<model::Failure> {
         match self {
             Self::Lifecycle { operation, source } => {
@@ -334,6 +352,8 @@ impl<A: Application> Runtime<A> {
         // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
         let spawned = Arc::new(sync::Mutex::new(None));
         let process_participant = self.stop_participant();
+        let launches = operations.registry.launches.clone();
+        let output = operations.registry.startup_output;
         let stage = {
             let spawned = spawned.clone();
             let operations = operations.clone();
@@ -343,10 +363,12 @@ impl<A: Application> Runtime<A> {
             let name = name.clone();
             async move {
                 let mut held = spawned.lock().await;
-                let process = held.insert(Process::spawn(&managed, process_participant).await?);
-                let address = process.ready(&managed).await?;
-                let mut activation =
-                    connect(&clock, &address, 1, None, Some(process.digest), operations.transfer_message_bytes().get()).await?;
+                let (process, mut launch) = Process::spawn(&managed, process_participant, &launches, output, &name).await?;
+                let process = held.insert(process);
+                let address = process.ready(&mut launch).await?;
+                let mut activation = connect(&clock, &address, 1, None, Some(process.digest), operations.transfer_message_bytes().get())
+                    .await
+                    .map_err(|error| unanswered(&address, error))?;
                 activation.entry_name = Some(name);
                 activation.settings = crate::plugin::manager::settings::select(
                     activation.description.declarations.as_ref().expect("admitted description"),
@@ -367,20 +389,23 @@ impl<A: Application> Runtime<A> {
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
         let mut process = spawned.lock().await.take();
         match result {
-            Ok((address, activation, admission, publications)) => Ok(PreparedPlugin {
-                participant,
-                process,
-                address,
-                activation,
-                admission,
-                publications,
-            }),
-            Err(error) => {
-                if let Some(process) = &mut process {
-                    process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
+            Ok((address, activation, admission, publications)) => {
+                if let Some(process) = &process {
+                    process.settled();
                 }
-                Err(error)
+                Ok(PreparedPlugin {
+                    participant,
+                    process,
+                    address,
+                    activation,
+                    admission,
+                    publications,
+                })
             }
+            Err(error) => match &mut process {
+                Some(process) => Err(process.fail(clock, settings.stop_grace, "Stop Failed Replacement Startup", error).await?),
+                None => Err(error),
+            },
         }
     }
     pub(crate) async fn activate_grpc_entry(&self, prepared: PreparedPlugin, settings: PlacementSettings) -> Result<Attached, Error> {
@@ -557,6 +582,9 @@ impl Attached {
         // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
         let spawned = Arc::new(sync::Mutex::new(None));
         let admitted = Arc::new(Mutex::new(None));
+        let launches = operations.registry.launches.clone();
+        let output = operations.registry.startup_output;
+        let owner = plugin.clone();
         let setup = {
             let spawned = spawned.clone();
             let operations = operations.clone();
@@ -570,7 +598,8 @@ impl Attached {
                 let address = match &placement {
                     Placement::Managed(managed) => {
                         let participant = process_participant.take().expect("managed process participant");
-                        process.insert(Process::spawn(managed, participant).await?).ready(managed).await?
+                        let (spawned, mut launch) = Process::spawn(managed, participant, &launches, output, &owner).await?;
+                        process.insert(spawned).ready(&mut launch).await?
                     }
                     Placement::Remote(address) => address.clone(),
                 };
@@ -582,7 +611,8 @@ impl Attached {
                     process.as_ref().map(|process| process.digest),
                     operations.transfer_message_bytes().get(),
                 )
-                .await?;
+                .await
+                .map_err(|error| if process.is_some() { unanswered(&address, error) } else { error })?;
                 let values = entry.as_ref().and_then(|entry| {
                     activation.entry_name = Some(entry.name.clone());
                     entry.values.clone()
@@ -646,12 +676,15 @@ impl Attached {
                     }
                     activation.connection.closed.send_replace(true);
                 }
-                if let Some(process) = &mut process {
-                    process.terminate(&clock, settings.stop_grace, "Stop Plugin Startup").await?;
-                }
-                return Err(error);
+                return match &mut process {
+                    Some(process) => Err(process.fail(&clock, settings.stop_grace, "Stop Plugin Startup", error).await?),
+                    None => Err(error),
+                };
             }
         };
+        if let Some(process) = &process {
+            process.settled();
+        }
         let connected = ConnectedPlugin {
             process,
             address,
@@ -738,6 +771,21 @@ impl Attached {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+/// A Managed Plugin Announced an Address Nothing Answers On.
+fn unanswered(address: &str, error: Error) -> Error {
+    match error {
+        Error::Io(cause) => unreachable_address(address, &cause.to_string()),
+        Error::Transport(cause) => unreachable_address(address, &cause),
+        error => error,
+    }
+}
+
+fn unreachable_address(address: &str, cause: &str) -> Error {
+    Error::Invalid(format!(
+        "Connect Managed Plugin: the plugin announced {address}, which did not answer ({cause}); start serving before announcing, then restart the plugin"
+    ))
+}
 
 pub(crate) fn lifecycle_operation(plugin: &str, operation: &str) -> bool {
     matches!(operation.strip_prefix(plugin), Some(".initialize" | ".finalize"))

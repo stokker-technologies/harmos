@@ -347,21 +347,101 @@ The host obtains a channel in one of two ways. Everything above the channel is i
 | Address | The loopback address the plugin announces at start | A URL the product supplies |
 | Who dials | Host | Host |
 | Executable hash, kill on shutdown | Yes | No |
-| Startup failure | Spawn or connect failure | Connect failure |
+| Startup failure | Spawn, exit, announce or connect failure | Connect failure |
 
 Catalog admission does not depend on placement. The remote placement is a new physical backend
 behind the existing attach interface.
 
 A managed plugin is any executable that serves `harmos.v1`. It binds a loopback port of its own
-choosing and prints the address as one line on standard output; the host reads that line and
-dials. The host therefore never has to find a free port, and the line doubles as the signal
-that the plugin is ready. `HARMOS_ADDRESS` sets the address instead, which is how the same
-executable runs as a remote plugin. Nothing else about the executable matters, so a plugin in
-any language with a build output can be managed.
+choosing and announces the bound address by calling the host (Managed Launch Announcement
+below). The host therefore never has to find a free port. Nothing else about the executable
+matters, so a plugin in any language with a build output can be managed.
 
-```text
-harmos listening 127.0.0.1:53124
+## Managed Launch Announcement
+
+Decision (owner, locked): the managed-launch readiness line on standard output is replaced by
+the plugin calling the host. This is a clean replacement: no output parser, no fallback and no
+`HARMOS_ADDRESS` (neither its managed-mode detection nor its dial override). Explicit bind
+address APIs stay; a managed run binds `127.0.0.1:0`.
+
+```proto
+// proto/harmos/plugin/v1/launches.proto
+service Launches {
+  rpc Announce(LaunchesAnnounceRequest) returns (LaunchesAnnounceResponse);
+}
+message LaunchesAnnounceRequest {
+  string token = 1;   // HARMOS_LAUNCH_TOKEN of this launch attempt
+  string address = 2; // the bound loopback listener, for example "127.0.0.1:53124"
+}
+message LaunchesAnnounceResponse {}
 ```
+
+The host starts every managed process with two variables, after the placement's own
+environment so a placement cannot replace them:
+
+| Variable | Value |
+| --- | --- |
+| `HARMOS_HOST_ENDPOINT` | The bootstrap listener as a bare socket address, `127.0.0.1:PORT`; plain HTTP/2 gRPC |
+| `HARMOS_LAUNCH_TOKEN` | 64 lowercase hexadecimal characters: 256 random bits for this launch attempt |
+
+Sequence: bind the plugin listener, start serving `Instance`, then call `Launches/Announce`
+once. The host may call `Instance.Get` before the Announce reply arrives, so a plugin must
+never wait for that reply before serving. Announcement means the plugin's listener is ready;
+admission to Ready (Get, catalog admission, initialize, publications) stays the separate
+existing sequence. The reply is produced without waiting for the host to dial or admit, so
+there is no circular wait. A plugin started with credentials announces in either lifecycle;
+`--remote`/explicit-address lifecycles only change whether it keeps serving after Stop.
+A run without credentials serves silently (an author running the plugin by hand); a run
+with only one of the two variables fails before serving. A managed launch that never
+announces fails on the host through the existing load deadline. The plugin's standard
+output carries no protocol.
+
+Token rules:
+
+- Generated from the operating system's cryptographic source per launch attempt; the host
+  keeps only its SHA-256 digest, bound to the entry and its reserved activation attempt.
+- Consumed atomically by the first authenticated Announce; never logged or persisted.
+- Revoked when its attempt ends for any reason: cancellation, child exit, replacement,
+  runtime stop, failure, or the existing effective `plugins.load` deadline. No new deadline
+  or constant exists; the load policy owns the startup bound and the token lives exactly as
+  long as the load's work.
+
+Bootstrap listener: owned by the runtime, bound lazily on loopback before the first child
+is spawned, serving only `Launches/Announce`, independent of any client listener a product
+configures, and released when the runtime stops. Tools that start plugins without a runtime
+(the conformance host, packaging inspection, test harnesses) reuse the same public
+`harmos_runtime::plugin::grpc::Launches` owner instead of a second mechanism.
+
+This narrowly amends the contract that plugin facilities have no independent listener
+routes: exactly one bootstrap route exists, loopback only, token-authenticated, not a host
+operation, never declared in an operation catalog, and absent from client listeners,
+discovery and reflection. Ordinary and paired clients cannot reach it and gain no authority
+from it.
+
+Process output: standard output and standard error are both piped and drained for the
+child's whole life, so neither can block the child. Lines are forwarded to the host log at
+DEBUG under `harmos::plugin::stdout` and `harmos::plugin::stderr`. Until activation settles
+the host also keeps a bounded tail of standard error, limited by
+`GrpcPluginSettings.startup_output` (lines and bytes); it is released when activation
+settles.
+
+| Failure | Code to the plugin | Host failure and action |
+| --- | --- | --- |
+| Wrong, reused or retired token | `UNAUTHENTICATED`: launch credential is invalid or spent; restart through the host | none for the attempt |
+| Announce after the load deadline | `UNAUTHENTICATED` (credential revoked) | the load keeps its `LoadDeadline` failure |
+| Malformed, non-loopback or zero-port address | `INVALID_ARGUMENT`: announce a bound loopback socket | the attempt fails at once with the same action; the token is spent |
+| Child exits before announcing | none | executable, process identifier, exit status; standard-error tail in `Failure.diagnostics`; inspect the startup diagnostics, then restart |
+| Announced address unreachable | none | endpoint and transport cause; start serving before announcing, then restart |
+| Load deadline before announcing | none | `LoadDeadline`; process, kill status and standard-error tail in `Failure.diagnostics` |
+
+A failed load revokes the token and terminates and reaps the child.
+
+Failure reporting: a plugin entry entering a failed state writes exactly one host log record
+(WARN for transient, refused, cancelled or timed-out classifications, ERROR otherwise) with
+entry, activation, code, message and action; an unchanged failure is not logged again. An
+operation request completing with a failure writes exactly one record at the operation
+layer's single completion point with operation, code and message and never payload contents;
+sample rows travel inside window answers and never produce per-sample records.
 
 ## Endpoint Security
 
@@ -661,8 +741,8 @@ The maintained [plugin example](../../../sdk/csharp/examples/Plugin/Program.cs)
 shows the builder and unary handler using only those public paths.
 
 `ServeAsync(address: "127.0.0.1:53124", remote: true)` serves an explicitly chosen remote
-endpoint and remains alive after Stop. `HARMOS_ADDRESS` overrides the address in either
-mode. Managed mode defaults to a dynamically bound loopback port and announces readiness.
+endpoint and remains alive after Stop. Managed mode binds a dynamic loopback port and
+announces it through `Launches/Announce` with the launch credentials.
 `Stream<TRow>` registers a device producer receiving a context and typed `Publisher<TRow>`;
 closing demand cancels the context and ends publication. `Section` carries typed product
 contributions, including product settings definitions. `Context.Scope` remains opaque.
@@ -687,9 +767,9 @@ Import shared types from `harmos` and authoring types from `harmos::plugin`.
 The maintained [plugin example](../../../sdk/cpp/examples/plugin/main.cpp)
 shows named imports, a typed operation and managed serving.
 
-`serve()` selects managed lifecycle and reads `HARMOS_ADDRESS`, defaulting to an
-ephemeral loopback port. `serve("127.0.0.1:53124")` selects remote lifecycle and
-keeps serving after Stop. Both announce the bound address. Observer callbacks may make declared child calls and clock waits during their unanswered tick. Device producers use
+`serve()` selects managed lifecycle on an ephemeral loopback port and announces it
+through `Launches/Announce`. `serve("127.0.0.1:53124")` selects remote lifecycle and
+keeps serving after Stop; it announces only when launch credentials are present. Observer callbacks may make declared child calls and clock waits during their unanswered tick. Device producers use
 `Stream<Row>::publish_on` with a typed `Publisher<Row>`, ending when demand closes.
 `section(message)` carries typed settings/contributions; `on_stop(callback)` owns
 cleanup. Invocation resources use `ctx.set(value)` and `ctx.get<Type>()`; shared

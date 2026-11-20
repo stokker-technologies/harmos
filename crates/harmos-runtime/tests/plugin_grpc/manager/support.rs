@@ -34,9 +34,7 @@ use std::{
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::task::JoinHandle;
 use tonic::Streaming;
 use tonic::transport::{Channel, Endpoint};
 
@@ -108,7 +106,6 @@ pub struct Peer {
     pub url: String,
     pub description: InstanceGetResponse,
     child: Child,
-    drain: JoinHandle<()>,
 }
 
 /* === Enums === */
@@ -210,59 +207,37 @@ impl Authorizer for Policy {
 
 impl Peer {
     pub async fn start() -> Self {
-        let mut child = Command::new(support::binary("harmos-conformance-plugin"))
-            .arg("--remote")
-            .env("HARMOS_ADDRESS", "127.0.0.1:0")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(true)
-            .spawn()
-            .unwrap();
-        let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
-        let url = loop {
-            let line = lines.next_line().await.unwrap().expect("reference plugin readiness");
-            if let Some(address) = line.strip_prefix("harmos listening ") {
-                break format!("http://{address}");
-            }
-        };
-        let drain = tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} });
+        let (child, address) =
+            support::announced(Command::new(support::binary("harmos-conformance-plugin")).arg("--remote").stderr(Stdio::inherit())).await;
+        let url = format!("http://{address}");
         let mut client = InstanceClient::connect(url.clone()).await.unwrap();
         let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
-        Self { url, description, child, drain }
+        Self { url, description, child }
     }
     pub fn is_running(&mut self) -> bool {
         self.child.try_wait().unwrap().is_none()
     }
     pub async fn close(mut self) {
         self.child.kill().await.unwrap();
-        self.drain.abort();
     }
 }
 impl Drop for Peer {
     fn drop(&mut self) {
         let _ = self.child.start_kill();
-        self.drain.abort();
     }
 }
 
 /* === Public Functions === */
 
-pub async fn installs_itself(program: &Path, arguments: &[&str]) {
+pub async fn installs_itself(program: &Path, arguments: &[&str], directory: Option<&Path>) {
     // Serve This Codebase's Plugin in Its Own Process
     let mut command = Command::from(fixtures::command(program));
-    let mut peer = command
-        .args(arguments)
-        .args(["--install-itself", "serve"])
-        .env("HARMOS_ADDRESS", "127.0.0.1:0")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
-    let mut output = BufReader::new(peer.stdout.take().unwrap()).lines();
-    let line = output.next_line().await.unwrap().expect("the SDK announces its bound endpoint");
-    let endpoint = format!("http://{}", line.strip_prefix("harmos listening ").expect("SDK readiness"));
-    let drain = tokio::spawn(async move { while output.next_line().await.ok().flatten().is_some() {} });
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
+    let (mut peer, address) =
+        support::announced(command.args(arguments).args(["--install-itself", "serve"]).stderr(Stdio::inherit())).await;
+    let endpoint = format!("http://{address}");
 
     // Run Its Entry Program Against a Controlled Host
     let root = tempfile::tempdir().unwrap();
@@ -271,6 +246,9 @@ pub async fn installs_itself(program: &Path, arguments: &[&str]) {
     host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
     let address = format!("http://{}", host._listener.local_addr());
     let mut command = Command::from(fixtures::command(program));
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
     let result = command.args(arguments).args(["--install-itself", &address, &endpoint]).kill_on_drop(true).output().await.unwrap();
     assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
     assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "hello");
@@ -280,7 +258,6 @@ pub async fn installs_itself(program: &Path, arguments: &[&str]) {
     host.close().await;
     peer.kill().await.unwrap();
     peer.wait().await.unwrap();
-    drain.await.unwrap();
 }
 
 pub fn language_binary(name: &str, local: &str) -> PathBuf {

@@ -17,7 +17,6 @@ use std::{process::Stdio, sync::Arc, time::Duration};
 // Third Party Imports
 use prost::Message;
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
     net::{TcpListener, TcpStream},
     sync::{Notify, mpsc, oneshot},
     task::{JoinHandle, JoinSet},
@@ -90,13 +89,11 @@ impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
 pub struct Python {
     pub address: String,
     process: tokio::process::Child,
-    drain: JoinHandle<()>,
 }
 
 pub struct Sdk {
     pub address: String,
     process: tokio::process::Child,
-    drain: JoinHandle<()>,
     proxy: JoinHandle<()>,
     disconnect: mpsc::Sender<oneshot::Sender<()>>,
 }
@@ -291,21 +288,12 @@ impl HostFixture {
     }
 
     pub async fn sdk(&self, mode: &str) -> Sdk {
-        let mut process = tokio::process::Command::new(support::binary("harmos-sdk-invoke-fixture"))
-            .args([mode, self.types.path().join("host.pb").to_str().unwrap(), &self.request, &self.response])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(true)
-            .spawn()
-            .unwrap();
-        let mut stdout = BufReader::new(process.stdout.take().unwrap()).lines();
-        let upstream = loop {
-            let line = stdout.next_line().await.unwrap().expect("SDK Readiness");
-            if let Some(address) = line.strip_prefix("harmos listening ") {
-                break address.to_owned();
-            }
-        };
-        let drain = tokio::spawn(async move { while stdout.next_line().await.ok().flatten().is_some() {} });
+        let (process, upstream) = support::announced(
+            tokio::process::Command::new(support::binary("harmos-sdk-invoke-fixture"))
+                .args([mode, self.types.path().join("host.pb").to_str().unwrap(), &self.request, &self.response])
+                .stderr(Stdio::inherit()),
+        )
+        .await;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
         let (disconnect, mut commands) = mpsc::channel::<oneshot::Sender<()>>(1);
@@ -330,13 +318,7 @@ impl HostFixture {
                 }
             }
         });
-        Sdk {
-            address,
-            process,
-            drain,
-            proxy,
-            disconnect,
-        }
+        Sdk { address, process, proxy, disconnect }
     }
 }
 
@@ -344,25 +326,20 @@ impl Python {
     pub async fn start(arguments: &[&str]) -> Self {
         let sdk = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/python");
         let python = sdk.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
-        let mut process = tokio::process::Command::new(python)
-            .args(["-m", "tests.fixtures.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
-            .args(arguments)
-            .current_dir(sdk)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(true)
-            .spawn()
-            .expect("Python SDK Environment: Run mise run prepare");
-        let mut stdout = BufReader::new(process.stdout.take().unwrap()).lines();
-        let address = loop {
-            let line = stdout.next_line().await.unwrap().expect("Python SDK Readiness");
-            if let Some(address) = line.strip_prefix("harmos listening ") {
-                break format!("http://{address}");
-            }
-        };
-        let drain = tokio::spawn(async move { while stdout.next_line().await.ok().flatten().is_some() {} });
-        Self { address, process, drain }
+        assert!(python.is_file(), "Python SDK Environment: Run mise run prepare");
+        let (process, address) = support::announced(
+            tokio::process::Command::new(python)
+                .args(["-m", "tests.fixtures.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
+                .args(arguments)
+                .current_dir(sdk)
+                .stdin(Stdio::piped())
+                .stderr(Stdio::inherit()),
+        )
+        .await;
+        Self {
+            address: format!("http://{address}"),
+            process,
+        }
     }
 
     pub async fn close(mut self) -> std::process::ExitStatus {
@@ -374,7 +351,6 @@ impl Python {
 impl Drop for Python {
     fn drop(&mut self) {
         let _ = self.process.start_kill();
-        self.drain.abort();
     }
 }
 
@@ -389,7 +365,6 @@ impl Sdk {
 impl Drop for Sdk {
     fn drop(&mut self) {
         let _ = self.process.start_kill();
-        self.drain.abort();
         self.proxy.abort();
     }
 }

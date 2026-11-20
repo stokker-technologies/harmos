@@ -52,17 +52,12 @@ async def run(address: str) -> None:
             )
         ),
     )
-    endpoint = await plugin.start(address)
-    print(endpoint.address, flush=True)
-    try:
-        await endpoint.server.wait_for_termination()
-    finally:
-        await endpoint.stop()
+    await plugin.run(address)
 
 
 def main() -> None:
     parser = ArgumentParser(description=__doc__)
-    parser.add_argument("--address", required=True)
+    parser.add_argument("--address", default="127.0.0.1:0")
     options = parser.parse_args()
     asyncio.run(run(options.address))
 

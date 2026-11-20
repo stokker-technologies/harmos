@@ -53,5 +53,5 @@ async fn cpp_installs_itself() {
             },
         )
     });
-    super::support::installs_itself(&program, &[]).await;
+    super::support::installs_itself(&program, &[], None).await;
 }

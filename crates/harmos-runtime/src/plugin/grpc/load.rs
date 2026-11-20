@@ -60,6 +60,12 @@ pub struct Request {
     work: Arc<Mutex<Option<BoxFuture<'static, ()>>>>,
 }
 
+/// A Load's Invocation; Dropping It Unsettled Cancels the Operation, So Its Work Ends Where It Stands.
+struct Cancelling {
+    invocation: crate::operations::NativeInvocation<Load>,
+    settled: bool,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -98,6 +104,24 @@ impl NativeOperation for Load {
     }
 }
 
+impl Future for Cancelling {
+    type Output = crate::Result<crate::operations::Response<()>>;
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, context: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        let polled = std::pin::Pin::new(&mut self.invocation).poll(context);
+        self.settled = polled.is_ready();
+        polled
+    }
+}
+
+impl Drop for Cancelling {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.invocation.request_cancel();
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -124,7 +148,7 @@ pub(super) async fn load<T: Send + 'static>(
         None => (operations.registry.plugin_load, "GrpcPluginSettings.policy.load"),
     };
     let loaded = match operations.submit_native_with::<Load>(request, policy) {
-        Ok(invocation) => invocation.await.map(|_| ()),
+        Ok(invocation) => Cancelling { invocation, settled: false }.await.map(|_| ()),
         Err(error) => Err(error),
     };
     let finished = outcome.lock().expect("plugin load outcome lock is healthy").take();
@@ -134,6 +158,7 @@ pub(super) async fn load<T: Send + 'static>(
             plugin: plugin.to_owned(),
             timeout,
             configured_by,
+            diagnostics: String::new(),
         }),
         (Err(error), _) => Err(Error::Invalid(format!("Load Plugin {plugin}: {error}; load the plugin again"))),
         (Ok(()), None) => Err(Error::Invalid(format!("Load Plugin {plugin}: the load ended without a result; load the plugin again"))),

@@ -223,6 +223,7 @@ pub(super) async fn execute<O: Send + 'static>(
             Ok(_) => None,
         };
         instance.complete(logical.as_ref().map_or(Outcome::Succeeded, failure_outcome));
+        let declared = logical.as_ref().map_or(FailureKind::Permanent, |error| prepared.body.classify(error));
         let (owner, failure, diagnostic) = prepared.body.retain(logical, Arc::new(cleanup));
         instance.retain(
             Retained {
@@ -234,6 +235,7 @@ pub(super) async fn execute<O: Send + 'static>(
             diagnostic,
         );
         let failure = failure.unwrap_or_else(|| Refusal::Unavailable.into());
+        record_failure(&budget.operation, &failure, declared);
         if let Some(session) = &mut middleware {
             session.observe(super::middleware::Observation {
                 outcome: failure_outcome(&failure),
@@ -242,6 +244,7 @@ pub(super) async fn execute<O: Send + 'static>(
         }
         return Err(failure);
     }
+    let declared = answer.as_ref().err().map(|error| prepared.body.classify(error));
     drop(prepared.body);
     let answer = if was_refused {
         answer
@@ -254,6 +257,9 @@ pub(super) async fn execute<O: Send + 'static>(
     drop(admission);
     instance.complete(outcome(&answer));
     instance.finished();
+    if let Err(error) = &answer {
+        record_failure(&budget.operation, error, declared.unwrap_or(FailureKind::Permanent));
+    }
     if let Some(session) = &mut middleware {
         session.observe(super::middleware::Observation { outcome: outcome(&answer), settled: true });
     }
@@ -480,6 +486,41 @@ async fn cooperative<O>(
 
 fn outcome<O>(answer: &Result<O>) -> Outcome {
     answer.as_ref().err().map_or(Outcome::Succeeded, failure_outcome)
+}
+
+/// Write the One Record of a Request That Completed With a Failure; Payload Contents Never Enter It.
+///
+/// Every request, nested ones included, completes through `execute` exactly once, so no other layer logs the same failure.
+/// Sample rows travel inside a window's answer, never as requests, so a high-rate stream adds no records per sample.
+/// A cancellation is the caller's own decision and writes none.
+fn record_failure(operation: &str, error: &Error, declared: FailureKind) {
+    let Some((code, caller_correctable)) = classify(error, declared) else { return };
+    if caller_correctable {
+        tracing::warn!(target: "harmos::operations", %operation, code, message = %error, "operation request failed");
+    } else {
+        tracing::error!(target: "harmos::operations", %operation, code, message = %error, "operation request failed");
+    }
+}
+
+/// The Failure's Code and Whether the Caller Can Correct It; None for a Cancellation.
+///
+/// A structured failure names its own kind; otherwise the operation's declared classification of the error does.
+fn classify(error: &Error, declared: FailureKind) -> Option<(&'static str, bool)> {
+    match error {
+        Error::OperationRefused(Refusal::Cancelled { .. }) => None,
+        Error::OperationRefused(Refusal::TimedOut { .. }) => Some(("timed_out", true)),
+        Error::OperationRefused(Refusal::Unavailable) => Some(("unavailable", true)),
+        Error::NotRegistered { .. } | Error::OperationUnauthorized { .. } | Error::PermissionDenied => Some(("refused", true)),
+        Error::InvalidInput { .. } => Some(("invalid", true)),
+        error => match error.operation_failure().map_or(declared, |failure| failure.code()) {
+            FailureKind::Cancelled => None,
+            FailureKind::Transient => Some(("transient", true)),
+            FailureKind::Invalid => Some(("invalid", true)),
+            FailureKind::Unauthorized => Some(("unauthorized", true)),
+            FailureKind::Ambiguous => Some(("ambiguous", false)),
+            FailureKind::Permanent => Some(("permanent", false)),
+        },
+    }
 }
 
 fn failure_outcome(error: &Error) -> Outcome {

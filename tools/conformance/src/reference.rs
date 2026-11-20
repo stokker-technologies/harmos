@@ -18,7 +18,7 @@
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::result;
-use std::{io::Write, pin::Pin, sync::Arc, time::SystemTime};
+use std::{pin::Pin, sync::Arc, time::SystemTime};
 
 // Third Party Imports
 use futures_core::Stream;
@@ -44,6 +44,7 @@ use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse,
 };
+use harmos_protocol::plugin::{LaunchesAnnounceRequest, launches_client::LaunchesClient};
 use harmos_protocol::plugin::{child_response, response};
 use harmos_protocol::plugin::{
     instance_invoke_request, instance_invoke_response, instance_samples_request, instance_samples_response,
@@ -158,9 +159,13 @@ impl Instance for Reference {
 
 /* === Public Functions === */
 
-pub async fn serve(remote: bool) -> Result<()> {
-    let address = std::env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
-    let listener = TcpListener::bind(address).await?;
+/// Serve the Reference Plugin; Launch Credentials Make It Announce Its Listener in Either Lifecycle.
+///
+/// The managed lifecycle ends after Stop; the remote lifecycle keeps serving after it. Both bind `address` or an
+/// ephemeral loopback port. Without credentials the plugin serves silently, as when its author runs it by hand.
+pub async fn serve(remote: bool, address: Option<String>) -> Result<()> {
+    let credentials = credentials()?;
+    let listener = TcpListener::bind(address.as_deref().unwrap_or("127.0.0.1:0")).await?;
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| crate::Error::Invalid(error.to_string()))?;
     let (shutdown, stopped) = oneshot::channel();
     let reference = Reference {
@@ -175,25 +180,54 @@ pub async fn serve(remote: bool) -> Result<()> {
         let accepted = listener.accept().await.map(|(socket, _)| socket);
         Some((accepted, listener))
     });
-    println!("harmos listening {address}");
-    std::io::stdout().flush()?;
-    tonic::transport::Server::builder()
-        .add_service(
-            InstanceServer::new(reference)
-                .max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get())
-                .max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()),
-        )
-        .serve_with_incoming_shutdown(incoming, async move {
-            if remote {
-                std::future::pending::<()>().await;
-            }
-            let _ = stopped.await;
-        })
-        .await?;
+    let serving = tokio::spawn(
+        tonic::transport::Server::builder()
+            .add_service(
+                InstanceServer::new(reference)
+                    .max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get())
+                    .max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()),
+            )
+            .serve_with_incoming_shutdown(incoming, async move {
+                if remote {
+                    std::future::pending::<()>().await;
+                }
+                let _ = stopped.await;
+            }),
+    );
+    // Serve First: the Host May Describe the Plugin Before the Announcement Reply Arrives.
+    if let Some((endpoint, token)) = credentials {
+        announce(&endpoint, token, address.to_string()).await?;
+    }
+    serving.await.map_err(|error| crate::Error::Invalid(format!("Serve Reference Plugin: {error}")))??;
     Ok(())
 }
 
+/// Announce `address` to the Launching Host With This Process's Launch Credentials.
+pub async fn announce_address(address: String) -> Result<()> {
+    let (endpoint, token) = credentials()?.ok_or_else(|| {
+        crate::Error::Invalid("Announce Reference Plugin: start it through a host that supplies its launch credentials".into())
+    })?;
+    announce(&endpoint, token, address).await
+}
+
 /* === Private Functions === */
+
+/// Both Launch Variables, None When Neither Is Set; Only One Set Is a Startup Error.
+fn credentials() -> Result<Option<(String, String)>> {
+    match (std::env::var("HARMOS_HOST_ENDPOINT"), std::env::var("HARMOS_LAUNCH_TOKEN")) {
+        (Ok(endpoint), Ok(token)) => Ok(Some((endpoint, token))),
+        (Err(_), Err(_)) => Ok(None),
+        _ => Err(crate::Error::Invalid(
+            "Start Reference Plugin: set both HARMOS_HOST_ENDPOINT and HARMOS_LAUNCH_TOKEN, or neither; restart it through the host".into(),
+        )),
+    }
+}
+
+async fn announce(endpoint: &str, token: String, address: String) -> Result<()> {
+    let mut client = LaunchesClient::connect(format!("http://{endpoint}")).await?;
+    client.announce(LaunchesAnnounceRequest { token, address }).await?;
+    Ok(())
+}
 
 async fn invoke(
     request: plugin::Request, input: &mut Streaming<InstanceInvokeRequest>,

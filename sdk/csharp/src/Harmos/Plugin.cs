@@ -10,6 +10,8 @@ using System.Threading;
 using System;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
+using Grpc.Core;
+using Grpc.Net.Client;
 using Harmos.Internal.Plugin;
 using Harmos;
 using Microsoft.AspNetCore.Builder;
@@ -232,11 +234,11 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     return result;
   }
 
-  /// <summary>Serve plain gRPC. HARMOS_ADDRESS overrides address; remote mode remains alive after Stop.</summary>
-  public async Task RunAsync(string? address = null, bool remote = false, CancellationToken cancellationToken = default)
+  /// <summary>Bind an addressable listener. Port zero selects a free port; remote mode remains alive after Stop.</summary>
+  public async Task<Listener> StartAsync(string address, bool remote = true, CancellationToken cancellationToken = default)
   {
     var snapshot = Declarations();
-    var endpoint = IPEndPoint.Parse(Environment.GetEnvironmentVariable("HARMOS_ADDRESS") ?? address ?? "127.0.0.1:0");
+    var endpoint = IPEndPoint.Parse(address);
     if (!remote && !IPAddress.IsLoopback(endpoint.Address))
       throw new ArgumentException("Managed Address Must Be Loopback");
 
@@ -248,13 +250,45 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     builder.Services.AddGrpc(options => { options.MaxReceiveMessageSize = maximum; options.MaxSendMessageSize = maximum; });
     builder.Services.AddSingleton(provider => Service(snapshot, (ulong)maximum, remote, provider.GetRequiredService<IHostApplicationLifetime>()));
 
-    await using var app = builder.Build();
-    app.MapGrpcService<PluginService>();
-    await app.StartAsync(cancellationToken);
-    var bound = new Uri(app.Urls.Single());
-    Console.WriteLine($"harmos listening {bound.Authority}");
-    await Console.Out.FlushAsync(cancellationToken);
-    await app.WaitForShutdownAsync(cancellationToken);
+    var app = builder.Build();
+    try
+    {
+      app.MapGrpcService<PluginService>();
+      await app.StartAsync(cancellationToken);
+      var bound = new Uri(app.Urls.Single());
+      return new Listener(app, bound.Authority);
+    }
+    catch
+    {
+      await app.DisposeAsync();
+      throw;
+    }
+  }
+
+  /// <summary>Serve plain gRPC until Stop; with launch credentials, announce the bound address to the host once.</summary>
+  public async Task RunAsync(string address = "127.0.0.1:0", bool remote = false, CancellationToken cancellationToken = default)
+  {
+    var endpoint = Environment.GetEnvironmentVariable("HARMOS_HOST_ENDPOINT");
+    var token = Environment.GetEnvironmentVariable("HARMOS_LAUNCH_TOKEN");
+    if (endpoint is not null && token is null)
+      throw new InvalidOperationException("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
+    if (endpoint is null && token is not null)
+      throw new InvalidOperationException("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
+    await using var listener = await StartAsync(address, remote, cancellationToken);
+    if (endpoint is not null && token is not null)
+    {
+      using var channel = GrpcChannel.ForAddress($"http://{endpoint}");
+      try
+      {
+        await new Launches.LaunchesClient(channel).AnnounceAsync(new LaunchesAnnounceRequest { Token = token, Address = listener.Address },
+            cancellationToken: cancellationToken);
+      }
+      catch (RpcException error)
+      {
+        throw new InvalidOperationException($"Announce Plugin Launch: {error.Status.Detail}", error);
+      }
+    }
+    await listener.WaitAsync(cancellationToken);
   }
 
   /// <summary>The served instance; message_bytes bounds every response, including each window part.</summary>
@@ -271,6 +305,37 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   }, new(registrar.operations), new(registrar.streams), cleanup.ToArray(), remote, lifetime);
 
 
+}
+
+/// <summary>Own a bound plugin transport; dispose it to stop serving and release its resources.</summary>
+public sealed class Listener : IAsyncDisposable
+{
+  private readonly WebApplication app;
+
+  internal Listener(WebApplication app, string address)
+  {
+    this.app = app;
+    Address = address;
+  }
+
+  public string Address
+  {
+    get;
+  }
+
+  public Task WaitAsync(CancellationToken cancellationToken = default) => app.WaitForShutdownAsync(cancellationToken);
+
+  public async ValueTask DisposeAsync()
+  {
+    try
+    {
+      await app.StopAsync();
+    }
+    finally
+    {
+      await app.DisposeAsync();
+    }
+  }
 }
 
 internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);

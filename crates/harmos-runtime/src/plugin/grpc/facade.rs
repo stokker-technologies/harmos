@@ -357,8 +357,7 @@ impl NativeOperation for Inspect {
         let process_participant = host.0.participant();
         let (retained, dropped) = oneshot::channel();
         let message_bytes = operations.transfer_message_bytes().get();
-        let mut task =
-            tokio::spawn(inspect_owned(operations.clock().clone(), request, message_bytes, participant, process_participant, dropped));
+        let mut task = tokio::spawn(inspect_owned(operations.clone(), request, message_bytes, participant, process_participant, dropped));
         let result = tokio::select! {
             biased;
             () = context.cancellation.cancelled() => {
@@ -413,16 +412,20 @@ fn placement_memory(placement: &Placement) -> usize {
 }
 
 async fn inspect_owned(
-    clock: Clock, request: InspectRequest, message_bytes: usize, mut participant: StopParticipant, process_participant: StopParticipant,
-    dropped: oneshot::Receiver<()>,
+    operations: Manager, request: InspectRequest, message_bytes: usize, mut participant: StopParticipant,
+    process_participant: StopParticipant, dropped: oneshot::Receiver<()>,
 ) -> Result<Inspection, Error> {
+    let clock = operations.clock().clone();
     let mut process = None;
     let mut connection = None;
     let work = async {
         let address = match &request.placement {
             Placement::Managed(managed) => {
-                let child = process.insert(Process::spawn(managed, process_participant).await?);
-                child.ready(managed).await?
+                let owner = managed.executable.display().to_string();
+                let (spawned, mut launch) =
+                    Process::spawn(managed, process_participant, &operations.registry.launches, operations.registry.startup_output, &owner)
+                        .await?;
+                process.insert(spawned).ready(&mut launch).await?
             }
             Placement::Remote(address) => address.clone(),
         };
@@ -444,10 +447,14 @@ async fn inspect_owned(
     if let Some(connection) = connection {
         connection.closed.send_replace(true);
     }
-    if let Some(process) = &mut process {
-        process.terminate(&clock, request.settings.stop_grace, "Settle Plugin Inspection").await?;
+    match (&mut process, result) {
+        (Some(process), Err(error)) => Err(process.fail(&clock, request.settings.stop_grace, "Settle Plugin Inspection", error).await?),
+        (Some(process), Ok(inspection)) => {
+            process.terminate(&clock, request.settings.stop_grace, "Settle Plugin Inspection").await?;
+            Ok(inspection)
+        }
+        (None, result) => result,
     }
-    result
 }
 
 /* === Tests === */

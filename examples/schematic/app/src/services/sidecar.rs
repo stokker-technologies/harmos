@@ -17,9 +17,7 @@
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::task::JoinHandle;
 
 // Third Party Imports
 
@@ -31,7 +29,7 @@ use harmos_protocol::host::{
 };
 use harmos_runtime::clock::Clock;
 use harmos_runtime::operations::NativeOperation;
-use harmos_runtime::plugin::grpc::Load;
+use harmos_runtime::plugin::grpc::{Launches, Load};
 use harmos_runtime::plugin::manager::{Management, Manager, PluginManagerSettings};
 use harmos_runtime::{Error, Result};
 
@@ -50,7 +48,6 @@ pub struct Running {
     settings: Arc<PluginManagerSettings>,
     clock: Clock,
     child: Child,
-    output: JoinHandle<()>,
 }
 
 /* === Enums === */
@@ -80,7 +77,6 @@ impl Running {
                 domain: "Stop Schematic Plugin: Process Exit Timed Out",
             })?
             .map_err(failed)?;
-        self.output.await.map_err(failed)?;
         if !status.success() {
             return Err(Error::NotReady {
                 domain: "Stop Schematic Plugin: Process Failed",
@@ -114,33 +110,25 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
     let manager = runtime.operations.context().resource::<Manager>()?;
     let settings = runtime.operations.context().resource::<PluginManagerSettings>()?;
     let clock = runtime.operations.clock().clone();
+    // The Process Announces Its Listener Through a Launch Credential Instead of Printing It.
+    let launches = Launches::new();
+    let mut launch = launches.reserve(NAME).await.map_err(failed)?;
     let mut command = Command::new(executable);
     command
         .env("SCHEMATIC_DIRECTORY", directory)
-        .env("HARMOS_ADDRESS", "127.0.0.1:0")
-        .stdout(Stdio::piped())
+        .envs(launch.environment())
+        .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x08000000);
-    let mut child = command.spawn().map_err(failed)?;
-    let mut lines = BufReader::new(child.stdout.take().ok_or(Error::NotReady {
-        domain: "Start Schematic Plugin: Missing Output",
-    })?)
-    .lines();
-    let endpoint = async {
-        loop {
-            let line = lines.next_line().await.map_err(failed)?.ok_or(Error::NotReady {
-                domain: "Start Schematic Plugin: Missing Endpoint",
-            })?;
-            if let Some(address) = line.strip_prefix("harmos listening ") {
-                break Ok::<_, Error>(format!("http://{address}"));
-            }
-        }
-    };
-    let address = clock.timeout(<Load as NativeOperation>::POLICY.timeout, endpoint).await.map_err(|_| Error::NotReady {
+    let child = command.spawn().map_err(failed)?;
+    let announced = clock.timeout(<Load as NativeOperation>::POLICY.timeout, launch.announced()).await.map_err(|_| Error::NotReady {
         domain: "Start Schematic Plugin: Endpoint Timed Out",
-    })??;
+    })?;
+    let address = format!("http://{}", announced.map_err(failed)?);
+    drop(launch);
+    launches.shutdown().await;
     let mut watch = manager.watch(PluginsWatchRequest { name: Some(NAME.into()), at: None }).await.map_err(failed)?;
     manager
         .create(PluginsCreateRequest {
@@ -176,8 +164,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
             break;
         }
     }
-    let output = tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} });
-    Ok(Running { manager, settings, clock, child, output })
+    Ok(Running { manager, settings, clock, child })
 }
 
 /* === Private Functions === */

@@ -804,6 +804,7 @@ mod tests {
             let renamed = contract.clone().with_id("example.criterion.0").unwrap();
             assert_eq!(renamed.operation().id.as_str(), "example.criterion.0");
             assert_eq!(renamed.fingerprint(), template.protobuf().unwrap().fingerprint("example.criterion.0").unwrap());
+            assert!(contract.clone().with_id("harmos.plugin.v1.Launches/Announce").is_err());
             assert!(contract.with_id("harmos.plugin.v1.Instance/Invoke").is_err());
             let mut forged = encoded;
             forged["fingerprint"] = json!("00".repeat(32));

@@ -100,6 +100,12 @@ impl Process {
         self.child.lock().expect("process owner is healthy").stdout().take().expect("Cargo stdout was piped")
     }
 
+    /// The Exit Status When the Process Has Already Exited, Without Waiting.
+    #[cfg(feature = "sidecar")]
+    pub(super) fn exited(&self) -> Result<Option<ExitStatus>, Error> {
+        Ok(self.child.lock().expect("process owner is healthy").try_wait()?)
+    }
+
     pub(super) fn kill(&self) -> Result<(), Error> {
         let mut child = self.child.lock().expect("process owner is healthy");
         if child.try_wait()?.is_none() {

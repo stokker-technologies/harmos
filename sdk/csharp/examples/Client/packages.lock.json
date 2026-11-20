@@ -24,15 +24,6 @@
         "resolved": "2.76.0",
         "contentHash": "cSxC2tdnFdXXuBgIn1pjc4YBx7LXTCp4M0qn+SMBS35VWZY+cEQYLWTBDDhdBH1HzU7BV+ncVZlniGQHMpRJKQ=="
       },
-      "Grpc.Net.Client": {
-        "type": "Transitive",
-        "resolved": "2.76.0",
-        "contentHash": "K1oldmqw2+Gn69nGRzZLhqSiUZwelX1GrBu/cUl9wNf1C0uB61vFS6JcxUUv9P8VoUJhFsmV44JA6lI2EUt4xw==",
-        "dependencies": {
-          "Grpc.Net.Common": "2.76.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.0"
-        }
-      },
       "Grpc.Net.ClientFactory": {
         "type": "Transitive",
         "resolved": "2.76.0",
@@ -168,7 +159,8 @@
         "type": "Project",
         "dependencies": {
           "Google.Protobuf": "[3.33.1, )",
-          "Grpc.AspNetCore": "[2.76.0, )"
+          "Grpc.AspNetCore": "[2.76.0, )",
+          "Grpc.Net.Client": "[2.76.0, )"
         }
       },
       "Google.Protobuf": {
@@ -186,6 +178,16 @@
           "Google.Protobuf": "3.31.1",
           "Grpc.AspNetCore.Server.ClientFactory": "2.76.0",
           "Grpc.Tools": "2.76.0"
+        }
+      },
+      "Grpc.Net.Client": {
+        "type": "CentralTransitive",
+        "requested": "[2.76.0, )",
+        "resolved": "2.76.0",
+        "contentHash": "K1oldmqw2+Gn69nGRzZLhqSiUZwelX1GrBu/cUl9wNf1C0uB61vFS6JcxUUv9P8VoUJhFsmV44JA6lI2EUt4xw==",
+        "dependencies": {
+          "Grpc.Net.Common": "2.76.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.0"
         }
       }
     }

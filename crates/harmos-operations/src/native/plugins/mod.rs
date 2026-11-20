@@ -102,6 +102,13 @@ impl Error {
             ..Default::default()
         }))
     }
+
+    /// A Failure the Caller Resolves by Retrying Once the Reported Condition Has Passed.
+    pub fn transient(code: &str, message: impl Into<String>, action: &str) -> Self {
+        let mut error = Self::new(code, message, action);
+        error.0.classification = model::Classification::Transient as i32;
+        error
+    }
 }
 
 pub fn catalog() -> crate::execution::operations::Catalog {

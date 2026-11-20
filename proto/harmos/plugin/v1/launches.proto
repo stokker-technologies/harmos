@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Launches
+//
+// Bootstrap control for plugin processes the host starts.
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// Served only on the host's loopback bootstrap listener named by HARMOS_HOST_ENDPOINT; never a host operation or client route.
+service Launches {
+  // Consumes the launch token of one pending launch and delivers the plugin's already-serving listener address.
+  rpc Announce(LaunchesAnnounceRequest) returns (LaunchesAnnounceResponse);
+}
+
+// === Requests and Responses === //
+
+// Identifies one pending launch attempt and the loopback listener its plugin already serves.
+message LaunchesAnnounceRequest {
+  // The HARMOS_LAUNCH_TOKEN value of this launch attempt; valid once.
+  string token = 1;
+  // The bound loopback socket address the plugin serves, for example 127.0.0.1:53124.
+  string address = 2;
+}
+
+// Acknowledges the announcement; the host dials and admits the plugin separately afterwards.
+message LaunchesAnnounceResponse {}
+
+// === Resources === //
+
+// === Enums === //
