@@ -15,9 +15,9 @@
 #include <cstdlib>
 #include <exception>
 #include <functional>
-#include <iostream>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 // Third Party Imports
@@ -27,6 +27,7 @@
 // Local Imports
 #include "duplex.hpp"
 #include "harmos/plugin/v1/instance.grpc.pb.h"
+#include "harmos/plugin/v1/launches.grpc.pb.h"
 #include "invocation.hpp"
 #include "samples.hpp"
 
@@ -45,6 +46,7 @@ using std::condition_variable;
 using std::exception;
 using std::lock_guard;
 using std::mutex;
+using std::optional;
 using std::runtime_error;
 using std::shared_ptr;
 using std::size_t;
@@ -65,6 +67,19 @@ namespace harmos::plugin {
 namespace {
 using detail::Duplex;
 
+optional<string> environment(const char *name) {
+#ifdef _WIN32
+  char *raw = nullptr;
+  size_t length = 0;
+  if (_dupenv_s(&raw, &length, name) != 0)
+    throw runtime_error(string("Read Plugin Launch: Check ") + name + " in the Process Environment");
+  const unique_ptr<char, decltype(&std::free)> value(raw, &std::free);
+  return value ? optional<string>(value.get()) : std::nullopt;
+#else
+  const char *value = std::getenv(name);
+  return value ? optional<string>(value) : std::nullopt;
+#endif
+}
 /* === Classes === */
 
 // gRPC 1.76 Accepts a Per-Server Engine Through Owned Channel Arguments.
@@ -451,22 +466,24 @@ Listener Plugin::start(string address, bool remote) const {
 
 void Plugin::run(string address) const {
   const bool remote = !address.empty();
-#ifdef _WIN32
-  char *raw = nullptr;
-  size_t length = 0;
-  if (_dupenv_s(&raw, &length, "HARMOS_ADDRESS") != 0)
-    throw runtime_error("Read Plugin Address: Check HARMOS_ADDRESS in the Process Environment");
-  const unique_ptr<char, decltype(&std::free)> configured(raw, &std::free);
-  if (address.empty())
-    address = configured ? configured.get() : "127.0.0.1:0";
-#else
-  const char *configured = std::getenv("HARMOS_ADDRESS");
-  if (address.empty())
-    address = configured ? configured : "127.0.0.1:0";
-#endif
-  auto listener = start(std::move(address), remote);
-  if (configured)
-    std::cout << "harmos listening " << listener.address() << std::endl;
+  const auto endpoint = environment("HARMOS_HOST_ENDPOINT");
+  const auto token = environment("HARMOS_LAUNCH_TOKEN");
+  if (endpoint && !token)
+    throw runtime_error("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
+  if (!endpoint && token)
+    throw runtime_error("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
+  auto listener = start(remote ? std::move(address) : string("127.0.0.1:0"), remote);
+  if (endpoint) {
+    const auto launches = v1::Launches::NewStub(grpc::CreateChannel(*endpoint, grpc::InsecureChannelCredentials()));
+    grpc::ClientContext context;
+    v1::LaunchesAnnounceRequest request;
+    request.set_token(*token);
+    request.set_address(listener.address());
+    v1::LaunchesAnnounceResponse response;
+    const auto status = launches->Announce(&context, request, &response);
+    if (!status.ok())
+      throw runtime_error("Announce Plugin Launch: " + status.error_message());
+  }
   listener.wait();
 }
 } // namespace harmos::plugin

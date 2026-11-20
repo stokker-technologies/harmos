@@ -11,7 +11,6 @@
 # === Imports === #
 
 # Standard Library Imports
-import os
 import re
 import subprocess
 import tempfile
@@ -58,9 +57,6 @@ class ManagedHostLauncher(unittest.TestCase):
         plugin = root / "plugin"
         executable.touch()
         plugin.touch()
-        environment = patch.dict(os.environ, {"HARMOS_ADDRESS": "inherited-address"})
-        environment.start()
-        self.addCleanup(environment.stop)
         launcher = patch(
             "tests.support.host.subprocess.run",
             return_value=subprocess.CompletedProcess([], 0, ""),
@@ -72,7 +68,6 @@ class ManagedHostLauncher(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(run.call_args.args[0], [str(executable), "--plugin", str(plugin)])
-        self.assertNotIn("HARMOS_ADDRESS", run.call_args.kwargs["env"])
         self.assertEqual(run.call_args.kwargs["timeout"], 73)
 
     def test_missing_explicit_plugin_does_not_launch(self) -> None:

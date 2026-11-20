@@ -226,7 +226,8 @@ public:
   Declarations declarations() const;
   // Binds the Supplied Address; Port Zero Selects a Free Port. Stop Keeps Serving.
   Listener start(std::string address) const;
-  // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
+  // An Explicit Address Selects Remote Lifecycle; Empty Binds 127.0.0.1:0. With HARMOS_HOST_ENDPOINT and
+  // HARMOS_LAUNCH_TOKEN Set, the Bound Address Is Announced Once Through Launches/Announce.
   void run(std::string address = {}) const;
 
 private:
