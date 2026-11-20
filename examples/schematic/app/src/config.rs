@@ -14,16 +14,18 @@
 /* === Imports === */
 
 // Standard Library Imports
-use harmos_runtime::plugin::grpc::PlacementSettings;
-use harmos_runtime::plugin::manager::PluginManagerSettings;
-use harmos_runtime::storage::config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 // Third Party Imports
+use serde::Deserialize;
 
 // Local Imports
+use crate::document::Document;
+use harmos_runtime::plugin::grpc::PlacementSettings;
+use harmos_runtime::plugin::manager::{PluginManagerSettings, PluginStateSettings};
+use harmos_runtime::storage::config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 
 /* === Constants === */
 
@@ -33,14 +35,14 @@ use std::time::Duration;
 
 /* === Structs === */
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Settings {
     recordings: PathBuf,
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct StartConfig {
-    pub document: crate::document::Document,
+    pub document: Document,
     pub settings: Settings,
 
     #[serde(default)]
@@ -90,13 +92,16 @@ impl Settings {
     pub fn plugins(&self, directory: PathBuf) -> PluginManagerSettings {
         PluginManagerSettings {
             namespace: "schematic-plugins".into(),
+            state: PluginStateSettings {
+                max_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+            },
             directory,
             target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
             placement: PlacementSettings {
                 reconnect_delay: Duration::from_millis(100),
                 stop_grace: Duration::from_secs(10),
                 stream_window: NonZeroUsize::new(16).unwrap(),
-                interval_window: std::time::Duration::from_millis(100),
+                interval_window: Duration::from_millis(100),
                 interval_lag: Default::default(),
             },
             bundle: Default::default(),

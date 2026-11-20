@@ -93,15 +93,16 @@ protocol bindings remain tracked. Documentation changes are reported to the owne
   Prefer generating the C++ inventory from the authoritative descriptors and
   deleting its hand-maintained list.
 
-The shared generator integration fixture also keeps two contract inventories:
-`test_shared_generator_preserves_contracts.py` generates complete SDKs using the
-live library descriptors, then compares them against the frozen whole-output
-hashes in `tools/python/tests/fixtures/shared_sdk_inventory.json`. Its nested
-contract assertions still pass; adding State changes the inherited SDK inventory.
-No generation task owns refreshing that baseline. Under the task's REWORK rule,
-do not overwrite hashes or remove the assertion here. Prefer an independently
-owned fixture schema with semantic generation checks, retiring the whole-library
-hash inventory after owner direction.
+`tools/python/tests/fixtures/shared_sdk_inventory.json` is a hand-frozen generated
+output regression snapshot, not an independently authored SDK call inventory.
+`test_shared_generator_preserves_contracts.py` compares fresh output against its
+fixed hashes alongside semantic checks for nested values, presence, audiences and
+call options. No generation task produces the snapshot. The owner authorized
+refreshing only changes caused by the State and collection additions. Rendering
+the snapshot's original descriptor revision reproduces every recorded hash;
+rendering the merged descriptors changes ten existing entries solely for State
+Get/Put bindings and response exports. Collection messages add no entries to this
+product fixture. The exact comparison and semantic checks remain in place.
 
 ## Product Integration Repair Contract
 
