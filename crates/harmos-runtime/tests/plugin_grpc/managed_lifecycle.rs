@@ -12,10 +12,12 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::fs;
 
 // Third Party Imports
 
 // Local Imports
+use super::manager::support::Process;
 use super::support;
 use harmos_runtime::plugin::grpc::{Error, Managed, Placement};
 
@@ -41,11 +43,13 @@ async fn managed_sdk_plugin_is_described_and_stopped_with_its_host() {
     assert!(activation.description.started_at.is_some());
     assert!(activation.executable_digest.is_some());
     assert_eq!(activation.get().await.unwrap(), activation.description);
+    let process = Process::observe(activation.process_id.unwrap()).await;
 
     // Host Shutdown Runs Stop Hooks And Reaps The Process
     runtime.stop().await.unwrap();
     attached.stop("Already Stopped").await.unwrap();
-    assert_eq!(std::fs::read(cleaned).unwrap(), b"stopped");
+    process.assert_exited().await;
+    assert_eq!(fs::read(cleaned).unwrap(), b"stopped");
     assert!(!activation.is_connected());
     assert!(activation.get().await.is_err());
 }

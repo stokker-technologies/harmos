@@ -478,14 +478,6 @@ fn main() -> Result<()> {
                 Ok(())
             })
             .expect("Register Plugin Declarations")
-    } else if mode == "stop-failure" {
-        Plugin::new("stop_failure", "1.0.0")
-            .register(|ctx| {
-                ctx.register(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))?;
-                Ok(())
-            })
-            .expect("Register Plugin Declarations")
-            .on_stop(|| Err(harmos::Error::Invalid("Cleanup Failed".into())))
     } else if mode == "device" {
         let stream = Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0")

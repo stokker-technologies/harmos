@@ -1,5 +1,32 @@
 ## ADDED Requirements
 
+### Requirement: Stop Only an Owned Process
+The host SHALL send Instance.Stop only to a process it spawned and still owns through
+grpc/managed.rs. Launch credentials SHALL NOT establish lifecycle ownership. Every
+placement SHALL settle work and finalize attempted initialization before detaching.
+An unmanaged detach SHALL close only the host connection and forget the activation;
+all four SDK run entries SHALL keep serving after connection loss.
+
+#### Scenario: Unmanaged Entry Is Removed or Disabled
+- **WHEN** the product removes or disables an externally started plugin entry
+- **THEN** no Instance.Stop is sent, its streams end, and the plugin keeps serving and can register again
+
+#### Scenario: Unmanaged Attachment Is Replaced
+- **WHEN** the product detaches an unmanaged endpoint and registers its replacement
+- **THEN** the old endpoint receives no Stop and both externally owned servers remain available
+
+#### Scenario: Externally Spawned Plugin Used Launch Credentials
+- **WHEN** a developer tool spawns a plugin with launch credentials and the product later detaches it
+- **THEN** the host sends no Stop and the plugin run entry keeps serving for another registration
+
+#### Scenario: Managed Entry Is Stopped
+- **WHEN** the host removes, disables or replaces an entry whose child it spawned
+- **THEN** it sends Stop before any required kill and reaps its owned child
+
+#### Scenario: Unmanaged Startup or Reconnect Fails
+- **WHEN** an unmanaged activation fails initialization or reconnect setup
+- **THEN** the host finalizes attempted initialization and closes its connection without sending Stop
+
 ### Requirement: Durable Entry-Scoped Plugin State
 The host SHALL persist one opaque revisioned value per plugin entry through its
 existing StateManager journal and complete snapshots, independently of the

@@ -668,7 +668,7 @@ impl Attached {
                     if let Err(failure) = activation.finalize().await {
                         tracing::warn!(plugin = %activation.description.id, %failure, "plugin finalization failed");
                     }
-                    if activation.has_hooks() {
+                    if process.is_some() && activation.has_hooks() {
                         let mut client = activation.connection.client();
                         let _ = clock
                             .timeout(settings.stop_grace, client.stop(InstanceStopRequest { reason: "Initialization Failed".into() }))
@@ -931,6 +931,10 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         let deadline = clock.now() + settings.stop_grace;
         match ending {
             Ending::HostShutdown => unreachable!("host settlement precedes transport Stop"),
+            Ending::Stop(_) if process.is_none() => {
+                activation.connection.closed.send_replace(true);
+                return settled.and(finalized).map_err(Arc::new);
+            }
             Ending::Stop(reason) => {
                 let mut client = activation.connection.client();
                 tracing::debug!(plugin = %activation.description.id, "waiting for plugin Instance.Stop reply");
@@ -1071,11 +1075,6 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             {
                 if let Err(error) = next.finalize().await {
                     tracing::warn!(plugin = %next.description.id, %error, "plugin reconnect finalization failed");
-                }
-                if next.has_hooks() {
-                    let mut client = next.connection.client();
-                    let _ =
-                        clock.timeout(settings.stop_grace, client.stop(InstanceStopRequest { reason: "Reconnect Failed".into() })).await;
                 }
                 next.connection.closed.send_replace(true);
             }

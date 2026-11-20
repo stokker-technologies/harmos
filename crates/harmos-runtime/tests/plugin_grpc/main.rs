@@ -55,7 +55,6 @@ mod samples_children;
 mod scope;
 mod scoped_publications;
 mod scoped_sleep;
-mod stop_failure;
 mod stream_reconnect;
 mod support;
 mod transfer_admission;

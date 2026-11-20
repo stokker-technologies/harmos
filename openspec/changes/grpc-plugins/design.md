@@ -566,9 +566,20 @@ plugin. The network is trusted, as it is for clients.
 - Samples produced while disconnected are lost. There is no request deduplication or watch replay.
   Client survival across transient drops is deferred until those host contracts are separately specified;
   reconnecting a plugin does not establish resumable client requests or subscriptions.
-- Before the host shuts down or removes a plugin it calls `Stop` on it. The plugin runs its
-  stop and cleanup hooks and replies; the host closes once every plugin has replied or the
-  grace period ends. A managed plugin then exits; a remote one keeps running.
+- Before the host shuts down or removes a managed plugin it calls `Stop` on its owned
+  child after settling work and finalizing the activation. The plugin runs its process
+  cleanup hooks and replies; the host closes the connection, awaits exit and reaps the child.
+  Only a child owned by `crates/harmos-runtime/src/plugin/grpc/managed.rs` receives Stop,
+  including startup failure and replacement rollback. Launch credentials announce an
+  address and never establish process ownership.
+- For an externally started plugin, removal, disable, attachment replacement, startup
+  failure and failed reconnect settle work and finalize attempted initialization, then
+  close only the host connection. The plugin observes ended Samples/Invoke streams and
+  cancellation or transport failure for outstanding work, not Instance.Stop. Its listener
+  and run entry stay serving, including when a developer tool supplied launch credentials;
+  a product can register the same endpoint again. No SDK run entry exits on connection loss.
+  The existing registry Replace operation still accepts only managed bundle entries;
+  replacing a remote attachment requires detaching it and registering the desired endpoint.
 
 ## Operations
 

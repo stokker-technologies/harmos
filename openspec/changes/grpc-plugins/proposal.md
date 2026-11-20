@@ -36,8 +36,10 @@ Generated protocol output stays tracked and is regenerated through project tasks
   operations admit the host/declaring owner; Public calls remain host-mediated.
 - Plugins connect independently; missing providers refuse at call time.
 - Protobuf carries plugin payloads; Postcard remains private storage encoding.
-- Managed-process shutdown retains ownership through bounded settlement; remote
-  detach preserves cleanup failures without terminating an unowned process.
+- Process ownership follows the runtime's managed child, never launch credentials.
+  Only that child receives Instance.Stop and is killed/reaped. Remote detach settles
+  work and finalizes the activation, then closes the host connection without Stop;
+  the externally owned process keeps serving and can register again.
 - Sidecar and supported guest carriers share the product contract; no deprecated
   framed path, declaration aliases or compatibility adapters remain.
 
