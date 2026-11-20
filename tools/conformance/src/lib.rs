@@ -45,7 +45,7 @@ mod product_reflection {
 
 pub use error::Error;
 pub use managed::{Target, run};
-pub use reference::serve;
+pub use reference::{announce_address, serve};
 
 /* === Imports === */
 

@@ -51,7 +51,7 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     let plugin = support::binary("harmos-conformance-plugin", env!("CARGO_BIN_EXE_harmos-conformance-plugin"));
 
     // Run the Complete Managed Plugin Journey.
-    let output = Command::new(&host).arg("--plugin").arg(&plugin).env_remove("HARMOS_ADDRESS").output().await?;
+    let output = Command::new(&host).arg("--plugin").arg(&plugin).output().await?;
 
     // Inspect Every Rule and the Managed Process Shutdown.
     let stdout = String::from_utf8(output.stdout)?;
@@ -61,7 +61,7 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     assert_eq!(stdout.lines().filter(|line| line.ends_with("| PASS |")).count(), harmos_conformance::RULE_COUNT, "{stdout}");
 
     // Run the Same Cases Against an Independently Managed Remote Endpoint.
-    let remote = support::PluginProcess::start(&plugin)?;
+    let remote = support::PluginProcess::start(&plugin).await?;
     let output = Command::new(&host).arg("--address").arg(&remote.address).output().await?;
     let stdout = String::from_utf8(output.stdout)?;
     assert!(output.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));

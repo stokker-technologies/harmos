@@ -48,6 +48,10 @@ struct TraceRecord {
 
 struct TraceFields(BTreeMap<String, String>);
 
+/// Captures Log Events: Their Target, Level and Fields.
+#[derive(Clone, Default)]
+struct EventCapture(Arc<Mutex<Vec<(&'static str, tracing::Level, BTreeMap<String, String>)>>>);
+
 /* === Enums === */
 
 #[derive(harmos_runtime::Message, Debug, Default)]
@@ -95,7 +99,30 @@ static FAMILY_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
 const FAMILY_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<FamilyContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<FamilyContractDeclaration>::new(&FAMILY_CONTRACT_DECLARATION_DESCRIPTION);
 
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
+struct FailContractDeclaration {
+    label: String,
+}
+
+static FAIL_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<FailContractDeclaration>("causation.fail", POLICY);
+
+const FAIL_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<FailContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<FailContractDeclaration>::new(&FAIL_CONTRACT_DECLARATION_DESCRIPTION);
+
 /* === Implementations === */
+
+impl<S: Subscriber> Layer<S> for EventCapture {
+    fn on_event(&self, event: &tracing::Event<'_>, _: layer::Context<'_, S>) {
+        let mut fields = TraceFields(BTreeMap::new());
+        event.record(&mut fields);
+        self.0.lock().unwrap().push((event.metadata().target(), *event.metadata().level(), fields.0));
+    }
+}
 
 impl tracing::field::Visit for TraceFields {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
@@ -224,6 +251,22 @@ fn family_contract_declaration_operation()
     )
 }
 
+async fn fail_contract_declaration_handler(
+    _: FailContractDeclaration, _: harmos_runtime::operations::FunctionContext<FailContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<()>, Error> {
+    Err(Error::InvalidInput { field: "label", reason: "the story refuses every label" })
+}
+
+fn fail_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        FAIL_CONTRACT_DECLARATION_OPERATION,
+        const { &[] },
+        fail_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Invalid,
+    )
+}
+
 /* === Private Functions === */
 
 async fn runtime() -> Runtime<Bank> {
@@ -250,6 +293,35 @@ async fn runtime() -> Runtime<Bank> {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn a_failed_request_writes_exactly_one_record_without_its_payload() {
+    // A Request the Handler Refuses, Under a Capturing Subscriber.
+    let runtime = runtime().await;
+    runtime
+        .operations
+        .register_operation(fail_contract_declaration_operation().expect("representable operation"), crate::support::CONCURRENT)
+        .await
+        .unwrap();
+    let events = EventCapture::default();
+    let subscriber = tracing_subscriber::registry().with(events.clone());
+    async {
+        let failed = runtime.operation(FailContractDeclaration { label: "trace-secret-payload".to_owned() }).start().await.unwrap();
+        assert!(failed.await.is_err());
+    }
+    .with_subscriber(subscriber)
+    .await;
+    crate::support::app::stop(&runtime).await.unwrap();
+
+    // The Operation Layer Writes One Caller-Correctable Record Naming the Operation, Never the Payload.
+    let events = events.0.lock().unwrap();
+    let failures = events.iter().filter(|(target, ..)| *target == "harmos::operations").collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    let (_, level, fields) = failures[0];
+    assert_eq!(*level, tracing::Level::WARN);
+    assert_eq!(fields.get("operation").map(String::as_str), Some("causation.fail"));
+    assert!(events.iter().all(|(_, _, fields)| fields.values().all(|value| !value.contains("trace-secret-payload"))));
+}
 
 #[tokio::test]
 async fn scoped_trace_handoffs() {

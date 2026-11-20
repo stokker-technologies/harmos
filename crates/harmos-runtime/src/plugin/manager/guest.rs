@@ -112,7 +112,7 @@ impl Actor {
         let previous = entry.clone();
         entry.state = state as i32;
         entry.activation = activation;
-        entry.failure = failure.map(|cause| unavailable(&name, cause));
+        super::actor::record_failure(&mut entry, failure.map(|cause| unavailable(&name, cause)));
         if entry == previous {
             return Ok(());
         }

@@ -134,6 +134,7 @@ pub(super) async fn load<T: Send + 'static>(
             plugin: plugin.to_owned(),
             timeout,
             configured_by,
+            diagnostics: String::new(),
         }),
         (Err(error), _) => Err(Error::Invalid(format!("Load Plugin {plugin}: {error}; load the plugin again"))),
         (Ok(()), None) => Err(Error::Invalid(format!("Load Plugin {plugin}: the load ended without a result; load the plugin again"))),

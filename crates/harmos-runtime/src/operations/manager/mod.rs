@@ -99,6 +99,10 @@ pub(crate) struct Registry {
     pub(crate) plugin_calls: OnceLock<facade::Host>,
     /// The Configured `plugins.load` Policy (`GrpcPluginSettings::policy`).
     pub(crate) plugin_load: super::OperationPolicy,
+    /// The Standard-Error Tail Bound of Managed Startups (`GrpcPluginSettings::startup_output`).
+    pub(crate) startup_output: crate::plugin::grpc::StartupOutput,
+    /// The Runtime-Owned Bootstrap Listener Managed Plugins Announce To.
+    pub(crate) launches: crate::plugin::grpc::Launches,
     pub(crate) access: Arc<harmos_operations::access::AccessAccess>,
     pub(crate) status: Arc<harmos_operations::status::StatusAccess>,
     pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,

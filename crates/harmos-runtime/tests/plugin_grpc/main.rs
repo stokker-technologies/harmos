@@ -39,6 +39,7 @@ mod lifecycle;
 mod malformed_identity;
 mod malformed_payload;
 mod managed_environment;
+mod managed_launch;
 mod managed_lifecycle;
 mod manager;
 mod peer_journey;

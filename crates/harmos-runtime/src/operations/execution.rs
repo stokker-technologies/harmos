@@ -234,6 +234,7 @@ pub(super) async fn execute<O: Send + 'static>(
             diagnostic,
         );
         let failure = failure.unwrap_or_else(|| Refusal::Unavailable.into());
+        record_failure(&budget.operation, &failure);
         if let Some(session) = &mut middleware {
             session.observe(super::middleware::Observation {
                 outcome: failure_outcome(&failure),
@@ -254,6 +255,9 @@ pub(super) async fn execute<O: Send + 'static>(
     drop(admission);
     instance.complete(outcome(&answer));
     instance.finished();
+    if let Err(error) = &answer {
+        record_failure(&budget.operation, error);
+    }
     if let Some(session) = &mut middleware {
         session.observe(super::middleware::Observation { outcome: outcome(&answer), settled: true });
     }
@@ -480,6 +484,40 @@ async fn cooperative<O>(
 
 fn outcome<O>(answer: &Result<O>) -> Outcome {
     answer.as_ref().err().map_or(Outcome::Succeeded, failure_outcome)
+}
+
+/// Write the One Record of a Request That Completed With a Failure; Payload Contents Never Enter It.
+///
+/// Every request, nested ones included, completes through `execute` exactly once, so no other layer logs the same failure.
+/// Sample rows travel inside a window's answer, never as requests, so a high-rate stream adds no records per sample.
+/// A cancellation is the caller's own decision and writes none.
+fn record_failure(operation: &str, error: &Error) {
+    let Some((code, caller_correctable)) = classify(error) else { return };
+    if caller_correctable {
+        tracing::warn!(target: "harmos::operations", %operation, code, message = %error, "operation request failed");
+    } else {
+        tracing::error!(target: "harmos::operations", %operation, code, message = %error, "operation request failed");
+    }
+}
+
+/// The Failure's Code and Whether the Caller Can Correct It; None for a Cancellation.
+fn classify(error: &Error) -> Option<(&'static str, bool)> {
+    match error {
+        Error::OperationRefused(Refusal::Cancelled { .. }) => None,
+        Error::OperationRefused(Refusal::TimedOut { .. }) => Some(("timed_out", true)),
+        Error::OperationRefused(Refusal::Unavailable) => Some(("unavailable", true)),
+        Error::NotRegistered { .. } | Error::OperationUnauthorized { .. } | Error::PermissionDenied => Some(("refused", true)),
+        Error::InvalidInput { .. } => Some(("invalid", true)),
+        error => match error.operation_failure().map(|failure| failure.code()) {
+            Some(FailureKind::Cancelled) => None,
+            Some(FailureKind::Transient) => Some(("transient", true)),
+            Some(FailureKind::Invalid) => Some(("invalid", true)),
+            Some(FailureKind::Unauthorized) => Some(("unauthorized", true)),
+            Some(FailureKind::Ambiguous) => Some(("ambiguous", false)),
+            Some(FailureKind::Permanent) => Some(("permanent", false)),
+            None => Some(("internal", false)),
+        },
+    }
 }
 
 fn failure_outcome(error: &Error) -> Outcome {

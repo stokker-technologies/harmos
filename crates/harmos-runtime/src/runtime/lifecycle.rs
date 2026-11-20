@@ -179,6 +179,8 @@ impl<A: Application> Stop<A> {
             }
             self.progress.send_replace("plugin settlement");
             self.participants.settle().await?;
+            // Settled Plugins Hold No Pending Launch; Revoke Any Credential Left and Release the Bootstrap Listener.
+            self.handles.operations.execution().registry.launches.shutdown().await;
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
             #[cfg(feature = "plugin-guest")]

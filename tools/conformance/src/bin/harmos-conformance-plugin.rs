@@ -18,7 +18,7 @@
 // Standard Library Imports
 use std::{
     env, fs, future,
-    io::{self, BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Write},
     net::TcpStream,
     path::Path,
     process,
@@ -47,7 +47,8 @@ use std::{
 #[tokio::main]
 async fn main() -> harmos_conformance::Result<()> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
-    let remote = arguments == ["--remote"];
+    let remote = arguments.first().is_some_and(|argument| argument == "--remote") && arguments.len() <= 2;
+    let address = remote.then(|| arguments.get(1).cloned()).flatten();
     let interpreter = arguments.first().is_some_and(|argument| argument == "--bundle-script");
     if interpreter {
         if arguments.len() != 3 || arguments[2] != "$literal argument with spaces" {
@@ -59,7 +60,7 @@ async fn main() -> harmos_conformance::Result<()> {
         }
     }
     if !arguments.is_empty() && !remote && !interpreter {
-        return Err(harmos_conformance::Error::Invalid("Usage: harmos-conformance-plugin [--remote]".into()));
+        return Err(harmos_conformance::Error::Invalid("Usage: harmos-conformance-plugin [--remote [address]]".into()));
     }
     // A Bundle May Supply an Explicit Startup Control Endpoint for Lifecycle Stories.
     let control = env::current_exe()?.parent().expect("executable directory").join("startup-control");
@@ -70,12 +71,12 @@ async fn main() -> harmos_conformance::Result<()> {
         let mut command = String::new();
         BufReader::new(connection).read_line(&mut command)?;
         if command.trim() == "fail" {
-            println!("harmos listening invalid");
-            io::stdout().flush()?;
+            // The Host Refuses the Address and Fails the Launch; the Process Waits to Be Reaped.
+            let _ = harmos_conformance::announce_address("invalid".into()).await;
             future::pending::<()>().await;
         }
     }
-    harmos_conformance::serve(remote).await
+    harmos_conformance::serve(remote, address).await
 }
 
 /* === Private Functions === */

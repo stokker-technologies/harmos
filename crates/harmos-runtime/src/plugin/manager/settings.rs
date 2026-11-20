@@ -72,7 +72,7 @@ impl Actor {
         let settings = snapshot
             .settings
             .get(name)
-            .ok_or_else(|| Error::new("settings_not_ready", "List Plugin Settings", "wait for the plugin to report its description"))?;
+            .ok_or_else(|| Error::transient("settings_not_ready", "List Plugin Settings", "retry after the plugin reports its description"))?;
         let response = wire::SettingsListResponse {
             declarations: settings.declarations.clone(),
             value: Some(settings.value.clone()),
@@ -109,7 +109,7 @@ impl Actor {
         let mut current = snapshots(&self.registry)?;
         let current = current
             .remove(&request.name)
-            .ok_or_else(|| Error::new("settings_not_ready", "Set Plugin Settings", "wait for the plugin to report its description"))?;
+            .ok_or_else(|| Error::transient("settings_not_ready", "Set Plugin Settings", "retry after the plugin reports its description"))?;
         if current.revision != request.expected_revision {
             return Err(Error::new("revision_conflict", "Set Plugin Settings", "list settings again and retry at the returned revision"));
         }

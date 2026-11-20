@@ -885,7 +885,7 @@ impl Actor {
 
     pub(super) async fn cleanup_failure(&mut self, name: &str, error: Error) -> Result<PluginEntry, Error> {
         let mut entry = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(name)).cloned().ok_or_else(missing)?;
-        entry.failure = Some(*error.0);
+        record_failure(&mut entry, Some(*error.0));
         let mut registry = self.registry.clone();
         registry.entries.get_mut(name).expect("entry exists").entry = entry.encode_to_vec();
         self.commit(registry, changed(entry.clone())).await?;
@@ -947,7 +947,7 @@ impl Actor {
                         .ok_or_else(|| Error::new("activation_exhausted", "Reconnect Plugin", "create a new entry"))?;
                     entry.state = PluginState::Ready as i32;
                     // A Ready Activation Reports a Stream Whose Demand Failed; Its Other Streams Keep Publishing.
-                    entry.failure = status.failure.map(|failure| {
+                    let failure = status.failure.map(|failure| {
                         failure.lifecycle_failure(&name).unwrap_or_else(|| model::Failure {
                             classification: model::Classification::Permanent as i32,
                             code: "plugin_stream_failed".into(),
@@ -957,20 +957,22 @@ impl Actor {
                             ..Default::default()
                         })
                     });
+                    record_failure(&mut entry, failure);
                     self.describe(&mut entry, current)?;
                 } else {
                     entry.state = PluginState::Unavailable as i32;
                     entry.process = None;
-                    entry.failure = Some(match status.failure {
-                        Some(failure) => failure.lifecycle_failure(&name).unwrap_or_else(|| unavailable(&name, failure.to_string())),
+                    let failure = match status.failure {
+                        Some(failure) => activation_failure(&name, &failure),
                         None => unavailable(&name, "plugin activation stopped".into()),
-                    });
+                    };
+                    record_failure(&mut entry, Some(failure));
                 }
             }
             Err(error) => {
                 entry.state = PluginState::Unavailable as i32;
                 entry.process = None;
-                entry.failure = Some(error.lifecycle_failure(&name).unwrap_or_else(|| unavailable(&name, error.to_string())));
+                record_failure(&mut entry, Some(activation_failure(&name, &error)));
             }
         }
         let mut registry = self.registry.clone();
@@ -998,6 +1000,36 @@ pub(super) fn changed(entry: PluginEntry) -> PluginChange {
         kind: Some(host::plugin_change::Kind::Entry(entry)),
     }
 }
+/// The Failure an Entry Reports for an Ended or Failed Activation, With Any Startup Diagnostics.
+fn activation_failure(name: &str, error: &grpc::Error) -> model::Failure {
+    error.lifecycle_failure(name).unwrap_or_else(|| model::Failure {
+        diagnostics: error.diagnostics().unwrap_or_default().into(),
+        ..unavailable(name, error.to_string())
+    })
+}
+
+/// Set an Entry's Failure; Entering a New Failed State Writes Exactly One Host Log Record.
+///
+/// Health reports repeat the retained failure on every status change, so an unchanged failure is not logged again.
+pub(super) fn record_failure(entry: &mut PluginEntry, failure: Option<model::Failure>) {
+    if let Some(failure) = &failure
+        && entry.failure.as_ref() != Some(failure)
+    {
+        let caller_correctable = matches!(
+            model::Classification::try_from(failure.classification),
+            Ok(model::Classification::Transient | model::Classification::Refused | model::Classification::Cancelled | model::Classification::TimedOut)
+        );
+        let (name, activation, code, message, action, diagnostics) =
+            (&entry.name, entry.activation, &failure.code, &failure.message, &failure.action, &failure.diagnostics);
+        if caller_correctable {
+            tracing::warn!(target: "harmos::plugin", plugin = %name, activation, %code, %message, %action, %diagnostics, "plugin entry failed");
+        } else {
+            tracing::error!(target: "harmos::plugin", plugin = %name, activation, %code, %message, %action, %diagnostics, "plugin entry failed");
+        }
+    }
+    entry.failure = failure;
+}
+
 pub(super) fn unavailable(name: &str, cause: String) -> model::Failure {
     model::Failure {
         classification: model::Classification::Transient as i32,
@@ -1092,7 +1124,57 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
         executable,
         directory: None,
         arguments: vec![],
-        environment: [("HARMOS_ADDRESS".into(), "127.0.0.1:0".into())].into(),
+        environment: Default::default(),
     }))
 }
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use harmos_protocol::host::PluginEntry;
+    use harmos_protocol::model;
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+
+    use super::record_failure;
+
+    /// Counts Host Log Records by Level.
+    #[derive(Clone, Default)]
+    struct Records(Arc<Mutex<Vec<tracing::Level>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Records {
+        fn on_event(&self, event: &tracing::Event<'_>, _: Context<'_, S>) {
+            if event.metadata().target() == "harmos::plugin" {
+                self.0.lock().unwrap().push(*event.metadata().level());
+            }
+        }
+    }
+
+    fn failure(code: &str, classification: model::Classification) -> model::Failure {
+        model::Failure {
+            classification: classification as i32,
+            code: code.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn each_failed_state_change_writes_exactly_one_record() {
+        let records = Records::default();
+        let subscriber = tracing_subscriber::registry().with(records.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            let mut entry = PluginEntry { name: "plugin".into(), ..Default::default() };
+
+            // Entering a Failed State Logs Once; Health Repeating the Same Failure Does Not.
+            record_failure(&mut entry, Some(failure("plugin_unavailable", model::Classification::Transient)));
+            record_failure(&mut entry, Some(failure("plugin_unavailable", model::Classification::Transient)));
+
+            // A Different Failure Is a New State Change; Clearing It Logs Nothing.
+            record_failure(&mut entry, Some(failure("manager_failure", model::Classification::Permanent)));
+            record_failure(&mut entry, None);
+            assert!(entry.failure.is_none());
+        });
+        assert_eq!(*records.0.lock().unwrap(), [tracing::Level::WARN, tracing::Level::ERROR]);
+    }
+}

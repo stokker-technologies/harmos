@@ -73,7 +73,7 @@ async fn configured(source: &Manual) -> Runtime<App> {
             attempt_timeout: LOAD,
             ..GrpcPluginPolicy::default().load
         };
-        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings { policy: GrpcPluginPolicy { load } });
+        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings { policy: GrpcPluginPolicy { load }, ..Default::default() });
     })
     .await
 }
@@ -144,7 +144,7 @@ async fn a_slow_plugin_misses_the_configured_load_deadline_and_a_per_call_overri
     assert!(
         matches!(
             &refused,
-            Err(Error::LoadDeadline { plugin, timeout, configured_by: "GrpcPluginSettings.policy.load" })
+            Err(Error::LoadDeadline { plugin, timeout, configured_by: "GrpcPluginSettings.policy.load", .. })
                 if *plugin == remote.address && *timeout == LOAD
         ),
         "Fail the Load at the Configured Deadline: {:?}",

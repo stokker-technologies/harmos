@@ -443,6 +443,23 @@ pub fn settings() -> PlacementSettings {
     }
 }
 
+/// Start a Plugin Process With Launch Credentials and Return It With the Address It Announced.
+///
+/// Its standard output carries no protocol, so it is discarded; the caller chooses the other streams.
+pub async fn announced(command: &mut tokio::process::Command) -> (tokio::process::Child, String) {
+    let launches = harmos_runtime::plugin::grpc::Launches::new();
+    let mut launch = launches.reserve("story plugin").await.unwrap();
+    let mut child = command.envs(launch.environment()).stdout(std::process::Stdio::null()).kill_on_drop(true).spawn().unwrap();
+    let address = tokio::select! {
+        biased;
+        exit = child.wait() => panic!("the plugin exited with {exit:?} before announcing its address"),
+        address = launch.announced() => address.unwrap(),
+    };
+    drop(launch);
+    launches.shutdown().await;
+    (child, address.to_string())
+}
+
 pub fn binary(name: &str) -> PathBuf {
     let extension = std::env::consts::EXE_SUFFIX;
     if std::env::var_os("STKR_TEST_PROFILE").is_some() {

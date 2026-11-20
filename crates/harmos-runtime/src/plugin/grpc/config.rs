@@ -16,7 +16,10 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{num::NonZeroU32, time::Duration};
+use std::{
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
 
 // Third Party Imports
 
@@ -48,6 +51,17 @@ pub struct PlacementSettings {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GrpcPluginSettings {
     pub policy: GrpcPluginPolicy,
+    /// The Standard-Error Tail a Managed Process Keeps Until Its Activation Settles.
+    pub startup_output: StartupOutput,
+}
+
+/// Bounds the Standard-Error Tail a Failed Managed Startup Reports in `Failure.diagnostics`.
+///
+/// A longer line is cut at `bytes`; the oldest lines leave first once either bound is reached.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StartupOutput {
+    pub lines: NonZeroUsize,
+    pub bytes: NonZeroUsize,
 }
 
 /// The Policies of the gRPC Plugin Operations; a Direct Caller May Still Override One Call.
@@ -75,6 +89,16 @@ impl Default for GrpcPluginPolicy {
     fn default() -> Self {
         Self {
             load: <super::Load as crate::operations::NativeOperation>::POLICY,
+        }
+    }
+}
+
+impl Default for StartupOutput {
+    /// Forty Lines Within Eight Kibibytes: a Typical Interpreter Traceback.
+    fn default() -> Self {
+        Self {
+            lines: NonZeroUsize::new(40).expect("positive default line bound"),
+            bytes: NonZeroUsize::new(8192).expect("positive default byte bound"),
         }
     }
 }

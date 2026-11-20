@@ -477,16 +477,19 @@ target/debug/harmos-conformance --address 127.0.0.1:53124
 mise run test -- --package harmos-conformance --target integration
 ```
 
-Managed mode starts the executable, drains stdout until the line
-harmos listening 127.0.0.1:PORT (a bound loopback socket), then dials it.
-HARMOS_ADDRESS overrides the dial address after readiness. Plugins MUST honor
-HARMOS_ADDRESS as their bind address when set. Other stdout lines are ignored;
-SDK logs should use stderr. The host drains remaining stdout and owns process
-cleanup on failures. Executable arguments follow --. Remote mode accepts a socket
-address or http:// URL, owns no process, and never kills the endpoint.
+Managed mode starts the executable with HARMOS_HOST_ENDPOINT (a bare 127.0.0.1:PORT
+socket address) and HARMOS_LAUNCH_TOKEN (64 hexadecimal characters, valid once). The
+plugin binds a loopback listener, starts serving, then calls
+harmos.plugin.v1.Launches/Announce with the token and its bound address; the host
+dials only that address. A wrong, spent or revoked token is refused with
+UNAUTHENTICATED; an address that is not a bound loopback socket is refused with
+INVALID_ARGUMENT and fails the launch. Standard output carries no protocol. The host
+owns process cleanup on failures. Executable arguments follow --. Remote mode accepts a
+socket address or http:// URL, owns no process, and never kills the endpoint.
 
-The Rust fixture defaults to managed lifecycle; pass --remote to keep it running
-after Stop. HARMOS_ADDRESS selects its listener in either mode. The host prints
+The Rust fixture defaults to managed lifecycle and requires the launch variables; pass
+--remote [address] to keep it running after Stop. With launch variables it announces
+in either lifecycle; without them --remote needs an explicit address. The host prints
 one pass/fail table row per rule and exits 0 only if every case passes; exit 1 is
 case failure and exit 2 is setup/CLI failure. Each case and managed startup/shutdown
 has a 30-second transport hang guard. These guards do not advance scenario time.

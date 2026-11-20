@@ -21,13 +21,10 @@ pub use declarations_fault::{DeclarationsFault, Fault};
 
 // Standard Library Imports
 use std::error::Error;
-use std::{
-    ffi::OsString,
-    io::{BufRead, BufReader},
-    process::{Child, Command, Stdio},
-};
+use std::{ffi::OsString, process::Stdio};
 
 // Third Party Imports
+use tokio::process::{Child, Command};
 
 // Local Imports
 
@@ -51,26 +48,26 @@ pub struct PluginProcess {
 /* === Implementations === */
 
 impl PluginProcess {
-    pub fn start(executable: &OsString) -> Result<Self, Box<dyn Error>> {
+    /// Start the Plugin in Its Remote Lifecycle and Receive Its Ephemeral Address Through a Launch Announcement.
+    pub async fn start(executable: &OsString) -> Result<Self, Box<dyn Error>> {
+        let launches = harmos_runtime::plugin::grpc::Launches::new();
+        let mut launch = launches.reserve("remote reference plugin").await?;
         let child = Command::new(executable)
             .arg("--remote")
-            .env("HARMOS_ADDRESS", "127.0.0.1:0")
-            .stdout(Stdio::piped())
+            .envs(launch.environment())
+            .stdout(Stdio::null())
             .stderr(Stdio::inherit())
+            .kill_on_drop(true)
             .spawn()?;
-        let mut process = Self { address: String::new(), child };
-        let stdout = process.child.stdout.take().ok_or("Missing Standard Output")?;
-        let mut lines = BufReader::new(stdout).lines();
-        let line = lines.next().ok_or("Missing Readiness Line")??;
-        process.address = line.strip_prefix("harmos listening ").ok_or("Invalid Readiness Line")?.into();
-        Ok(process)
+        let address = launch.announced().await?.to_string();
+        launches.shutdown().await;
+        Ok(Self { address, child })
     }
 }
 
 impl Drop for PluginProcess {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let _ = self.child.start_kill();
     }
 }
 
