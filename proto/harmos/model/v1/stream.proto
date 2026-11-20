@@ -35,6 +35,9 @@ message StreamDeclaration {
   // Identifier of a plugin Duration setting that overrides the host's window
   // length for this interval stream, if any.
   string window_setting = 6;
+  // Nonempty for a collection member. The identity is its lexicographically first
+  // member stream. Members share one interval and one handler per tick and scope.
+  string collection = 7;
 }
 
 // === Enums === //

@@ -159,4 +159,7 @@
 - [x] 16.2 Implement host messages, admission, StateManager fold/recovery/snapshots and entry retirement; prove restart, conflict, removal and durability with the real storage test backend.
 - [x] 16.3 Generate four-language host bindings and add thin context state accessors with focused SDK proof; report any language stopped at bindings.
 - [x] 16.4 Add explicit durable snapshot compaction to StateBackend and the in-memory backend; prove repeated snapshot cycles retain only the uncovered suffix.
-- [ ] 16.5 Complete final proof: focused tests, workspace test-target compilation, generation/drift, format, repository checks and strict OpenSpec validation. Resolve the shared whole-library SDK hash inventory REWORK recorded in design.md and retain native Linux proof as outstanding.
+- [ ] 16.5 Complete final proof: focused tests, workspace test-target compilation, generation/drift, format, repository checks and strict OpenSpec validation; retain native Linux proof as outstanding.
+  - [x] Resolve the frozen SDK snapshot REWORK through the owner-authorized State Get/Put hash refresh, preserving the exact comparison and semantic checks.
+  - [x] Repair the example's missing plugin state policy and prove its focused development build after the product-preparation failure.
+  - [x] Complete the requested Windows proof on the merged collection and state bindings.

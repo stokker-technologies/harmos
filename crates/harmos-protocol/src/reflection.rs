@@ -892,6 +892,30 @@ impl ReflectMessage for crate::plugin::SampleBatch {
     }
 }
 
+impl ReflectMessage for crate::plugin::CollectionDemand {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.CollectionDemand").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::plugin::CollectionDemandResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.CollectionDemandResponse").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::plugin::CollectionBatch {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.CollectionBatch").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::plugin::CollectionRows {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.CollectionRows").expect("generated message")
+    }
+}
+
 impl ReflectMessage for crate::plugin::SamplesSelection {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.plugin.v1.SamplesSelection").expect("generated message")

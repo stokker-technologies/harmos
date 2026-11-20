@@ -2,9 +2,10 @@ import datetime
 
 from google.protobuf import duration_pb2 as _duration_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Mapping as _Mapping
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
 from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
@@ -32,6 +33,34 @@ class SampleBatch(_message.Message):
     columns: bytes
     last: bool
     def __init__(self, offset: _Optional[int] = ..., count: _Optional[int] = ..., columns: _Optional[bytes] = ..., last: _Optional[bool] = ...) -> None: ...
+
+class CollectionDemand(_message.Message):
+    __slots__ = ("streams",)
+    STREAMS_FIELD_NUMBER: _ClassVar[int]
+    streams: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, streams: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class CollectionDemandResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class CollectionBatch(_message.Message):
+    __slots__ = ("offset", "streams", "last")
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    STREAMS_FIELD_NUMBER: _ClassVar[int]
+    LAST_FIELD_NUMBER: _ClassVar[int]
+    offset: int
+    streams: _containers.RepeatedCompositeFieldContainer[CollectionRows]
+    last: bool
+    def __init__(self, offset: _Optional[int] = ..., streams: _Optional[_Iterable[_Union[CollectionRows, _Mapping]]] = ..., last: _Optional[bool] = ...) -> None: ...
+
+class CollectionRows(_message.Message):
+    __slots__ = ("stream", "rows")
+    STREAM_FIELD_NUMBER: _ClassVar[int]
+    ROWS_FIELD_NUMBER: _ClassVar[int]
+    stream: str
+    rows: _containers.RepeatedScalarFieldContainer[bytes]
+    def __init__(self, stream: _Optional[str] = ..., rows: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
 class SamplesSelection(_message.Message):
     __slots__ = ("stream", "scope")

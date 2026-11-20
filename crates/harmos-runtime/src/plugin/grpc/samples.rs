@@ -15,38 +15,36 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::{SampleBatch, Window as WireWindow};
+// Standard Library Imports
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    mem,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
+// Third Party Imports
+use futures_util::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
+use prost::Message;
+use tokio::sync::{self, mpsc};
+use tonic::{Status, Streaming};
+
+// Local Imports
 use super::{
     CallingPlugin, Error,
     invoke::{ChildReplies, failure, watch_child},
 };
-use crate::operations::HostContext;
-use crate::streams::StreamWriter;
-use crate::supervision::instance::Instance;
-use futures_util::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
-use harmos_domain::MemorySize;
-use harmos_operations::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
-use harmos_operations::{OperationPolicy, operations::UNBOUNDED};
-use harmos_protocol::plugin::ChildResponse;
-use harmos_protocol::plugin::InstanceSamplesRequest;
-use harmos_protocol::plugin::InstanceSamplesResponse;
-use harmos_protocol::plugin::child_response;
-use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
-use harmos_protocol::plugin::instance_samples_response::Frame as ResponseFrame;
-use prost::Message;
-use std::time::Duration;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Mutex},
+use crate::{RetryPolicy, operations::HostContext, streams::StreamWriter, supervision::instance::Instance};
+use harmos_domain::{MemorySize, message};
+use harmos_operations::{
+    OperationPolicy,
+    execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError},
+    operations::UNBOUNDED,
 };
-use tokio::sync::{Mutex as AsyncMutex, mpsc};
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
+use harmos_protocol::plugin::{
+    self, ChildResponse, CollectionBatch, InstanceSamplesRequest, InstanceSamplesResponse, SampleBatch, child_response,
+    instance_samples_request, instance_samples_response,
+};
 
 /* === Constants === */
 
@@ -62,16 +60,22 @@ type Control = (Arc<Instance>, bool, Option<mpsc::Sender<()>>);
 pub(crate) struct Window;
 #[derive(Clone)]
 pub(crate) struct Request {
-    pub(super) input: Arc<AsyncMutex<tonic::Streaming<InstanceSamplesResponse>>>,
+    pub(super) input: Arc<sync::Mutex<Streaming<InstanceSamplesResponse>>>,
     pub(super) output: mpsc::Sender<InstanceSamplesRequest>,
     pub(super) caller: Arc<CallingPlugin>,
     pub(super) seen: Arc<Mutex<BTreeSet<u64>>>,
-    pub(super) window: WireWindow,
+    pub(super) window: plugin::Window,
+    pub(super) collection: BTreeSet<String>,
     pub(super) lease: Arc<StreamWriter>,
 }
 struct Children(BTreeMap<u64, Control>);
 
 /* === Enums === */
+
+pub(crate) enum Answer {
+    Columns(Vec<SampleBatch>),
+    Rows(Vec<CollectionBatch>),
+}
 
 /* === Traits === */
 
@@ -86,19 +90,21 @@ impl Drop for Children {
 }
 impl MemorySize for Request {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.caller.description.encoded_len())
+        let members = message::btree_map_memory::<String, ()>(self.collection.len()).saturating_sub(mem::size_of::<BTreeSet<String>>());
+        let bytes = mem::size_of::<Self>().saturating_add(self.caller.description.encoded_len()).saturating_add(members);
+        self.collection.iter().fold(bytes, |bytes, member| bytes.saturating_add(member.capacity()))
     }
 }
 impl NativeOperation for Window {
     type Request = Request;
-    type Response = Vec<SampleBatch>;
+    type Response = Answer;
     type Endpoints = ();
     const ID: &'static str = "samples.window";
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: UNBOUNDED,
         attempt_timeout: UNBOUNDED,
         cancellation_timeout: Duration::ZERO,
-        retries: crate::RetryPolicy::Never,
+        retries: RetryPolicy::Never,
     };
     const RESOURCES: &'static [Resource] = &[Resource::of::<HostContext>()];
     async fn run(context: ExecutionContext, request: Request, _: &()) -> Result<Self::Response, ServingError> {
@@ -111,7 +117,7 @@ impl NativeOperation for Window {
 
 /* === Private Functions === */
 
-async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -> Result<Vec<SampleBatch>, Error> {
+async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -> Result<Answer, Error> {
     let mut children = FuturesUnordered::<Child>::new();
     let mut controls = Children(BTreeMap::new());
     let mut cancelled = BTreeSet::new();
@@ -123,17 +129,20 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
     request
         .output
         .send(InstanceSamplesRequest {
-            frame: Some(RequestFrame::Window(request.window)),
+            frame: Some(instance_samples_request::Frame::Window(request.window)),
         })
         .await
         .map_err(|_| invalid("Grant Sample Window: stream closed"))?;
     let mut parts = Vec::new();
+    let mut ticks = Vec::new();
+    let mut staged_rows = 0_u64;
+    let mut staged_bytes = 0_u128;
     let mut received = 0_u64;
     let result = loop {
         let has_children = !children.is_empty();
         enum Event {
             Cancel,
-            Frame(Result<Option<InstanceSamplesResponse>, tonic::Status>),
+            Frame(Result<Option<InstanceSamplesResponse>, Status>),
             Child(u64, String, crate::Result<Vec<u8>>),
         }
         let waiting = controls.0.values().any(|(_, background, _)| !background);
@@ -150,7 +159,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
             Event::Cancel => break Err(invalid("Answer Sample Window: window cancelled")),
             Event::Frame(frame) => {
                 // The Plugin's Status Fails This Stream's Window; Connection Loss Is Observed by the Connection Itself.
-                let failed = |status: tonic::Status| Error::WindowFailed {
+                let failed = |status: Status| Error::WindowFailed {
                     stream: stream.clone(),
                     status: status.code(),
                     message: status.message().to_owned(),
@@ -164,7 +173,51 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                 let Some(frame) = frame.frame else {
                     break Err(invalid("Answer Sample Window: response has no frame"));
                 };
-                if let ResponseFrame::Batch(part) = frame {
+                if let instance_samples_response::Frame::Collection(part) = frame {
+                    if request.collection.is_empty()
+                        || part.offset != received
+                        || received >= granted
+                        || part.last != (received + 1 == granted)
+                    {
+                        break Err(invalid(
+                            "Answer Collection Window: send one consecutive batch per tick and mark only the final tick last",
+                        ));
+                    }
+                    let mut members = BTreeSet::new();
+                    for rows in &part.streams {
+                        if !request.collection.contains(&rows.stream) || !members.insert(&rows.stream) {
+                            return Err(invalid("Answer Collection Window: publish each declared member at most once per tick batch"));
+                        }
+                        staged_rows = staged_rows.saturating_add(rows.rows.len() as u64);
+                    }
+                    // Empty Ticks Also Consume Staging Space Until the Whole Window Succeeds.
+                    let bytes = part.streams.iter().fold(
+                        part.streams.capacity() as u128 * mem::size_of::<plugin::CollectionRows>() as u128,
+                        |bytes, group| {
+                            let headers =
+                                group.stream.capacity() as u128 + group.rows.capacity() as u128 * mem::size_of::<Vec<u8>>() as u128;
+                            group.rows.iter().fold(bytes.saturating_add(headers), |bytes, row| bytes.saturating_add(row.capacity() as u128))
+                        },
+                    );
+                    staged_bytes = staged_bytes.saturating_add(bytes);
+                    let (_, fits) = crate::streams::claim(staged_rows.max(ticks.len() as u64 + 1), staged_bytes);
+                    if !fits {
+                        break Err(invalid(
+                            "Answer Collection Window: reduce published rows or the configured window to fit the publication pool",
+                        ));
+                    }
+                    received += 1;
+                    let last = part.last;
+                    ticks.push(part);
+                    if last {
+                        break Ok(Answer::Rows(mem::take(&mut ticks)));
+                    }
+                    continue;
+                }
+                if let instance_samples_response::Frame::Batch(part) = frame {
+                    if !request.collection.is_empty() {
+                        break Err(invalid("Answer Collection Window: send collection tick batches instead of dense columns"));
+                    }
                     if part.offset != received {
                         break Err(invalid("Answer Sample Window: a part must start where the previous part ended"));
                     }
@@ -179,14 +232,14 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                     let last = part.last;
                     parts.push(part);
                     if last {
-                        break Ok(std::mem::take(&mut parts));
+                        break Ok(Answer::Columns(mem::take(&mut parts)));
                     }
                     continue;
                 }
                 if !request.lease.is_active() {
                     break Err(invalid("Call Sample Child: activation lease has been revoked"));
                 }
-                if let ResponseFrame::Child(child) = frame.clone() {
+                if let instance_samples_response::Frame::Child(child) = frame.clone() {
                     let call = child.call;
                     if !request.seen.lock().expect("sample child identity lock is healthy").insert(call) {
                         break Err(invalid("Call Sample Child: duplicate child identity across windows"));
@@ -210,7 +263,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                         (call, operation, result)
                     }));
                 }
-                if let ResponseFrame::ChildCancel(child) = frame.clone() {
+                if let instance_samples_response::Frame::ChildCancel(child) = frame.clone() {
                     if let Some((control, _, _)) = controls.0.get(&child.call) {
                         cancelled.insert(child.call);
                         control.request_cancel();
@@ -218,7 +271,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                         break Err(invalid("Cancel Sample Child: unknown child identity"));
                     }
                 }
-                if let ResponseFrame::ChildDemand(demand) = frame {
+                if let instance_samples_response::Frame::ChildDemand(demand) = frame {
                     if ended.contains(&demand.call) {
                         continue;
                     }
@@ -228,6 +281,8 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                     if credits.try_send(()).is_err() {
                         break Err(invalid("Demand Sample Child: duplicate demand"));
                     }
+                } else if matches!(frame, instance_samples_response::Frame::Demand(_)) {
+                    break Err(invalid("Answer Sample Window: change collection demand only between windows"));
                 }
             }
             Event::Child(call, operation, result) => {

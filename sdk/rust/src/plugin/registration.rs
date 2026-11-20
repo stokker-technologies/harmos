@@ -23,9 +23,9 @@ use std::marker::PhantomData;
 // Local Imports
 use super::{Plugin, Required};
 use crate::{
-    Message, OperationRequest, Result, message,
+    Error, Message, OperationRequest, Result, message,
     operation::Operation,
-    stream::{Observer, Stream},
+    stream::{Collection, Observer, Stream},
 };
 use harmos_protocol::model::{Section, SettingsDeclarations};
 
@@ -112,6 +112,27 @@ impl Registration for Observer {
     }
 }
 
+impl Registration for Collection {
+    fn register(mut self, ctx: &mut Registrar<'_>) -> Result<()> {
+        let members = self.observer.members.lock().expect("collection members lock is healthy");
+        let id = members.keys().next().ok_or_else(|| Error::Invalid("Register Collection: declare at least one stream".into()))?.clone();
+        drop(members);
+        self.observer.stream = id.clone();
+        for mut stream in self.streams {
+            if stream.producer.is_some() {
+                return Err(Error::Invalid(format!(
+                    "Register Collection `{id}`: remove member `{}`'s device producer",
+                    stream.declaration.id
+                )));
+            }
+            stream.declaration.collection = id.clone();
+            ctx.plugin.streams.push(stream);
+        }
+        ctx.plugin.observers.push(self.observer);
+        Ok(())
+    }
+}
+
 impl<T: Message> Registration for Contribution<T> {
     fn register(self, ctx: &mut Registrar<'_>) -> Result<()> {
         ctx.plugin.sections.push((
@@ -129,7 +150,7 @@ impl Registration for SettingsDeclarations {
     fn register(self, ctx: &mut Registrar<'_>) -> Result<()> {
         if let Some((section, _)) = ctx.plugin.sections.iter_mut().find(|(section, _)| section.r#type == SettingsDeclarations::name()) {
             let mut declarations = <SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
-                .map_err(|error| crate::Error::Invalid(format!("Register Settings: {error}")))?;
+                .map_err(|error| Error::Invalid(format!("Register Settings: {error}")))?;
             declarations.values.extend(self.values);
             section.payload = prost::Message::encode_to_vec(&declarations);
             return Ok(());

@@ -655,6 +655,7 @@ impl MemorySize for model::StreamDeclaration {
             .saturating_add(self.interval.memory_size().saturating_sub(mem::size_of_val(&self.interval)))
             .saturating_add(self.interval_setting.memory_size().saturating_sub(mem::size_of_val(&self.interval_setting)))
             .saturating_add(self.window_setting.memory_size().saturating_sub(mem::size_of_val(&self.window_setting)))
+            .saturating_add(self.collection.memory_size().saturating_sub(mem::size_of_val(&self.collection)))
     }
 }
 

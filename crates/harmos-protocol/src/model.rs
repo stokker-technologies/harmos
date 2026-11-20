@@ -395,6 +395,10 @@ pub struct StreamDeclaration {
     /// length for this interval stream, if any.
     #[prost(string, tag = "6")]
     pub window_setting: ::prost::alloc::string::String,
+    /// Nonempty for a collection member. The identity is its lexicographically first
+    /// member stream. Members share one interval and one handler per tick and scope.
+    #[prost(string, tag = "7")]
+    pub collection: ::prost::alloc::string::String,
 }
 /// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
 #[allow(clippy::all)]

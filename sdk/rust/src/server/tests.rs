@@ -11,6 +11,8 @@
 
 /* === Modules === */
 
+mod collections;
+
 /* === Re-Exports === */
 
 /* === Imports === */
