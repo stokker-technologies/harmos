@@ -51,3 +51,32 @@ pub struct SettingsSetResponse {
     #[prost(message, optional, tag = "3")]
     pub receipt: ::core::option::Option<crate::model::Receipt>,
 }
+/// Reads only the trusted calling plugin entry's durable state.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StateGetRequest {}
+/// Returns opaque bytes and the revision to compare on the next Put; zero is unwritten.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StateGetResponse {
+    #[prost(bytes = "vec", tag = "1")]
+    pub value: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+}
+/// Replaces the calling entry's opaque state; empty bytes clear it without resetting the revision.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StatePutRequest {
+    #[prost(uint64, tag = "1")]
+    pub expected_revision: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub value: ::prost::alloc::vec::Vec<u8>,
+}
+/// Issued only after the replacement is durable in recovery storage.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StatePutResponse {
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+}

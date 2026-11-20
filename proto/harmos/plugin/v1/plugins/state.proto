@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// State
+//
+// Durable State Facility
+
+syntax = "proto3";
+
+package harmos.plugin.v1.plugins;
+
+// === Imports === //
+
+import "harmos/host/v1/plugins/state.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Entry-scoped durable state carried only by admitted plugin child calls.
+service State {
+  // Read the calling entry's opaque state and current revision, including during initialize.
+  rpc Get(harmos.host.v1.plugins.StateGetRequest) returns (harmos.host.v1.plugins.StateGetResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+  // Compare and durably replace state before returning; conflicts require Get before retry.
+  rpc Put(harmos.host.v1.plugins.StatePutRequest) returns (harmos.host.v1.plugins.StatePutResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

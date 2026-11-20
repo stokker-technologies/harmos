@@ -305,6 +305,7 @@ pub fn entries() -> (StorageManager, Manager, TempDir) {
     )
     .unwrap();
     let settings = PluginManagerSettings {
+        state: Default::default(),
         namespace: "guest-entries".into(),
         directory: root.path().join("plugins"),
         target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),

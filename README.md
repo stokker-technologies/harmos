@@ -50,7 +50,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **gRPC Plugin Placement**: Invoke managed or remote gRPC plugins, capture their streams and drive plugin waits and observers from the host clock or [a scoped unit's clock](docs/architecture.md#scoped-plugin-bindings).
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
-- **[Plugin Management](docs/plugin-manager.md)**: Persist settings and manage native or WebAssembly plugin entries.
+- **[Plugin Management](docs/plugin-manager.md)**: Persist settings and revisioned plugin recovery state, and manage native or WebAssembly plugin entries.
 - **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
 - **gRPC Interfaces** [`grpc`]: Declare product wrappers over native operations and generate product client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
@@ -95,7 +95,12 @@ from their own descriptors; Harmos has no host-client resource root. See the
 [reference product fixture](tools/conformance/src/product.rs). Plugin contexts keep
 time, own settings, own invocation controls and admitted discovery on the plugin carrier.
 The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default
-and reads its calling entry through `Context::settings`.
+and reads its calling entry through `Context::settings`. With managed recovery storage,
+`Context::state()` supplies a typed protobuf handle: declare `PluginsStateGet` and
+`PluginsStatePut`, call `get::<T>()`, then `put(&intent)` before an external effect.
+Put compares the observed revision and returns only after durable journal flush.
+After undoing the effect, `clear()` removes its stored intent while retaining the
+revision; entry removal retires the state. The host configures `PluginManagerSettings.state.max_bytes`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
 Assemble with `Builder::new(origin)`, register catalogs, then call `start()` and
