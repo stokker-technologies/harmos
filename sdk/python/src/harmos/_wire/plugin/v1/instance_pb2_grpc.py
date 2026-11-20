@@ -110,9 +110,10 @@ class InstanceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Stop(self, request, context):
-        """Sent before the host shuts down or removes the plugin. The plugin runs
-        its stop and cleanup hooks and then replies. A managed plugin exits
-        afterwards; a remote plugin keeps running.
+        """Sent only to a process the host spawned and still owns, before shutdown or removal.
+        The plugin completes process cleanup and replies; the host awaits exit and reaps it.
+        Detaching an externally spawned process closes only the host connection, without Stop,
+        even when launch credentials were used.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

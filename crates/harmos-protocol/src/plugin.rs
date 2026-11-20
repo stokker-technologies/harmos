@@ -819,9 +819,10 @@ pub mod instance_client {
                 .insert(GrpcMethod::new("harmos.plugin.v1.Instance", "Samples"));
             self.inner.streaming(req, path, codec).await
         }
-        /// Sent before the host shuts down or removes the plugin. The plugin runs
-        /// its stop and cleanup hooks and then replies. A managed plugin exits
-        /// afterwards; a remote plugin keeps running.
+        /// Sent only to a process the host spawned and still owns, before shutdown or removal.
+        /// The plugin completes process cleanup and replies; the host awaits exit and reaps it.
+        /// Detaching an externally spawned process closes only the host connection, without Stop,
+        /// even when launch credentials were used.
         pub async fn stop(
             &mut self,
             request: impl tonic::IntoRequest<super::InstanceStopRequest>,
@@ -910,9 +911,10 @@ pub mod instance_server {
             &self,
             request: tonic::Request<tonic::Streaming<super::InstanceSamplesRequest>>,
         ) -> std::result::Result<tonic::Response<Self::SamplesStream>, tonic::Status>;
-        /// Sent before the host shuts down or removes the plugin. The plugin runs
-        /// its stop and cleanup hooks and then replies. A managed plugin exits
-        /// afterwards; a remote plugin keeps running.
+        /// Sent only to a process the host spawned and still owns, before shutdown or removal.
+        /// The plugin completes process cleanup and replies; the host awaits exit and reaps it.
+        /// Detaching an externally spawned process closes only the host connection, without Stop,
+        /// even when launch credentials were used.
         async fn stop(
             &self,
             request: tonic::Request<super::InstanceStopRequest>,
