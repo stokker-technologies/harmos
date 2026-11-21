@@ -233,12 +233,12 @@ run = [
 hide = true
 description = "Format the Documentation Site"
 usage = 'flag "--check"'
-run = "pnpm --dir site exec biome format{% if usage.check %}{% else %} --write{% endif %} ."
+run = "pnpm --dir sites/docs exec biome format{% if usage.check %}{% else %} --write{% endif %} ."
 
 [tasks."lint:typescript"]
 hide = true
 description = "Lint the Documentation Site"
-run = "pnpm --dir site exec biome lint ."
+run = "pnpm --dir sites/docs exec biome lint ."
 
 [tasks."format:rust"]
 hide = true

@@ -8,14 +8,14 @@ import { defineConfig } from "astro/config";
 import { remarkGuides } from "./src/guides";
 
 // The Docs Task Selects the Entry and Source Revision; Direct Runs Preview the Development Entry.
-const root = fileURLToPath(new URL("..", import.meta.url));
+const root = fileURLToPath(new URL("../..", import.meta.url));
 const entry = process.env.DOCS_ENTRY ?? "dev";
 const base = `/${entry}/`;
 const source = process.env.DOCS_SOURCE ?? "https://github.com/stokker-technologies/harmos/blob/dev/";
 
 export default defineConfig({
   base,
-  outDir: `../target/docs/${entry}`,
+  outDir: `../../target/docs/${entry}`,
   markdown: {
     processor: unified({ remarkPlugins: [remarkGuides({ root, base, source })] }),
   },

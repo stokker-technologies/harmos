@@ -9,7 +9,7 @@ import type { Definition, Link, Root } from "mdast";
 import { visit } from "unist-util-visit";
 
 /** Guide Roots Relative to the Site Project; Generated References Live Under target/. */
-const SOURCES = ["../docs", "../target/docs/generated"];
+const SOURCES = ["../../docs", "../../target/docs/generated"];
 /** The Product Guide Is the Landing Page of Every Entry. */
 const LANDING = "product-guide";
 

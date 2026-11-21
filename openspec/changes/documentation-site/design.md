@@ -25,11 +25,11 @@ that file, as in a local preview, it shows only the current entry.
 
 ## Site Project
 
-The Starlight project lives in `site/` and reads the maintained guides in `docs/` in place, without
+The Starlight project lives in `sites/docs/` and reads the maintained guides in `docs/` in place, without
 copies. Its loader takes each page title from the guide's first heading and drops that heading
 from the body; relative links between guides become site routes and links to other repository
 files point to the repository browser at the built revision. The build fails on a broken page link
-or heading anchor. The organization logo and typefaces live in `site/assets/`.
+or heading anchor. The organization logo and typefaces live in `sites/docs/assets/`.
 
 ## Archives
 

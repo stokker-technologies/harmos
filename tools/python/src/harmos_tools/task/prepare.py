@@ -56,7 +56,7 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         )
     if options.docs_only or enabled is None or "pnpm" in enabled.split(","):
         # Install Locked Documentation Dependencies
-        execute.command(["pnpm", "--dir", "site", "install", "--frozen-lockfile"])
+        execute.command(["pnpm", "--dir", "sites/docs", "install", "--frozen-lockfile"])
     return 0
 
 
