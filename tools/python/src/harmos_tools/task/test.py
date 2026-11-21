@@ -19,7 +19,8 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from ..build import cargo
+from ..test import focused
+from ..test.policy import TestError
 from . import arguments, cpp, csharp, execute
 
 # Type Checking Imports
@@ -44,16 +45,7 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if value is not None and not value:
             parser.error(f"--{selector} requires a nonempty value")
 
-    if (
-        options.paths
-        or options.story
-        or options.no_run
-        or options.timings
-        or (options.package and not options.target and options.language != "python")
-    ):
-        from ..test import focused
-        from ..test.policy import TestError
-
+    if options.paths or options.story or options.no_run or options.timings or (options.package and options.language in (None, "rust")):
         if options.language not in (None, "rust") or options.coverage or options.extended or options.profile != "dev":
             parser.error("focused Rust tests use the default test profile without coverage or extended selection")
         if options.layer or options.filter or options.stress_count:
@@ -118,21 +110,7 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return execute.command([sys.executable, "-m", "unittest", options.exact], directory=root / "tools/python")
 
     if options.package:
-        if not options.target:
-            parser.error("--package requires --target lib or a test target name")
-        if options.language not in (None, "rust") or options.coverage or options.extended:
-            parser.error("focused tests require Rust without coverage, C++ or extended selection")
-        if options.profile != "dev" or options.layer or options.filter or options.stress_count:
-            parser.error("focused tests use the default test profile and --exact for filtering")
-        selected = ["--lib"] if options.target == "lib" else ["--test", options.target]
-        command = ["--locked", "-p", options.package, *selected]
-        if options.manifest_path:
-            command += ["--manifest-path", str(options.manifest_path)]
-        if options.features:
-            command += ["--features", options.features]
-        if options.exact:
-            command += [options.exact, "--", "--exact"]
-        return cargo.focused(root, "test", command)
+        parser.error("focused Python tests select only --exact")
 
     if options.target or options.exact:
         parser.error("--target and --exact require --package")

@@ -17,7 +17,8 @@ remains the correctness proof.
 All focused Rust selections, including exact package/target selections, use the
 existing Nextest runner and its native hang guards. Delete the direct Cargo test
 dispatch branch. Remove the unused RecoverySnapshot fixture export. Compile-only
-`--no-run` selections preserve prior JUnit evidence; an executing selection still
+`--no-run` selections preserve prior JUnit evidence and omit the execution-only
+`--no-tests` option that Nextest ignores during compilation. An executing selection still
 removes its stale report before running so old evidence cannot satisfy new proof.
 
 Run `lint:rust` once before repairs and once at final handoff. This explicitly

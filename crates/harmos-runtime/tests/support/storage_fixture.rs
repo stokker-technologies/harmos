@@ -24,12 +24,17 @@ pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::sync::atomic::Ordering;
 pub(crate) use std::time::Duration;
+
 // Third Party Imports
+use arrow_array::{StringArray, UInt64Array};
 
 // Local Imports
 use super::{backend, operations, support};
 pub(crate) use backend::{Backend, RecoveryBackend, history, storage_settings};
-pub(crate) use harmos_runtime::storage::state::RecoverySnapshot;
+use harmos_domain::model::storage::query::Query;
+use harmos_query::QueryArrow;
+use harmos_runtime::operations::Settings;
+use harmos_runtime::storage::query::{self, RecordSelection, RowSlice};
 pub(crate) use harmos_runtime::storage::*;
 pub(crate) use harmos_runtime::{BackendFailure, Error, Identifier, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
@@ -56,9 +61,9 @@ impl Fixture {
         let storage = &storage_fixture.storage;
         let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(storage);
-            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            setup.settings().operation_settings(Settings {
                 preparation_bytes: Some(
-                    harmos_protocol::transfer::default_message_bytes().checked_mul(std::num::NonZeroUsize::new(6).unwrap()).unwrap(),
+                    harmos_protocol::transfer::default_message_bytes().checked_mul(NonZeroUsize::new(6).unwrap()).unwrap(),
                 ),
                 ..Default::default()
             });
@@ -86,13 +91,11 @@ impl std::ops::Deref for Fixture {
 /* === Public Functions === */
 
 pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
-    use harmos_query::QueryArrow;
-    use harmos_runtime::storage::query::{RecordSelection, RowSlice, Source};
     let mut reader = storage
-        .query(harmos_domain::model::storage::query::Query {
+        .query(Query {
             merge: None,
             at: storage.get_saved_position(),
-            source: Source::Records(RecordSelection {
+            source: query::Source::Records(RecordSelection {
                 schema: schema.clone(),
                 scope: None,
                 item: None,
@@ -110,8 +113,8 @@ pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) 
             continue;
         };
         let batch = batch.as_record_batch();
-        let positions = batch.column_by_name("position").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
-        let items = batch.column_by_name("item").unwrap().as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
+        let positions = batch.column_by_name("position").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+        let items = batch.column_by_name("item").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
         for row in 0..batch.num_rows() {
             records.push((positions.value(row), Identifier::new(items.value(row)).unwrap()));
         }

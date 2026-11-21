@@ -41,6 +41,8 @@ class FocusedDispatch(unittest.TestCase):
         selections = [
             ["--package", "model", "--target", "integration", "--story", "save_and_reopen"],
             ["--package", "model"],
+            ["--package", "model", "--target", "lib", "--exact", "tests::encode"],
+            ["--package", "model", "--target", "integration"],
             ["--paths", "model/src/lib.rs", "host/tests/serve.rs"],
             ["--package", "model", "--target", "lib", "--exact", "tests::encode", "--no-run", "--timings"],
         ]

@@ -217,7 +217,8 @@ def run(
                     continue
                 store = report.native_directory(output, Path(name) / ("system" if system else "local"))
                 junit = store / nextest.PROFILE / "junit.xml"
-                junit.unlink(missing_ok=True)
+                if not no_run:
+                    junit.unlink(missing_ok=True)
                 configuration.write_text(nextest.config(str(store), max(rules.deadlines.values()), overrides), encoding="utf-8")
                 command = ["cargo", "nextest", "run", "--locked", "-p", name, *selectors]
                 for item in group:
@@ -234,13 +235,13 @@ def run(
                     str(configuration),
                     "--profile",
                     nextest.PROFILE,
-                    "--no-tests",
-                    "warn" if composite else "fail",
                 ]
-                if system:
-                    command += ["--test-threads", "1"]
                 if no_run:
                     command.append("--no-run")
+                else:
+                    command += ["--no-tests", "warn" if composite else "fail"]
+                if system:
+                    command += ["--test-threads", "1"]
                 if timings:
                     command.append("--timings")
                 if story:
