@@ -18,6 +18,8 @@ from harmos._wire.model.v1.file_pb2 import (
     File,
     FileMetadata,
     FileReference,
+    ListFileProductionsRequest,
+    ListFileProductionsResponse,
     Upload,
     UploadState,
 )
@@ -64,6 +66,10 @@ FileMetadata.__module__ = "harmos"
 FileMetadata.__qualname__ = "FileMetadata"
 FileReference.__module__ = "harmos"
 FileReference.__qualname__ = "FileReference"
+ListFileProductionsRequest.__module__ = "harmos"
+ListFileProductionsRequest.__qualname__ = "ListFileProductionsRequest"
+ListFileProductionsResponse.__module__ = "harmos"
+ListFileProductionsResponse.__qualname__ = "ListFileProductionsResponse"
 Upload.__module__ = "harmos"
 Upload.__qualname__ = "Upload"
 InstanceState.__module__ = "harmos"
@@ -136,6 +142,8 @@ __all__ = [
     "History",
     "InstanceState",
     "LaneDeclaration",
+    "ListFileProductionsRequest",
+    "ListFileProductionsResponse",
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",

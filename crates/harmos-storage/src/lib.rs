@@ -94,7 +94,7 @@ pub use receipts::{MutationHeader, MutationReceipt, MutationValue};
 pub use record_view::RecordView;
 pub use schema_sets::{SchemaExchange, SchemaWrite, SchemaWriteReceipt};
 pub use snapshot::Snapshot;
-pub use staging::{FileProductionStatus, StorageFile};
+pub use staging::{FileProduction, FileProductionStatus, FileProductions, StorageFile};
 
 pub use harmos_domain::model::storage::StorageSchema;
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
@@ -106,8 +106,6 @@ pub use worker::Worker;
 // Standard Library Imports
 
 // Third Party Imports
-#[cfg(test)]
-extern crate harmos_domain as harmos;
 
 // Local Imports
 

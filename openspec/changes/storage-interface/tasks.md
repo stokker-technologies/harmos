@@ -45,3 +45,12 @@
   - [ ] Native Linux and hosted validation remain pending integration.
 - [ ] 4.2 Publish an authorized usable Harmos revision after operation-boundary and plugin-lifecycle, and verify its product pin without local overrides. Product extraction, disk-backend adoption and product benchmarks remain in the consuming product change; no publication is authorized by this reconciliation.
 - [x] Consumer adoption follows protocol → operations → runtime → SDKs → examples → guides; retain ordinary bounded query fallback and streamed batch writes.
+
+- [x] 2.9.1 Lock exact-scope discovery inventory and scenarios: staging owner, native request/handler/catalog, runtime storage facade, shared protocol messages and generated projections; retain private admission and existing recovery.
+- [x] 2.9.2 Implement bounded restart-resumable unfinished-production discovery with generation and recorded byte progress.
+- [x] 2.9.3 Prove scope isolation, published exclusion, paging, lost-response startup recovery, codec/catalog and discover/settle/DeleteScope through focused tests.
+- [ ] 2.9.4 Regenerate every SDK projection and prove generation drift, workspace test-target compilation, formatting, repository contracts, tooling and strict specification validation.
+  - [x] Regenerate Rust, Python, C# and C++ projections; prove clean formatted outputs and the protocol, Python and C# drift checks.
+  - [x] Compile every workspace test target through per-package focused tasks with the declared test features; check the four changed packages.
+  - [x] Run formatting, repository contracts and strict specification validation.
+  - [ ] Resolve the shared SDK inventory fixture's coupling to mutable library descriptors: `tools/python/tests/integration/test_shared_generator_preserves_contracts.py:331` compares `tools/python/tests/fixtures/shared_sdk_inventory.json` against exports that now include the shared discovery messages. Owner decision remains open on isolating the fixture schema or regenerating its baseline through an owned task; do not patch the hashes to hide the tooling failure.

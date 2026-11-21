@@ -11,6 +11,7 @@
 
 pub(super) mod checkpoint;
 mod creation;
+mod discovery;
 mod mutations;
 mod perform;
 mod producer;
@@ -19,6 +20,7 @@ mod state;
 
 /* === Re-Exports === */
 
+pub use discovery::{FileProduction, FileProductions};
 pub(crate) use perform::perform;
 
 /* === Imports === */
@@ -160,18 +162,8 @@ impl StorageManager {
                 return Err(closed());
             }
             if let Some(active) = state.files.values().find(|active| active.staging == *file) {
-                let progress = active.production(file).expect("selected production")?;
-                let generation = active.session.as_ref().map(|session| session.generation);
-                let pending = match &active.command {
-                    Some(Command::Write(bytes)) => bytes.len() as u64,
-                    _ => 0,
-                };
-                return Ok(FileProductionStatus {
-                    progress,
-                    writer_generation: generation,
-                    accepted_length: progress.length + pending,
-                    durable_length: active.durable_length,
-                });
+                active.production(file).expect("selected production")?;
+                return Ok(active.production_status());
             }
         }
         let progress = self.get_file_production(file).await?;
@@ -185,6 +177,22 @@ impl StorageManager {
 }
 
 impl FileState {
+    fn production_status(&self) -> FileProductionStatus {
+        let pending = match &self.command {
+            Some(Command::Write(bytes)) => bytes.len() as u64,
+            _ => 0,
+        };
+        FileProductionStatus {
+            progress: FileProgress {
+                length: self.length,
+                phase: FilePhase::Producing,
+            },
+            writer_generation: self.session.as_ref().map(|session| session.generation),
+            accepted_length: self.length + pending,
+            durable_length: self.durable_length,
+        }
+    }
+
     pub(super) fn belongs_to_scope(&self, scope: &Identifier) -> bool {
         self.metadata.scope.as_ref() == Some(scope)
     }

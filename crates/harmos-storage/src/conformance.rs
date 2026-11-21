@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::num::NonZeroUsize;
 
 // Third Party Imports
 use arrow_array::{StructArray, UInt64Array};
@@ -25,9 +26,9 @@ use crate::MutationValue;
 use crate::query::{FileSelection, RecordSelection, StreamSelection};
 use crate::writes::{DecodedBatch, convert};
 use crate::{
-    BackendSnapshot, CompoundOutcome, Error, FileMetadata, FileReference, Identifier, MemorySize, MutationId, MutationItem, ObjectPoint,
-    ObjectValue, ObjectVersion, ObjectVersionToken, RecordInput, Result, ScanPage, StorageCursor, StorageManager, StoredRecord, StoredRow,
-    StreamInput,
+    BackendSnapshot, CompoundOutcome, Error, FileMetadata, FileProduction, FileReference, Identifier, MemorySize, MutationId, MutationItem,
+    ObjectPoint, ObjectValue, ObjectVersion, ObjectVersionToken, ReadLimits, RecordInput, Result, ScanPage, StorageCursor, StorageManager,
+    StoredRecord, StoredRow, StreamInput,
 };
 use harmos_query::arrow::ArrowBatch;
 
@@ -509,6 +510,40 @@ pub async fn columnar_admission_bounds(storage: &StorageManager, scope: &Identif
     let after = storage.status();
     if after.accepted != before.accepted || after.pending_bytes != before.pending_bytes || after.pending_batches != before.pending_batches {
         return Err(invalid("release columnar admission capacity on refusal without advancing acceptance"));
+    }
+    Ok(())
+}
+
+/// Prove Exact Unfinished Membership, Progress and Exclusive Keyset Pages.
+/// Supply the Expected Entries in Identity Order After Fencing Scope Admission.
+pub fn file_productions(storage: &StorageManager, scope: &Identifier, expected: &[FileProduction]) -> Result<()> {
+    let limits = ReadLimits {
+        rows: NonZeroUsize::MIN,
+        bytes: storage.settings().response.batch_bytes,
+    };
+    let mut after = None;
+    let mut at = None;
+    let mut index = 0;
+    loop {
+        let page = storage.list_file_productions(scope, after.as_ref(), at.as_ref(), limits)?;
+        if page.productions.len() > 1 || at.as_ref().is_some_and(|at| *at != page.at) {
+            return Err(invalid("preserve the selected boundary and configured page bounds"));
+        }
+        for production in &page.productions {
+            if expected.get(index) != Some(production) {
+                return Err(invalid("return only the expected exact-scope unfinished identities and progress in order"));
+            }
+            index += 1;
+        }
+        let Some(next) = page.next else { break };
+        if page.productions.last().is_none_or(|last| last.session.id != next) || after.as_ref().is_some_and(|after| *after >= next) {
+            return Err(invalid("advance the exclusive production identity on each nonterminal page"));
+        }
+        after = Some(next);
+        at = Some(page.at);
+    }
+    if index != expected.len() {
+        return Err(invalid("discover every unfinished production after fencing scope admission"));
     }
     Ok(())
 }

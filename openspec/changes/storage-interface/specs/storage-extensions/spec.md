@@ -48,3 +48,39 @@ The landed extensions SHALL be adopted through the typed native operation bounda
 #### Scenario: Consumer Extraction
 - **WHEN** a product adopts the published extension revision and extracts application persistence
 - **THEN** it retains product semantics and named non-persistence owners and compares identical multi-day workloads before and after
+
+### Requirement: Exact-Scope Unfinished File Production Discovery
+Storage SHALL expose Private native `ListFileProductions` with exact scope, optional PageRequest and ReadCut. Responses SHALL provide staged session identity, writer generation, accepted and durable byte lengths, resolved_at and next_page_token. Discovery SHALL reuse the staging set populated by `recover_files` and exclude published files, private transfer staging and other scopes.
+
+#### Scenario: Exact Scope and Unfinished Membership
+- **WHEN** unfinished and published files exist in one scope and an adjacent child scope
+- **THEN** discovery returns only unfinished productions whose scope equals the requested identity
+
+### Requirement: Bounded File Production Pages
+The operation SHALL bound page rows, retained response bytes and cursor input by storage response policy. A first entry exceeding the byte bound SHALL refuse with an actionable error rather than return an empty nonterminal page.
+
+#### Scenario: Response Budget
+- **WHEN** the requested row or byte limit is smaller than the available unfinished set
+- **THEN** the operation returns a bounded page and continuation or refuses if the first entry cannot fit
+
+### Requirement: Restart-Resumable File Discovery
+Continuations SHALL bind exact scope, store incarnation, saved storage position and exclusive file identity and survive restart of that history. Membership and progress SHALL be live rather than historical staging snapshots. A product SHALL fence admission before traversal and settlement; newly admitted identities before a consumed key require fresh traversal.
+
+#### Scenario: Bounded Resumable Traversal
+- **WHEN** a fenced scope contains more productions than one page and storage restarts between pages
+- **THEN** the issued cursor resumes in identity order without repeating earlier identities and retains its selected storage boundary
+
+#### Scenario: Lost Create Response and Recovered Progress
+- **WHEN** creation commits but its caller loses the response and storage restarts
+- **THEN** startup recovery makes the production discoverable with its current writer generation and durable byte prefix
+
+#### Scenario: Mismatched Continuation
+- **WHEN** a continuation is malformed or supplied with a changed scope, foreign history or conflicting cut
+- **THEN** discovery refuses explicitly and names how to restart the traversal
+
+### Requirement: File Discovery Boundary and Settlement
+Shared discovery protocol messages SHALL project into every generated SDK without exposing a storage wire service or changing native caller admission. Native results SHALL supply the session required by existing publish and abandon operations.
+
+#### Scenario: Settle Before Scope Deletion
+- **WHEN** DeleteScope refuses because unfinished productions remain and the consumer fences admission, discovers them, claims recovered writers through the existing CreateFileWriter operation, then publishes or abandons them with existing operations
+- **THEN** fresh discovery is empty and DeleteScope succeeds

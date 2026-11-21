@@ -12,6 +12,8 @@ pub use crate::wire::shared::Grpc;
 pub use crate::wire::shared::History;
 pub use crate::wire::shared::InstanceState;
 pub use crate::wire::shared::LaneDeclaration;
+pub use crate::wire::shared::ListFileProductionsRequest;
+pub use crate::wire::shared::ListFileProductionsResponse;
 pub use crate::wire::shared::MessageSettings;
 pub use crate::wire::shared::OperationContract;
 pub use crate::wire::shared::OperationPolicy;

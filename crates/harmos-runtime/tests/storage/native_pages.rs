@@ -16,9 +16,10 @@ mod compound_mutation_through_operations;
 /* === Imports === */
 
 use super::{Fixture, config};
+use crate::support::{Bank, Ledger, app};
 use arrow_array::UInt64Array;
-use harmos_domain::Message;
 use harmos_domain::schema::{Described, graph};
+use harmos_domain::{MemorySize, Message};
 use harmos_operations::storage;
 use harmos_operations::storage::{
     ColumnKind, ColumnPredicate, ColumnSelection, ColumnSource, IndexDefinition, IndexSelection, ProjectionDefinition, ProjectionSelection,
@@ -26,7 +27,10 @@ use harmos_operations::storage::{
 };
 use harmos_protocol::model;
 use harmos_query::arrow::{ArrowBatch, ArrowSchema};
-use harmos_storage::{Identifier, MutationId, PayloadEncoding, ReadLimits, RecordInput, SchemaKey};
+use harmos_runtime::operations::{CallContext, Lane};
+use harmos_runtime::storage::StorageManager;
+use harmos_storage::{Identifier, MutationId, PayloadEncoding, ReadLimits, RecordInput, SchemaKey, StorageBackends};
+use sha2::{Digest, Sha256};
 use std::{
     num::{NonZeroU32, NonZeroUsize},
     sync::atomic::Ordering,
@@ -43,9 +47,7 @@ struct Reading {
 #[tokio::test]
 async fn native_text_predicates_bind_pages_to_the_prefix_and_read_cut() {
     let fixture = Fixture::new(config()).await;
-    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
+    app::register(&fixture.runtime, harmos_operations::storage_catalog(), Lane::default()).await.unwrap();
     let schema = SchemaKey {
         id: Identifier::new("text-reading").unwrap(),
         version: NonZeroU32::MIN,
@@ -162,9 +164,7 @@ async fn native_text_predicates_bind_pages_to_the_prefix_and_read_cut() {
 #[tokio::test]
 async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     let fixture = Fixture::new(config()).await;
-    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
+    app::register(&fixture.runtime, harmos_operations::storage_catalog(), Lane::default()).await.unwrap();
     let schema = SchemaKey {
         id: Identifier::new("native-reading").unwrap(),
         version: NonZeroU32::MIN,
@@ -435,5 +435,188 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         .call_native::<storage::DeleteSnapshot>(storage::DeleteSnapshotRequest { snapshot: lease.snapshot })
         .await
         .unwrap();
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn discover_recovered_productions_settles_scope_through_the_facade() {
+    // Start Storage and Create Productions Before Fencing Admission
+    let fixture = Fixture::new(config()).await;
+    app::register(&fixture.runtime, harmos_operations::storage_catalog(), Lane::default()).await.unwrap();
+    let scope = Identifier::new("execution").unwrap();
+    let call = fixture.runtime.for_call(&CallContext::default());
+    let request = storage::InfoRequest {};
+    let info = call.storage().info(request).await.unwrap();
+    let window = info.mutations.unwrap().id;
+    let mut created = None;
+    for id in ["file-b", "file-a"] {
+        let request = storage::CreateFileProductionRequest {
+            metadata: Some(storage::FileMetadata {
+                id: Identifier::new(id).unwrap(),
+                scope: Some(scope.clone()),
+                media_type: "application/octet-stream".into(),
+                expected_length: None,
+                expected_sha256: None,
+            }),
+            mutation: Some(MutationId {
+                window: window.clone(),
+                key: Identifier::new(id).unwrap(),
+            }),
+        };
+        let response = call.storage().create_file_production(request).await.unwrap();
+        if id == "file-a" {
+            created = response.production;
+        }
+        // The Other Committed Reply Is Lost Before the Consumer Retains Its Session
+    }
+    let created = created.unwrap();
+    let request = storage::AppendFileBytesRequest {
+        session: Some(created.session.clone()),
+        offset: 0,
+        data: b"prefix".to_vec(),
+        mutation: Some(MutationId {
+            window: window.clone(),
+            key: Identifier::new("append").unwrap(),
+        }),
+    };
+    call.storage().append_file_bytes(request).await.unwrap();
+    let request = storage::CreateFileWriterRequest {
+        session: Some(created.session.clone()),
+        mutation: Some(MutationId {
+            window: window.clone(),
+            key: Identifier::new("resume").unwrap(),
+        }),
+    };
+    let resumed = call.storage().create_file_writer(request).await.unwrap().production.unwrap();
+
+    // Persist the Fixture's Prefix Before Observing Durable Progress
+    fixture.storage.flush().await.unwrap();
+
+    // Refuse Scope Deletion Before Settling Its Productions
+    let mut deletion = storage::DeleteScopeRequest {
+        scope: scope.clone(),
+        mutation: Some(MutationId {
+            window: window.clone(),
+            key: Identifier::new("delete-scope").unwrap(),
+        }),
+    };
+    assert!(call.storage().delete_scope(deletion.clone()).await.is_err());
+    let request = storage::ListFileProductionsRequest {
+        scope: scope.clone(),
+        at: None,
+        page: Some(model::PageRequest {
+            page_size: 1,
+            max_bytes: 1024,
+            page_token: String::new(),
+        }),
+    };
+    let first = call.storage().list_file_productions(request.clone()).await.unwrap();
+    assert_eq!(first.productions.len(), 1);
+    assert!(first.memory_size() <= request.page.as_ref().unwrap().max_bytes as usize);
+    assert_eq!(first.productions[0].session, resumed.session);
+    assert_eq!(first.productions[0].accepted_length, 6);
+    assert_eq!(first.productions[0].durable_length, 6);
+    assert!(!first.next_page_token.is_empty());
+    assert_eq!(call.storage().list_file_productions(request.clone()).await.unwrap(), first);
+    let mut continuation = request.clone();
+    continuation.page.as_mut().unwrap().page_token = first.next_page_token.clone();
+    continuation.at = first.resolved_at.clone();
+    let mut wrong_scope = continuation.clone();
+    wrong_scope.scope = Identifier::new("execution.child").unwrap();
+    assert!(call.storage().list_file_productions(wrong_scope).await.is_err());
+    let mut wrong_cut = continuation.clone();
+    wrong_cut.at.as_mut().unwrap().positions[0].sequence += 1;
+    assert!(call.storage().list_file_productions(wrong_cut).await.is_err());
+    let mut malformed = request.clone();
+    malformed.page.as_mut().unwrap().page_token = "invalid".into();
+    assert!(call.storage().list_file_productions(malformed).await.is_err());
+    let mut tiny = request.clone();
+    tiny.page.as_mut().unwrap().max_bytes = 1;
+    assert!(call.storage().list_file_productions(tiny).await.is_err());
+    drop(call);
+    let data = fixture.data.clone();
+    let recovery = fixture.recovery.clone();
+    fixture.finish().await;
+
+    // Reopen the Same Backend History With a Fresh Runtime and Recover Productions
+    let manager = StorageManager::new(
+        StorageBackends {
+            primary: data.clone(),
+            state: recovery.clone(),
+        },
+        config(),
+    )
+    .unwrap();
+    let runtime = app::start::<Bank>(Ledger::default(), (), |setup| {
+        setup.settings().storage(&manager).register(crate::support::catalog());
+    })
+    .await
+    .unwrap();
+    manager.start(&runtime).await.unwrap();
+    app::register(&runtime, harmos_operations::storage_catalog(), Lane::default()).await.unwrap();
+    let fixture = Fixture::from_parts(runtime, manager, data, recovery);
+    let call = fixture.runtime.for_call(&CallContext::default());
+
+    // Select the Reopened Owner's Retry Window for New Mutations
+    let request = storage::InfoRequest {};
+    let info = call.storage().info(request).await.unwrap();
+    let window = info.mutations.unwrap().id;
+    deletion.mutation = Some(MutationId {
+        window: window.clone(),
+        key: Identifier::new("delete-scope").unwrap(),
+    });
+
+    // Claim the Recovered Writer Before Publishing Its Durable Prefix
+    let request = storage::CreateFileWriterRequest {
+        session: Some(first.productions[0].session.clone()),
+        mutation: Some(MutationId {
+            window: window.clone(),
+            key: Identifier::new("claim-publish").unwrap(),
+        }),
+    };
+    let claimed = call.storage().create_file_writer(request).await.unwrap().production.unwrap();
+    assert!(claimed.session.generation > first.productions[0].session.generation);
+    let request = storage::PublishFileProductionRequest {
+        session: Some(claimed.session),
+        length: 6,
+        sha256: Sha256::digest(b"prefix").to_vec(),
+        mutation: Some(MutationId {
+            window: window.clone(),
+            key: Identifier::new("publish").unwrap(),
+        }),
+    };
+    call.storage().publish_file_production(request).await.unwrap();
+
+    // Resume the Issued Page After Restart and Abandon the Lost-Response Production
+    let second = call.storage().list_file_productions(continuation).await.unwrap();
+    assert_eq!(second.resolved_at, first.resolved_at);
+    assert_eq!(second.productions.len(), 1);
+    assert_eq!(second.productions[0].session.id.as_str(), "file-b");
+    assert_eq!(second.productions[0].session.generation, 1);
+    assert!(second.next_page_token.is_empty());
+    let request = storage::CreateFileWriterRequest {
+        session: Some(second.productions[0].session.clone()),
+        mutation: Some(MutationId {
+            window: window.clone(),
+            key: Identifier::new("claim-abandon").unwrap(),
+        }),
+    };
+    let claimed = call.storage().create_file_writer(request).await.unwrap().production.unwrap();
+    assert!(claimed.session.generation > second.productions[0].session.generation);
+    let request = storage::DeleteFileProductionRequest {
+        session: Some(claimed.session),
+        mutation: Some(MutationId {
+            window,
+            key: Identifier::new("abandon").unwrap(),
+        }),
+    };
+    call.storage().delete_file_production(request).await.unwrap();
+    let request = storage::ListFileProductionsRequest { scope, page: None, at: None };
+    assert!(call.storage().list_file_productions(request).await.unwrap().productions.is_empty());
+
+    // Delete the Settled Scope Through the Same Previously Refused Operation
+    let response = call.storage().delete_scope(deletion).await.unwrap();
+    assert!(matches!(response.outcome, storage::CompoundOutcome::Applied { .. }));
+    drop(call);
     fixture.finish().await;
 }

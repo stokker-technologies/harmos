@@ -9,10 +9,18 @@
 
 // Exercise Resumable Native Files And Durable Mutation Replay With The Storage Fixture.
 
+/* === Modules === */
+
+#[cfg(unix)]
+mod unix;
+
 /* === Imports === */
 
 // Standard Library Imports
-use std::{num::NonZeroUsize, sync::Arc};
+use std::future::{self, Future};
+use std::io::Write;
+use std::task::Poll;
+use std::{fs, num::NonZeroUsize, sync::Arc, time::Duration};
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
@@ -53,15 +61,15 @@ pub(super) async fn storage(primary: &Arc<Backend>) -> StorageManager {
     let settings = StorageSettings {
         transfer: Default::default(),
         policy: Default::default(),
-        filesystem: harmos_storage::StorageFilesystemSettings {
-            poll_interval: std::time::Duration::from_millis(100),
-            max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
-            event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
+        filesystem: StorageFilesystemSettings {
+            poll_interval: Duration::from_millis(100),
+            max_entries: NonZeroUsize::new(100_000).unwrap(),
+            event_capacity: NonZeroUsize::new(1024).unwrap(),
         },
 
         request: StorageRequestSettings {
-            max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
-            max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
+            max_file_productions: NonZeroUsize::new(256).unwrap(),
+            max_mutation_receipts: NonZeroUsize::new(1024).unwrap(),
             max_pending_queries: NonZeroUsize::new(8).unwrap(),
             max_active_queries: NonZeroUsize::new(2).unwrap(),
             max_active_file_operations: NonZeroUsize::new(1).unwrap(),
@@ -127,7 +135,7 @@ async fn local_file_transfer() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("outside-backend.bin");
     let expected: Vec<_> = (0..20_000).map(|value| (value % 251) as u8).collect();
-    std::fs::write(&path, &expected).unwrap();
+    fs::write(&path, &expected).unwrap();
     let storage = storage(&data).await;
     let source = FileSource::Local(path.clone());
     let whole = ByteRange { offset: 0, limit: None };
@@ -152,7 +160,7 @@ async fn local_file_transfer() {
         .await
         .unwrap();
     assert!(storage.status().saved.covers(&captured.position).unwrap());
-    std::fs::write(&path, b"changed after capture").unwrap();
+    fs::write(&path, b"changed after capture").unwrap();
     let stored = FileSource::Stored(captured.clone());
     assert_eq!(contents(&storage, stored.clone(), whole).await, expected);
     assert_eq!(storage.hash_file(FileRead { source: stored.clone(), range: whole }).await.unwrap(), hash);
@@ -184,14 +192,12 @@ async fn local_file_transfer() {
 #[tokio::test]
 async fn capture_rejects_mutation() {
     let data = Arc::new(Backend::new(history()));
-    use std::future::{Future, poll_fn};
-    use std::task::Poll;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("mutable.bin");
     let storage = storage(&data).await;
     for (index, consistency, replacement) in [(0, CaptureConsistency::Stable, vec![9; 8193]), (1, CaptureConsistency::Bounded, vec![9; 1])]
     {
-        std::fs::write(&path, vec![7; 8192]).unwrap();
+        fs::write(&path, vec![7; 8192]).unwrap();
         let request = FileCapture {
             source: FileSource::Local(path.clone()),
             range: ByteRange { offset: 0, limit: None },
@@ -201,13 +207,13 @@ async fn capture_rejects_mutation() {
         let mut copying = Box::pin(storage.capture_file(request));
         // On This Current-Thread Executor, Source Open Precedes Target Admission;
         // Mutate Immediately After Admission Before The Worker Can Run The Target.
-        poll_fn(|cx| match copying.as_mut().poll(cx) {
+        future::poll_fn(|cx| match copying.as_mut().poll(cx) {
             Poll::Pending if storage.status().pending_batches > 0 => Poll::Ready(()),
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => panic!("capture completed before target admission: {result:?}"),
         })
         .await;
-        std::fs::write(&path, replacement).unwrap();
+        fs::write(&path, replacement).unwrap();
         assert!(copying.await.is_err());
         storage.flush().await.unwrap();
     }
@@ -217,10 +223,9 @@ async fn capture_rejects_mutation() {
 #[tokio::test]
 async fn local_follow_changes() {
     let data = Arc::new(Backend::new(history()));
-    use std::io::Write;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("growing.bin");
-    std::fs::write(&path, b"first").unwrap();
+    fs::write(&path, b"first").unwrap();
     let storage = storage(&data).await;
     let source = FileSource::Local(path.clone());
     let mut follower = storage
@@ -231,13 +236,13 @@ async fn local_follow_changes() {
         .await
         .unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"first");
-    std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"second").unwrap();
+    fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"second").unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"second");
-    std::fs::write(&path, b"x").unwrap();
+    fs::write(&path, b"x").unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().event(), &FileEvent::Truncated { length: 1 });
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"x");
-    std::fs::rename(&path, path.with_extension("old")).unwrap();
-    std::fs::write(&path, b"replacement").unwrap();
+    fs::rename(&path, path.with_extension("old")).unwrap();
+    fs::write(&path, b"replacement").unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().event(), &FileEvent::Replaced);
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"replacement");
     let mut tail = storage
@@ -247,52 +252,11 @@ async fn local_follow_changes() {
         })
         .await
         .unwrap();
-    std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"tail").unwrap();
+    fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"tail").unwrap();
     assert_eq!(tail.next().await.unwrap().unwrap().data().unwrap(), b"tail");
     let mut at = storage.follow_file(FileFollow { source, start: FollowStart::At(2) }).await.unwrap();
     assert_eq!(at.next().await.unwrap().unwrap().data().unwrap(), b"placementtail");
     drop((follower, tail, at));
-    storage.close().await.unwrap();
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn native_path_rules() {
-    let data = Arc::new(Backend::new(history()));
-    use std::os::unix::{ffi::OsStringExt, fs::symlink};
-    let directory = tempfile::tempdir().unwrap();
-    let name = std::ffi::OsString::from_vec(vec![b'n', 0xff]);
-    let path = directory.path().join(name);
-    std::fs::write(&path, b"native bytes").unwrap();
-    let storage = storage(&data).await;
-    let request = FileRead {
-        source: FileSource::Local(path.clone()),
-        range: ByteRange { offset: 0, limit: None },
-    };
-    assert_eq!(storage.hash_file(request.clone()).await.unwrap().bytes_read, 12);
-    let link = directory.path().join("linked-file");
-    symlink(&path, &link).unwrap();
-    assert!(
-        storage
-            .hash_file(FileRead {
-                source: FileSource::Local(link),
-                ..request.clone()
-            })
-            .await
-            .is_err()
-    );
-    let alias = directory.path().join("linked-directory");
-    symlink(directory.path(), &alias).unwrap();
-    let through = alias.join(path.file_name().unwrap());
-    assert!(
-        storage
-            .hash_file(FileRead {
-                source: FileSource::Local(through),
-                ..request
-            })
-            .await
-            .is_err()
-    );
     storage.close().await.unwrap();
 }
 
@@ -365,7 +329,7 @@ async fn sessions_survive_reopen() {
     assert_eq!(third.finish_file_once(&finish, &resumed.session).await.unwrap(), reference);
     assert_eq!(third.resume_file_once(&resume, &written.session).await.unwrap(), resumed);
     let request = FileRead {
-        source: harmos_domain::model::storage::files::FileSource::Stored(reference.clone()),
+        source: FileSource::Stored(reference.clone()),
         range: ByteRange { offset: 0, limit: None },
     };
     let mut reader = third.read_file(request).await.unwrap();
@@ -425,4 +389,129 @@ async fn immutable_reader_survives_deletion_and_stops_after_snapshot_release() {
     assert!(storage.read_file(request).await.is_err());
     drop(producer);
     storage.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn discovery_conformance_is_exact_bounded_and_unfinished_only() {
+    // Create Unfinished Files in Deliberately Unsorted Order
+    let data = Arc::new(Backend::new(history()));
+    let storage = storage(&data).await;
+    let scope = Identifier::new("scope").unwrap();
+    let child = Identifier::new("scope.child").unwrap();
+    let mut expected = Vec::new();
+    for (id, selected) in [("file-c", &scope), ("file-a", &scope), ("file-b", &scope), ("child", &child)] {
+        let metadata = FileMetadata {
+            scope: Some(selected.clone()),
+            ..metadata(id)
+        };
+        let created = storage.create_file_once(&mutation(&storage, id), &metadata).await.unwrap();
+        if selected == &scope {
+            expected.push(FileProduction {
+                session: created.session,
+                accepted_length: 0,
+                durable_length: 0,
+            });
+        }
+    }
+    expected.sort_by(|left, right| left.session.id.cmp(&right.session.id));
+
+    // Exclude Published Files, Private Transfers and Unscoped Files
+    let mut published = storage
+        .produce_file(FileMetadata {
+            scope: Some(scope.clone()),
+            ..metadata("published")
+        })
+        .await
+        .unwrap();
+    published.write_all(b"published".to_vec()).await.unwrap();
+    published.finish().await.unwrap();
+    let private = storage
+        .create_file(FileMetadata {
+            scope: Some(scope.clone()),
+            ..metadata("private")
+        })
+        .await
+        .unwrap();
+    storage.create_file_once(&mutation(&storage, "unscoped"), &metadata("unscoped")).await.unwrap();
+    conformance::file_productions(&storage, &scope, &expected).unwrap();
+    conformance::file_productions(&storage, &Identifier::new("missing").unwrap(), &[]).unwrap();
+
+    // Enforce Bytes and Foreign-History Refusal
+    let limits = ReadLimits {
+        rows: NonZeroUsize::MAX,
+        bytes: NonZeroUsize::MIN,
+    };
+    assert!(matches!(storage.list_file_productions(&scope, None, None, limits), Err(Error::ResourceExhausted { .. })));
+    let foreign = StorageCursor {
+        history: StoreHistory {
+            store: Identifier::new("foreign").unwrap(),
+            epoch: Identifier::new("epoch").unwrap(),
+        },
+        sequence: 0,
+    };
+    assert!(
+        storage
+            .list_file_productions(
+                &scope,
+                None,
+                Some(&foreign),
+                ReadLimits {
+                    rows: NonZeroUsize::MIN,
+                    bytes: storage.settings().response.batch_bytes,
+                }
+            )
+            .is_err()
+    );
+    drop(private);
+    storage.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn discovery_recovers_lost_create_responses_and_resumes_pages() {
+    // Lose the Committed Create Reply and Persist Another File's Byte Prefix
+    let data = Arc::new(Backend::new(history()));
+    let first = storage(&data).await;
+    let scope = Identifier::new("restart").unwrap();
+    let lost = FileMetadata {
+        scope: Some(scope.clone()),
+        ..metadata("file-a")
+    };
+    first.create_file_once(&mutation(&first, "lost-create"), &lost).await.unwrap();
+    let metadata = FileMetadata {
+        scope: Some(scope.clone()),
+        ..metadata("file-b")
+    };
+    let created = first.create_file_once(&mutation(&first, "create-b"), &metadata).await.unwrap();
+    first.append_file_once(&mutation(&first, "append-b"), &created.session, 0, b"prefix".to_vec()).await.unwrap();
+    let resumed = first.resume_file_once(&mutation(&first, "resume-b"), &created.session).await.unwrap();
+    let limits = ReadLimits {
+        rows: NonZeroUsize::MIN,
+        bytes: first.settings().response.batch_bytes,
+    };
+    let page = first.list_file_productions(&scope, None, None, limits).unwrap();
+    assert_eq!(page.productions[0].session.id, lost.id);
+    assert!(page.next.is_some());
+    first.close().await.unwrap();
+
+    // Recover Through the Existing Startup Owner and Continue by Durable Identity
+    let second = storage(&data).await;
+    let next = second.list_file_productions(&scope, page.next.as_ref(), Some(&page.at), limits).unwrap();
+    assert_eq!(
+        next.productions,
+        vec![FileProduction {
+            session: resumed.session.clone(),
+            accepted_length: 6,
+            durable_length: 6,
+        }]
+    );
+    assert!(next.next.is_none());
+    let expected = vec![page.productions[0].clone(), next.productions[0].clone()];
+    conformance::file_productions(&second, &scope, &expected).unwrap();
+    for (index, production) in expected.iter().enumerate() {
+        let claimed = second.resume_file_once(&mutation(&second, &format!("claim-{index}")), &production.session).await.unwrap();
+        assert!(claimed.session.generation > production.session.generation);
+        second.abandon_file_once(&mutation(&second, &format!("abandon-{index}")), &claimed.session).await.unwrap();
+    }
+    conformance::file_productions(&second, &scope, &[]).unwrap();
+    second.close().await.unwrap();
 }

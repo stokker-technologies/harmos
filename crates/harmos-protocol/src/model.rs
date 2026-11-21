@@ -541,6 +541,47 @@ impl Classification {
         }
     }
 }
+/// Bounds one response and carries an opaque continuation; each resource defines whether zero bounds select defaults or refuse.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PageRequest {
+    /// Maximum rows/items in a page. Storage uses configured defaults at zero; status histories require a positive value.
+    #[prost(uint32, tag = "1")]
+    pub page_size: u32,
+    /// Maximum encoded response bytes, including metadata and continuation. Storage clamps to configured capacity; status histories reject zero.
+    #[prost(uint64, tag = "2")]
+    pub max_bytes: u64,
+    /// Empty opens a read; otherwise resend the opaque token with the same selection and cut. Expired or mismatched continuations refuse.
+    #[prost(string, tag = "3")]
+    pub page_token: ::prost::alloc::string::String,
+}
+/// Shared request value for exact-scope unfinished production discovery through native storage.
+/// No host service is exposed; a product owns its public operations.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListFileProductionsRequest {
+    /// Required exact scope identity; child scopes are excluded.
+    #[prost(string, tag = "1")]
+    pub scope: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub page: ::core::option::Option<PageRequest>,
+    /// Optional saved storage boundary. Production progress is live, not historical.
+    #[prost(message, optional, tag = "3")]
+    pub at: ::core::option::Option<ReadCut>,
+}
+/// A bounded page of unfinished productions, reusing the shared upload identity and byte progress.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListFileProductionsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub productions: ::prost::alloc::vec::Vec<Upload>,
+    /// Resume after the last returned identity in this scope, including after restart of the same history.
+    #[prost(string, tag = "2")]
+    pub next_page_token: ::prost::alloc::string::String,
+    /// Selected saved storage boundary; progress is observed from the current unfinished set.
+    #[prost(message, optional, tag = "3")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+}
 /// Declares a file's identity, optional scope and optional publication expectations before producing its bytes.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -637,20 +678,6 @@ impl UploadState {
             _ => None,
         }
     }
-}
-/// Bounds one response and carries an opaque continuation; each resource defines whether zero bounds select defaults or refuse.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PageRequest {
-    /// Maximum rows/items in a page. Storage uses configured defaults at zero; status histories require a positive value.
-    #[prost(uint32, tag = "1")]
-    pub page_size: u32,
-    /// Maximum encoded response bytes, including metadata and continuation. Storage clamps to configured capacity; status histories reject zero.
-    #[prost(uint64, tag = "2")]
-    pub max_bytes: u64,
-    /// Empty opens a read; otherwise resend the opaque token with the same selection and cut. Expired or mismatched continuations refuse.
-    #[prost(string, tag = "3")]
-    pub page_token: ::prost::alloc::string::String,
 }
 /// One Storage Setting Shared by Host and SDK Defaults.
 #[derive(serde::Serialize, serde::Deserialize)]
