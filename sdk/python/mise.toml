@@ -45,7 +45,10 @@ run = "uv run --locked --no-sync python -c \"import os, runpy; os.environ['TEST_
 description = "Format the Python SDK"
 dir = "../.."
 usage = 'flag "--check"'
-run = "uv run --locked --no-sync --project tools/python ruff format sdk/python{% if usage.check %} --check{% endif %}"
+run = [
+  "uv run --locked --no-sync --project tools/python ruff check --select I sdk/python{% if not usage.check %} --fix{% endif %}",
+  "uv run --locked --no-sync --project tools/python ruff format sdk/python{% if usage.check %} --check{% endif %}",
+]
 
 [tasks.lint]
 description = "Lint the Python SDK"
