@@ -9,19 +9,12 @@
 
 /* === Modules === */
 
-#[path = "../../../harmos-storage/tests/support/storage.rs"]
-#[allow(dead_code)]
-mod backend;
-mod snapshots;
-
 #[path = "../../tests/support/mod.rs"]
 mod support;
 
 /* === Re-Exports === */
 
 /* === Imports === */
-
-extern crate harmos_runtime as harmos;
 
 // Standard Library Imports
 use std::sync::Arc;
@@ -227,9 +220,6 @@ fn benchmarks(c: &mut criterion::Criterion) {
             });
         });
     }
-    group.finish();
-    let mut group = c.benchmark_group("integration/snapshot_recovery");
-    group.bench_function("large_state_and_journal", |b| b.iter(|| runtime.block_on(snapshots::segmented_recovery())));
     group.finish();
 }
 
