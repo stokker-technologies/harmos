@@ -62,10 +62,17 @@ pub(super) struct Receipts {
     window: Identifier,
     deadline: Instant,
     expires_at: SystemTime,
+    previous: Option<IssuedWindow>,
     entries: BTreeMap<MutationId, Entry>,
     // Cache Admission Order, Oldest First, for Eviction.
     order: VecDeque<MutationId>,
     unsaved: BTreeSet<MutationId>,
+}
+
+struct IssuedWindow {
+    id: Identifier,
+    deadline: Instant,
+    expires_at: SystemTime,
 }
 
 struct Entry {
@@ -149,6 +156,7 @@ impl Receipts {
             window: epoch()?,
             deadline: now + retention,
             expires_at: wall + retention,
+            previous: None,
             entries: BTreeMap::new(),
             order: VecDeque::new(),
             unsaved: BTreeSet::new(),
@@ -175,20 +183,37 @@ impl Receipts {
         }
     }
 
-    pub(super) fn window(&mut self, history: &StoreHistory, retention: Duration) -> Result<MutationWindow> {
+    pub(super) fn window(&mut self, history: &StoreHistory) -> Result<MutationWindow> {
         let reading = self.execution.read();
         let now = reading.instant;
         self.purge(now);
-        if now >= self.deadline {
-            self.window = epoch()?;
-            self.deadline = now + retention;
-            self.expires_at = reading.date.checked_add(retention).ok_or_else(expired)?;
+        if self.previous.as_ref().is_some_and(|window| now >= window.deadline) {
+            self.previous = None;
+        }
+        if now >= self.deadline - self.retention / 2 {
+            let window = epoch()?;
+            let expires_at = reading.date.checked_add(self.retention).ok_or_else(expired)?;
+            self.previous = (now < self.deadline).then(|| IssuedWindow {
+                id: self.window.clone(),
+                deadline: self.deadline,
+                expires_at: self.expires_at,
+            });
+            self.window = window;
+            self.deadline = now + self.retention;
+            self.expires_at = expires_at;
         }
         Ok(MutationWindow {
             history: history.clone(),
             id: self.window.clone(),
             expires_at: self.expires_at,
         })
+    }
+
+    fn issued_window(&self, id: &MutationId) -> Option<(Instant, SystemTime)> {
+        if id.window == self.window {
+            return Some((self.deadline, self.expires_at));
+        }
+        self.previous.as_ref().filter(|window| window.id == id.window).map(|window| (window.deadline, window.expires_at))
     }
 
     pub(super) fn lookup(&self, id: &MutationId, fingerprint: &[u8; 32], completion: Option<&Completion>) -> Result<ReceiptState> {
@@ -215,7 +240,7 @@ impl Receipts {
                 None => ReceiptState::Pending,
             });
         }
-        if id.window != self.window || now >= self.deadline {
+        if self.issued_window(id).is_none_or(|(deadline, _)| now >= deadline) {
             tracing::error!(window = %id.window, mutation = %id.key, reason = "retry window expired or unknown", "storage mutation rejected");
             return Err(expired());
         }
@@ -227,6 +252,13 @@ impl Receipts {
     }
 
     fn reserve(&mut self, id: &MutationId, fingerprint: [u8; 32]) -> Result<Completion> {
+        // Unknown Windows Reserve Only A Backend Receipt Lookup, Never Fresh Admission.
+        let reading = self.execution.read();
+        let issued = self.issued_window(id);
+        if issued.is_some_and(|(deadline, _)| reading.instant >= deadline) {
+            return Err(expired());
+        }
+        let (deadline, expires_at) = issued.unwrap_or((reading.instant, reading.date));
         while self.entries.len() >= self.maximum.get() {
             self.evict_oldest()?;
         }
@@ -236,8 +268,8 @@ impl Receipts {
             id.clone(),
             Entry {
                 fingerprint,
-                deadline: self.deadline,
-                expires_at: self.expires_at,
+                deadline,
+                expires_at,
                 value: None,
                 admitted: false,
                 completion: completion.0.clone(),
@@ -247,13 +279,13 @@ impl Receipts {
     }
 
     pub(super) fn admit(&mut self, id: &MutationId, fingerprint: [u8; 32]) -> Result<()> {
-        if id.window != self.window || self.execution.now() >= self.deadline {
-            return Err(expired());
-        }
         let entry = self.entries.get_mut(id).ok_or(Error::InvalidInput {
             field: "storage mutation",
             reason: "resolve the backend receipt before admitting new work",
         })?;
+        if self.execution.now() >= entry.deadline {
+            return Err(expired());
+        }
         if entry.admitted || entry.fingerprint != fingerprint {
             return Err(Error::AlreadyRegistered {
                 domain: "storage mutation",
@@ -489,7 +521,7 @@ impl StorageManager {
                 entry.value = Some(receipt.value);
                 entry.admitted = true;
                 receipts.lookup(mutation, &fingerprint, Some(&resolution.completion))?;
-            } else if mutation.window != receipts.window || reading.instant >= receipts.deadline {
+            } else if receipts.issued_window(mutation).is_none_or(|(deadline, _)| reading.instant >= deadline) {
                 return Err(expired());
             }
         }
@@ -620,7 +652,7 @@ impl StorageManager {
             return Err(Error::NotReady { domain: "storage" });
         }
         let mutations = if self.inner.primary.capabilities().mutation_receipts {
-            Some(state.receipts.window(self.inner.primary.get_history(), self.inner.settings.policy.mutation_retention)?)
+            Some(state.receipts.window(self.inner.primary.get_history())?)
         } else {
             None
         };
@@ -659,7 +691,7 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage mutations" });
         }
-        let window = state.receipts.window(self.inner.primary.get_history(), self.inner.settings.policy.mutation_retention)?;
+        let window = state.receipts.window(self.inner.primary.get_history())?;
         state.collect();
         Ok(window)
     }
@@ -784,10 +816,11 @@ fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "storage mutation receipts" }
 }
 fn expired() -> Error {
-    Error::InvalidInput {
-        field: "storage mutation",
-        reason: "retry window expired or unknown; reconcile state before issuing new work",
-    }
+    Error::backend(
+        "admit storage mutation",
+        BackendFailure::MutationExpired,
+        io::Error::other("retry window expired or unknown; obtain a current window and issue a fresh mutation identity"),
+    )
 }
 
 /* === Tests === */
@@ -797,6 +830,96 @@ mod tests {
     use super::*;
     use std::future;
     use tokio::time;
+
+    #[tokio::test(start_paused = true)]
+    async fn reservation_keeps_its_window_deadline_across_rotation() {
+        let date = SystemTime::UNIX_EPOCH;
+        let execution = Execution::at(date, Instant::now, |duration| Box::pin(time::sleep(duration)));
+        let retention = Duration::from_secs(300);
+        let mut receipts = Receipts::new(retention, NonZeroUsize::new(8).unwrap(), execution).unwrap();
+        let history = StoreHistory {
+            store: Identifier::new("records").unwrap(),
+            epoch: Identifier::new("generation").unwrap(),
+        };
+        let window = receipts.window(&history).unwrap();
+        let mutation = MutationId {
+            window: window.id,
+            key: Identifier::new("reserved").unwrap(),
+        };
+        time::advance(Duration::from_secs(149)).await;
+        let completion = receipts.reserve(&mutation, [1; 32]).unwrap();
+        time::advance(Duration::from_secs(2)).await;
+        let next = receipts.window(&history).unwrap();
+        assert_ne!(next.id, mutation.window);
+        receipts.admit(&mutation, [1; 32]).unwrap();
+        receipts.complete(&mutation, MutationValue::Rejected);
+        assert_eq!(receipts.header(&mutation).expires_at, window.expires_at);
+        assert!(matches!(receipts.lookup(&mutation, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
+
+        time::advance(Duration::from_secs(149)).await;
+        assert!(matches!(
+            receipts.lookup(&mutation, &[1; 32], None),
+            Err(Error::Backend {
+                kind: BackendFailure::MutationExpired,
+                ..
+            })
+        ));
+        assert!(matches!(
+            receipts.reserve(&mutation, [1; 32]),
+            Err(Error::Backend {
+                kind: BackendFailure::MutationExpired,
+                ..
+            })
+        ));
+        assert!(matches!(
+            receipts.lookup(&mutation, &[1; 32], Some(&completion)).unwrap(),
+            ReceiptState::Complete(MutationValue::Rejected)
+        ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn continuous_issuance_accepts_only_the_two_unexpired_windows() {
+        let execution = Execution::at(SystemTime::UNIX_EPOCH, Instant::now, |duration| Box::pin(time::sleep(duration)));
+        let retention = Duration::from_secs(300);
+        let mut receipts = Receipts::new(retention, NonZeroUsize::new(8).unwrap(), execution).unwrap();
+        let history = StoreHistory {
+            store: Identifier::new("records").unwrap(),
+            epoch: Identifier::new("generation").unwrap(),
+        };
+        let mut windows = Vec::new();
+        for index in 0..80 {
+            let window = receipts.window(&history).unwrap();
+            assert!(windows.iter().all(|previous: &MutationWindow| previous.id != window.id));
+            windows.push(window);
+            let date = receipts.execution.read().date;
+            let mut accepted = 0;
+            for window in &windows {
+                let mutation = MutationId {
+                    window: window.id.clone(),
+                    key: Identifier::new(format!("write-{index}")).unwrap(),
+                };
+                if date >= window.expires_at {
+                    assert!(matches!(
+                        receipts.lookup(&mutation, &[1; 32], None),
+                        Err(Error::Backend {
+                            kind: BackendFailure::MutationExpired,
+                            ..
+                        })
+                    ));
+                    continue;
+                }
+                assert!(matches!(receipts.lookup(&mutation, &[1; 32], None).unwrap(), ReceiptState::Missing));
+                receipts.reserve(&mutation, [1; 32]).unwrap();
+                receipts.admit(&mutation, [1; 32]).unwrap();
+                receipts.complete(&mutation, MutationValue::Rejected);
+                let saved = receipts.snapshot(None);
+                receipts.saved(&saved);
+                accepted += 1;
+            }
+            assert_eq!(accepted, windows.len().min(2));
+            time::advance(retention / 2).await;
+        }
+    }
 
     #[tokio::test(start_paused = true)]
     async fn restored_receipts_expire_on_the_host_clock() {

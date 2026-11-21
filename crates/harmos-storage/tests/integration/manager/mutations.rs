@@ -142,6 +142,51 @@ fn identity(storage: &StorageManager, key: &str) -> MutationId {
 /* === Tests === */
 
 #[tokio::test]
+async fn reserved_and_fresh_identities_survive_their_window_rotation() {
+    let f = fixture().await;
+    let reserved = identity(&f.storage, "reserved");
+    let fresh = MutationId {
+        window: reserved.window.clone(),
+        key: Identifier::new("fresh").unwrap(),
+    };
+    let reserved_metadata = metadata("reserved");
+    set_elapsed(149);
+    f.data.control.block_receipt_lookup.store(true, Ordering::Release);
+    let mut original = Box::pin(f.storage.create_file_once(&reserved, &reserved_metadata));
+    assert!(super::events::until(original.as_mut(), f.data.control.receipt_lookup_entered.notified()).await.is_ok());
+    set_elapsed(151);
+    let current = identity(&f.storage, "current");
+    assert_ne!(current.window, reserved.window);
+    f.data.control.block_receipt_lookup.store(false, Ordering::Release);
+    f.data.control.receipt_lookup_release.notify_one();
+    let producer = original.await.unwrap();
+    assert_eq!(f.storage.create_file_once(&reserved, &reserved_metadata).await.unwrap(), producer);
+    f.storage.create_file_once(&fresh, &metadata("fresh")).await.unwrap();
+    set_elapsed(300);
+    let expired = MutationId {
+        window: reserved.window,
+        key: Identifier::new("expired").unwrap(),
+    };
+    assert!(matches!(
+        f.storage.create_file_once(&expired, &metadata("expired")).await,
+        Err(Error::Backend {
+            kind: BackendFailure::MutationExpired,
+            ..
+        })
+    ));
+    assert!(matches!(
+        f.storage.create_file_once(&fresh, &metadata("fresh")).await,
+        Err(Error::Backend {
+            kind: BackendFailure::MutationExpired,
+            ..
+        })
+    ));
+    f.storage.create_file_once(&current, &metadata("current")).await.unwrap();
+    assert_eq!(f.data.staged.lock().unwrap().len(), 3);
+    f.finish().await;
+}
+
+#[tokio::test]
 async fn cache_eviction_preserves_the_window_and_durable_replay() {
     let clock = super::clock::Controlled::new();
     let history = history();

@@ -73,14 +73,15 @@ use std::time::Duration;
 
 // Local Imports
 
-use harmos_operations::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+use harmos_operations::operations::{Backoff, FailureKind, Jitter, OperationPolicy, RetryPolicy};
+use harmos_storage::BackendFailure;
 
 /* === Constants === */
 
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(60),
     attempt_timeout: Duration::from_secs(15),
-    cancellation_timeout: std::time::Duration::ZERO,
+    cancellation_timeout: Duration::ZERO,
     retries: RetryPolicy::OnTransient {
         total_attempts: 4,
         backoff: Backoff::Exponential {
@@ -93,7 +94,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 
 pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: POLICY.timeout,
-    cancellation_timeout: std::time::Duration::ZERO,
+    cancellation_timeout: Duration::ZERO,
     retries: RetryPolicy::Never,
     ..POLICY
 };
@@ -101,7 +102,7 @@ pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
 pub const IO_POLICY: OperationPolicy = OperationPolicy {
     timeout: harmos_operations::operations::UNBOUNDED,
     attempt_timeout: harmos_operations::operations::UNBOUNDED,
-    cancellation_timeout: std::time::Duration::ZERO,
+    cancellation_timeout: Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -121,16 +122,18 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 
 /* === Private Functions === */
 
-/* === Tests === */
-
-fn classify(error: &crate::Error) -> harmos_operations::operations::FailureKind {
+fn classify(error: &crate::Error) -> FailureKind {
     match error {
-        crate::Error::Storage(source) if source.backend_failure() == Some(harmos_storage::BackendFailure::Transient) => {
-            harmos_operations::operations::FailureKind::Transient
+        crate::Error::Storage(source)
+            if matches!(source.backend_failure(), Some(BackendFailure::Transient | BackendFailure::MutationExpired)) =>
+        {
+            FailureKind::Transient
         }
-        _ => harmos_operations::operations::FailureKind::Permanent,
+        _ => FailureKind::Permanent,
     }
 }
+
+/* === Tests === */
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod tests {
@@ -139,10 +142,25 @@ mod tests {
     use harmos_storage::{self, BackendFailure};
 
     #[test]
+    fn mutation_expiry_has_a_distinct_retryable_failure() {
+        let error =
+            harmos_storage::Error::backend("admit storage mutation", BackendFailure::MutationExpired, std::io::Error::other("expired"));
+        let error = crate::Error::Storage(error);
+        let failure = super::admission::failure(error);
+        let crate::execution::operations::ServingError::Handler(failure) = failure else {
+            panic!("mutation expiry must be a handler failure");
+        };
+        assert_eq!(failure.code(), FailureKind::Transient);
+        assert_eq!(failure.detail("storage.kind"), Some("STORAGE_FAILURE_MUTATION_EXPIRED"));
+    }
+
+    #[test]
     fn persistence_preserves_failure_kind() {
-        for (backend, expected) in
-            [(BackendFailure::Transient, FailureKind::Transient), (BackendFailure::Permanent, FailureKind::Permanent)]
-        {
+        for (backend, expected) in [
+            (BackendFailure::Transient, FailureKind::Transient),
+            (BackendFailure::MutationExpired, FailureKind::Transient),
+            (BackendFailure::Permanent, FailureKind::Permanent),
+        ] {
             let source = harmos_storage::Error::backend("write", backend, std::io::Error::other("backend failed"));
             let error = harmos_storage::Error::Persistence { source: std::sync::Arc::new(source) };
             assert_eq!(classify(&crate::Error::Storage(error)), expected);

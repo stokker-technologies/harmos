@@ -1,4 +1,7 @@
 - [x] 1.1 Lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
+- [x] 2.10.1 Replace current-window-only admission in `crates/harmos-storage/src/receipts.rs` with half-life rotation and at most two live issuance windows; preserve backend receipt recovery and owned completion. Keep the 300-second retention unchanged; capacity eviction keeps issuance windows and uses backend lookup for replay.
+- [x] 2.10.2 Add actionable mutation expiry in the storage error and native operation failure detail/classification; prove rotation during reservation, each window's deadline, bounded windows over many lifetimes and existing receipt/replay behaviour with controlled time.
+- [x] 2.10.3 Run focused storage/operation tests, workspace test-target compilation, format, repository contracts and strict OpenSpec validation; commit owned paths. Report the correction to `docs/guides/storage.md:645` and `docs/index.md:841` without editing owner-maintained documentation.
 - [x] 1.2 Settle the proposed scan/index plan and page types, ordering, snapshot lifetime, capability negotiation, bounded fallback, cancellation and error semantics in design.md.
 - [x] 1.3 Settle projection registration/versioning, readable frontier, source-commit coupling, crash replay, invalidation/rebuild and old-snapshot behaviour in design.md.
 - [x] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
