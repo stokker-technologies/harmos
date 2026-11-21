@@ -216,3 +216,36 @@ that clock virtually in a test.
 - **WHEN** a product binds two trusted scopes and independent clocks to an already admitted activation
 - **THEN** each scope's Samples selection and descendant Time operations use its clock on the same physical connection
 - **AND** accepted ingestion blocks that clock, closing one scope awaits ingestion and producer cleanup, and the other scope and unscoped demand remain usable
+
+
+### Requirement: Typed Live Stream Demand
+Plugin contexts MUST expose typed live rows under their inherited scope through the existing child carrier. Delivery is bounded and backpressured; rows retain source and receipt times.
+
+#### Scenario: Close Demand Independently
+- **WHEN** a context subscribes to a compatible declared stream and then closes or cancels its demand
+- **THEN** its delivery and demand end, while the provider and other demands remain usable
+
+### Requirement: Optional Interval Row Presence
+Derived columns MUST preserve proto3 optional scalar presence per row with no sentinel values; real oneofs remain invalid interval row fields.
+
+#### Scenario: Absent and Zero Are Different
+- **WHEN** an observer answers a split window with absent, zero and nonzero optional values
+- **THEN** Rust and Python decoding retain those three distinct states in sample order
+
+### Requirement: Inherited Scoped Call Resources
+Scoped bindings MUST accept the caller's CallContext and carry its resources into operations and sample child calls through the existing binding owner. Binding supplies its own trusted scope and clock.
+
+#### Scenario: Observer Child Admission
+- **WHEN** an observer makes a declared child call from a binding created with caller resources
+- **THEN** admission sees the same resource allocation and the binding's scope and clock
+
+### Requirement: Typed Inclusive Setting Bounds
+Setting declarations MUST support optional typed minimum and maximum values. Bounds use the default's numeric or duration variant, are finite and ordered, and include their endpoints. Runtime declaration, restore, selection and write validation share the same checks.
+
+#### Scenario: Invalid Default or Write
+- **WHEN** a default or requested setting value falls outside its declared bounds
+- **THEN** the runtime refuses it before mutation with an error naming the setting and the corrective bound
+
+#### Scenario: Invalid Bounds
+- **WHEN** bounds have incompatible or unordered types, invalid values or minimum greater than maximum
+- **THEN** declaration is refused with an action to correct the bounds

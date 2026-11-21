@@ -336,6 +336,12 @@ pub struct SettingDeclaration {
     /// Required typed default; the value discriminator must be selected.
     #[prost(message, optional, tag = "4")]
     pub default: ::core::option::Option<SettingValue>,
+    /// Inclusive lower bound, using the default's numeric or duration variant.
+    #[prost(message, optional, tag = "5")]
+    pub minimum: ::core::option::Option<SettingValue>,
+    /// Inclusive upper bound, using the default's numeric or duration variant.
+    #[prost(message, optional, tag = "6")]
+    pub maximum: ::core::option::Option<SettingValue>,
 }
 /// Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.
 #[allow(clippy::all)]

@@ -16,16 +16,20 @@ class SettingsDeclarations(_message.Message):
     def __init__(self, values: _Optional[_Iterable[_Union[SettingDeclaration, _Mapping]]] = ...) -> None: ...
 
 class SettingDeclaration(_message.Message):
-    __slots__ = ("name", "title", "description", "default")
+    __slots__ = ("name", "title", "description", "default", "minimum", "maximum")
     NAME_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_FIELD_NUMBER: _ClassVar[int]
+    MINIMUM_FIELD_NUMBER: _ClassVar[int]
+    MAXIMUM_FIELD_NUMBER: _ClassVar[int]
     name: str
     title: str
     description: str
     default: SettingValue
-    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., description: _Optional[str] = ..., default: _Optional[_Union[SettingValue, _Mapping]] = ...) -> None: ...
+    minimum: SettingValue
+    maximum: SettingValue
+    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., description: _Optional[str] = ..., default: _Optional[_Union[SettingValue, _Mapping]] = ..., minimum: _Optional[_Union[SettingValue, _Mapping]] = ..., maximum: _Optional[_Union[SettingValue, _Mapping]] = ...) -> None: ...
 
 class SettingValue(_message.Message):
     __slots__ = ("flag", "integer", "number", "text", "duration")

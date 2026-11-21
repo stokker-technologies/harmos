@@ -32,6 +32,10 @@ message SettingDeclaration {
   string description = 3;
   // Required typed default; the value discriminator must be selected.
   SettingValue default = 4;
+  // Inclusive lower bound, using the default's numeric or duration variant.
+  SettingValue minimum = 5;
+  // Inclusive upper bound, using the default's numeric or duration variant.
+  SettingValue maximum = 6;
 }
 
 // Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.

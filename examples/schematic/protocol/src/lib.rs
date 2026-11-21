@@ -29,7 +29,6 @@ mod model {
 pub use host::v1::*;
 pub use model::v1::*;
 #[rustfmt::skip]
-#[path = "reflection.rs"]
 mod reflection;
 #[rustfmt::skip]
 pub mod plugin {
@@ -73,6 +72,8 @@ pub fn settings_declarations() -> SettingsDeclarations {
             title: "Horizontal First".into(),
             description: "Route horizontally before moving vertically.".into(),
             default: Some(SettingValue { value: Some(Value::Flag(true)) }),
+            minimum: None,
+            maximum: None,
         }],
     }
 }

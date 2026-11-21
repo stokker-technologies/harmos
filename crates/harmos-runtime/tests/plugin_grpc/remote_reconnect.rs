@@ -43,6 +43,8 @@ fn settings_catalog(declared: bool) -> model::Declarations {
             default: Some(model::SettingValue {
                 value: Some(model::setting_value::Value::Integer(7)),
             }),
+            minimum: None,
+            maximum: None,
         }]
     } else {
         Vec::new()

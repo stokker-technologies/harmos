@@ -18,10 +18,12 @@ public sealed class TypedClockContracts
   public void ObserversPreserveSettingWithOrWithoutDefaultInterval()
   {
     var setting = new SettingValue { Duration = new Duration { Seconds = 2 } };
+    var minimum = new SettingValue { Duration = new Duration { Seconds = 1 } };
+    var maximum = new SettingValue { Duration = new Duration { Seconds = 3 } };
     var plugin = new Harmos.Plugins.Plugin("settings", "1.0.0")
         .Register(ctx => ctx.Register("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
         .Register(ctx => ctx.Register("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
-        .Register(ctx => ctx.Register("interval", setting));
+        .Register(ctx => ctx.Register("interval", setting, minimum: minimum, maximum: maximum));
     var declarations = plugin.Declarations();
     Assert.Null(declarations.Streams[0].Interval);
     Assert.Equal("interval", declarations.Streams[0].IntervalSetting);
@@ -29,6 +31,8 @@ public sealed class TypedClockContracts
     Assert.Equal(declarations.Streams[0].IntervalSetting, declarations.Streams[1].IntervalSetting);
     var settings = SettingsDeclarations.Parser.ParseFrom(Assert.Single(declarations.Sections).Payload);
     Assert.Equal(setting, Assert.Single(settings.Values).Default);
+    Assert.Equal(minimum, settings.Values[0].Minimum);
+    Assert.Equal(maximum, settings.Values[0].Maximum);
     Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("invalid", "1.0.0")
         .Register(ctx => ctx.Register("settings.missing", null, context => Task.FromResult(new TimeGetRequest()))));
   }

@@ -426,6 +426,8 @@ fn main() -> Result<()> {
                         default: Some(SettingValue {
                             value: Some(setting_value::Value::Duration(prost_types::Duration { seconds: 1, nanos: 0 })),
                         }),
+                        minimum: None,
+                        maximum: None,
                     }],
                 })?;
                 ctx.register(stream)?;
@@ -522,6 +524,8 @@ fn main() -> Result<()> {
                         default: Some(SettingValue {
                             value: Some(setting_value::Value::Integer(0)),
                         }),
+                        minimum: None,
+                        maximum: None,
                     }],
                 }))?;
                 ctx.register(Operation::new("fixture.value", setting_value).visibility(Visibility::Protected))?;
@@ -635,6 +639,8 @@ fn duration_setting(name: &str, title: &str, seconds: i64, nanos: i32) -> Settin
             default: Some(SettingValue {
                 value: Some(setting_value::Value::Duration(prost_types::Duration { seconds, nanos })),
             }),
+            minimum: None,
+            maximum: None,
         }],
     }
 }

@@ -27,24 +27,26 @@ namespace Harmos;
             "Ch1oYXJtb3MvbW9kZWwvdjEvc2V0dGluZy5wcm90bxIPaGFybW9zLm1vZGVs",
             "LnYxGh5nb29nbGUvcHJvdG9idWYvZHVyYXRpb24ucHJvdG8iUwoUU2V0dGlu",
             "Z3NEZWNsYXJhdGlvbnMSOwoGdmFsdWVzGAEgAygLMiMuaGFybW9zLm1vZGVs",
-            "LnYxLlNldHRpbmdEZWNsYXJhdGlvblIGdmFsdWVzIpkBChJTZXR0aW5nRGVj",
+            "LnYxLlNldHRpbmdEZWNsYXJhdGlvblIGdmFsdWVzIosCChJTZXR0aW5nRGVj",
             "bGFyYXRpb24SEgoEbmFtZRgBIAEoCVIEbmFtZRIUCgV0aXRsZRgCIAEoCVIF",
             "dGl0bGUSIAoLZGVzY3JpcHRpb24YAyABKAlSC2Rlc2NyaXB0aW9uEjcKB2Rl",
             "ZmF1bHQYBCABKAsyHS5oYXJtb3MubW9kZWwudjEuU2V0dGluZ1ZhbHVlUgdk",
-            "ZWZhdWx0IrIBCgxTZXR0aW5nVmFsdWUSFAoEZmxhZxgBIAEoCEgAUgRmbGFn",
-            "EhoKB2ludGVnZXIYAiABKANIAFIHaW50ZWdlchIYCgZudW1iZXIYAyABKAFI",
-            "AFIGbnVtYmVyEhQKBHRleHQYBCABKAlIAFIEdGV4dBI3CghkdXJhdGlvbhgF",
-            "IAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbkgAUghkdXJhdGlvbkIH",
-            "CgV2YWx1ZSKtAQoNU2V0dGluZ1ZhbHVlcxJCCgZ2YWx1ZXMYASADKAsyKi5o",
-            "YXJtb3MubW9kZWwudjEuU2V0dGluZ1ZhbHVlcy5WYWx1ZXNFbnRyeVIGdmFs",
-            "dWVzGlgKC1ZhbHVlc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EjMKBXZhbHVl",
-            "GAIgASgLMh0uaGFybW9zLm1vZGVsLnYxLlNldHRpbmdWYWx1ZVIFdmFsdWU6",
-            "AjgBYgZwcm90bzM="));
+            "ZWZhdWx0EjcKB21pbmltdW0YBSABKAsyHS5oYXJtb3MubW9kZWwudjEuU2V0",
+            "dGluZ1ZhbHVlUgdtaW5pbXVtEjcKB21heGltdW0YBiABKAsyHS5oYXJtb3Mu",
+            "bW9kZWwudjEuU2V0dGluZ1ZhbHVlUgdtYXhpbXVtIrIBCgxTZXR0aW5nVmFs",
+            "dWUSFAoEZmxhZxgBIAEoCEgAUgRmbGFnEhoKB2ludGVnZXIYAiABKANIAFIH",
+            "aW50ZWdlchIYCgZudW1iZXIYAyABKAFIAFIGbnVtYmVyEhQKBHRleHQYBCAB",
+            "KAlIAFIEdGV4dBI3CghkdXJhdGlvbhgFIAEoCzIZLmdvb2dsZS5wcm90b2J1",
+            "Zi5EdXJhdGlvbkgAUghkdXJhdGlvbkIHCgV2YWx1ZSKtAQoNU2V0dGluZ1Zh",
+            "bHVlcxJCCgZ2YWx1ZXMYASADKAsyKi5oYXJtb3MubW9kZWwudjEuU2V0dGlu",
+            "Z1ZhbHVlcy5WYWx1ZXNFbnRyeVIGdmFsdWVzGlgKC1ZhbHVlc0VudHJ5EhAK",
+            "A2tleRgBIAEoCVIDa2V5EjMKBXZhbHVlGAIgASgLMh0uaGFybW9zLm1vZGVs",
+            "LnYxLlNldHRpbmdWYWx1ZVIFdmFsdWU6AjgBYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingsDeclarations), global::Harmos.SettingsDeclarations.Parser, new[]{ "Values" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingDeclaration), global::Harmos.SettingDeclaration.Parser, new[]{ "Name", "Title", "Description", "Default" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingDeclaration), global::Harmos.SettingDeclaration.Parser, new[]{ "Name", "Title", "Description", "Default", "Minimum", "Maximum" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingValue), global::Harmos.SettingValue.Parser, new[]{ "Flag", "Integer", "Number", "Text", "Duration" }, new[]{ "Value" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingValues), global::Harmos.SettingValues.Parser, new[]{ "Values" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, })
           }));
@@ -279,6 +281,8 @@ namespace Harmos;
       title_ = other.title_;
       description_ = other.description_;
       default_ = other.default_ != null ? other.default_.Clone() : null;
+      minimum_ = other.minimum_ != null ? other.minimum_.Clone() : null;
+      maximum_ = other.maximum_ != null ? other.maximum_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -336,6 +340,30 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "minimum" field.</summary>
+    public const int MinimumFieldNumber = 5;
+    private global::Harmos.SettingValue minimum_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Harmos.SettingValue Minimum {
+      get { return minimum_; }
+      set {
+        minimum_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "maximum" field.</summary>
+    public const int MaximumFieldNumber = 6;
+    private global::Harmos.SettingValue maximum_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Harmos.SettingValue Maximum {
+      get { return maximum_; }
+      set {
+        maximum_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -355,6 +383,8 @@ namespace Harmos;
       if (Title != other.Title) return false;
       if (Description != other.Description) return false;
       if (!object.Equals(Default, other.Default)) return false;
+      if (!object.Equals(Minimum, other.Minimum)) return false;
+      if (!object.Equals(Maximum, other.Maximum)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -366,6 +396,8 @@ namespace Harmos;
       if (Title.Length != 0) hash ^= Title.GetHashCode();
       if (Description.Length != 0) hash ^= Description.GetHashCode();
       if (default_ != null) hash ^= Default.GetHashCode();
+      if (minimum_ != null) hash ^= Minimum.GetHashCode();
+      if (maximum_ != null) hash ^= Maximum.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -400,6 +432,14 @@ namespace Harmos;
         output.WriteRawTag(34);
         output.WriteMessage(Default);
       }
+      if (minimum_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Minimum);
+      }
+      if (maximum_ != null) {
+        output.WriteRawTag(50);
+        output.WriteMessage(Maximum);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -426,6 +466,14 @@ namespace Harmos;
         output.WriteRawTag(34);
         output.WriteMessage(Default);
       }
+      if (minimum_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Minimum);
+      }
+      if (maximum_ != null) {
+        output.WriteRawTag(50);
+        output.WriteMessage(Maximum);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -447,6 +495,12 @@ namespace Harmos;
       }
       if (default_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Default);
+      }
+      if (minimum_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Minimum);
+      }
+      if (maximum_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Maximum);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -474,6 +528,18 @@ namespace Harmos;
           Default = new global::Harmos.SettingValue();
         }
         Default.MergeFrom(other.Default);
+      }
+      if (other.minimum_ != null) {
+        if (minimum_ == null) {
+          Minimum = new global::Harmos.SettingValue();
+        }
+        Minimum.MergeFrom(other.Minimum);
+      }
+      if (other.maximum_ != null) {
+        if (maximum_ == null) {
+          Maximum = new global::Harmos.SettingValue();
+        }
+        Maximum.MergeFrom(other.Maximum);
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -513,6 +579,20 @@ namespace Harmos;
             input.ReadMessage(Default);
             break;
           }
+          case 42: {
+            if (minimum_ == null) {
+              Minimum = new global::Harmos.SettingValue();
+            }
+            input.ReadMessage(Minimum);
+            break;
+          }
+          case 50: {
+            if (maximum_ == null) {
+              Maximum = new global::Harmos.SettingValue();
+            }
+            input.ReadMessage(Maximum);
+            break;
+          }
         }
       }
     #endif
@@ -549,6 +629,20 @@ namespace Harmos;
               Default = new global::Harmos.SettingValue();
             }
             input.ReadMessage(Default);
+            break;
+          }
+          case 42: {
+            if (minimum_ == null) {
+              Minimum = new global::Harmos.SettingValue();
+            }
+            input.ReadMessage(Minimum);
+            break;
+          }
+          case 50: {
+            if (maximum_ == null) {
+              Maximum = new global::Harmos.SettingValue();
+            }
+            input.ReadMessage(Maximum);
             break;
           }
         }

@@ -201,6 +201,8 @@ pub fn settings_declarations() -> SettingsDeclarations {
                 description: format!("Conformance {name}"),
                 name,
                 default: Some(value),
+                minimum: None,
+                maximum: None,
             })
             .collect(),
     }

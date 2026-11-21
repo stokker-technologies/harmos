@@ -58,6 +58,8 @@ fn main() -> Result<()> {
             default: Some(SettingValue {
                 value: Some(setting_value::Value::Text("echo: ".into())),
             }),
+            minimum: None,
+            maximum: None,
         }],
     };
     let plugin = Plugin::new("echo", "1.0.0")

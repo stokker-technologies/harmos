@@ -15,27 +15,26 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::collections::{BTreeMap, BTreeSet};
+
+// Third Party Imports
+use prost::Message;
+
+// Local Imports
 use super::{
     Error,
     actor::{Actor, changed},
     persistence::{Registry, SavedMutation, problem},
 };
 use harmos_protocol::host::PluginEntry;
-use harmos_protocol::host::plugins as wire;
+use harmos_protocol::host::plugins;
 use harmos_protocol::model::Declarations;
 use harmos_protocol::model::SettingDeclaration;
 use harmos_protocol::model::SettingValue;
 use harmos_protocol::model::SettingValues;
 use harmos_protocol::model::SettingsDeclarations;
 use harmos_protocol::model::setting_value::Value;
-use prost::Message;
-use std::collections::{BTreeMap, BTreeSet};
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 
 /* === Constants === */
 
@@ -59,7 +58,7 @@ pub(super) struct Snapshot {
 /* === Implementations === */
 
 impl Actor {
-    pub(super) fn settings_list(&mut self, request: wire::SettingsListRequest) -> Result<wire::SettingsListResponse, Error> {
+    pub(super) fn settings_list(&mut self, request: plugins::SettingsListRequest) -> Result<plugins::SettingsListResponse, Error> {
         let name = request
             .name
             .as_ref()
@@ -72,7 +71,7 @@ impl Actor {
         let settings = snapshot.settings.get(name).ok_or_else(|| {
             Error::transient("settings_not_ready", "List Plugin Settings", "retry after the plugin reports its description")
         })?;
-        let response = wire::SettingsListResponse {
+        let response = plugins::SettingsListResponse {
             declarations: settings.declarations.clone(),
             value: Some(settings.value.clone()),
             revision: settings.revision.clone(),
@@ -84,7 +83,7 @@ impl Actor {
         self.issued.insert(snapshot.cut.positions[0].sequence);
         Ok(response)
     }
-    pub(super) async fn settings_set(&mut self, request: wire::SettingsSetRequest) -> Result<wire::SettingsSetResponse, Error> {
+    pub(super) async fn settings_set(&mut self, request: plugins::SettingsSetRequest) -> Result<plugins::SettingsSetResponse, Error> {
         if request.request_id.is_empty() {
             return Err(Error::new("identity_required", "Set Plugin Settings", "supply a nonempty request identity"));
         }
@@ -102,7 +101,7 @@ impl Actor {
                     "resend the original payload or choose a new request identity",
                 ));
             }
-            return wire::SettingsSetResponse::decode(original.response.as_slice())
+            return plugins::SettingsSetResponse::decode(original.response.as_slice())
                 .map_err(|error| problem("Replay Plugin Settings", error));
         }
         let mut current = snapshots(&self.registry)?;
@@ -122,7 +121,7 @@ impl Actor {
         }
         let mut registry = self.registry.clone();
         let revision = registry.revision()?;
-        let response = wire::SettingsSetResponse {
+        let response = plugins::SettingsSetResponse {
             value: Some(value.clone()),
             revision: revision.clone(),
             receipt: Some(self.receipt(request.request_id.clone())),
@@ -164,12 +163,11 @@ pub(crate) fn declarations_from(declarations: &Declarations) -> Result<Vec<Setti
         if declaration.name.is_empty() || !names.insert(&declaration.name) {
             return Err(Error::new("setting_declaration", "Declare Plugin Settings", "declare each nonempty name once"));
         }
-        validate_value(
-            declaration
-                .default
-                .as_ref()
-                .ok_or_else(|| Error::new("setting_default", "Declare Plugin Settings", "supply a typed default"))?,
-        )?;
+        let default = declaration
+            .default
+            .as_ref()
+            .ok_or_else(|| Error::new("setting_default", "Declare Plugin Settings", "supply a typed default"))?;
+        validate_setting(declaration, default)?;
     }
     Ok(values)
 }
@@ -238,7 +236,7 @@ pub(super) fn snapshots(registry: &Registry) -> Result<BTreeMap<String, Snapshot
 
 /* === Private Functions === */
 
-fn normalized(request: &wire::SettingsSetRequest) -> Vec<u8> {
+fn normalized(request: &plugins::SettingsSetRequest) -> Vec<u8> {
     let mut bytes = Vec::new();
     for value in [request.name.as_bytes(), request.expected_revision.as_slice()] {
         bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
@@ -266,19 +264,64 @@ fn validate_values(declarations: &[SettingDeclaration], value: &SettingValues) -
         let value = value.values.get(&declaration.name).ok_or_else(|| {
             Error::new("setting_missing", format!("Set Plugin Setting {}", declaration.name), "supply the complete declared value")
         })?;
-        validate_value(value)?;
-        let expected = declaration.default.as_ref().and_then(|value| value.value.as_ref()).expect("validated default");
-        if std::mem::discriminant(value.value.as_ref().expect("validated value")) != std::mem::discriminant(expected) {
-            return Err(Error::new(
-                "setting_type",
-                format!("Set Plugin Setting {}", declaration.name),
-                "use the declared default's value variant",
-            ));
-        }
+        validate_setting(declaration, value)?;
     }
     Ok(())
 }
-fn validate_value(value: &SettingValue) -> Result<(), Error> {
+
+fn validate_setting(declaration: &SettingDeclaration, value: &SettingValue) -> Result<(), Error> {
+    let action = format!("Validate Plugin Setting {}", declaration.name);
+    validate_value(value, &action)?;
+    let expected = declaration
+        .default
+        .as_ref()
+        .and_then(|value| value.value.as_ref())
+        .ok_or_else(|| Error::new("setting_default", &action, "supply a typed default"))?;
+    if std::mem::discriminant(value.value.as_ref().expect("validated value")) != std::mem::discriminant(expected) {
+        return Err(Error::new("setting_type", &action, "use the declared default's value variant"));
+    }
+    for bound in [&declaration.minimum, &declaration.maximum].into_iter().flatten() {
+        validate_value(bound, &action)?;
+        if compare(expected, bound.value.as_ref().expect("validated bound")).is_none() {
+            return Err(Error::new("setting_bounds", &action, "use the default's integer, number or duration variant for bounds"));
+        }
+    }
+    if let (Some(minimum), Some(maximum)) = (&declaration.minimum, &declaration.maximum)
+        && compare(minimum.value.as_ref().unwrap(), maximum.value.as_ref().unwrap()) == Some(std::cmp::Ordering::Greater)
+    {
+        return Err(Error::new("setting_bounds", &action, "set minimum less than or equal to maximum"));
+    }
+    let value = value.value.as_ref().expect("validated value");
+    if let Some(minimum) = &declaration.minimum
+        && compare(value, minimum.value.as_ref().unwrap()) == Some(std::cmp::Ordering::Less)
+    {
+        return Err(Error::new(
+            "setting_minimum",
+            &action,
+            &format!("supply a value at or above minimum {:?}", minimum.value.as_ref().unwrap()),
+        ));
+    }
+    if let Some(maximum) = &declaration.maximum
+        && compare(value, maximum.value.as_ref().unwrap()) == Some(std::cmp::Ordering::Greater)
+    {
+        return Err(Error::new(
+            "setting_maximum",
+            &action,
+            &format!("supply a value at or below maximum {:?}", maximum.value.as_ref().unwrap()),
+        ));
+    }
+    Ok(())
+}
+
+fn compare(value: &Value, bound: &Value) -> Option<std::cmp::Ordering> {
+    match (value, bound) {
+        (Value::Integer(value), Value::Integer(bound)) => Some(value.cmp(bound)),
+        (Value::Number(value), Value::Number(bound)) => value.partial_cmp(bound),
+        (Value::Duration(value), Value::Duration(bound)) => Some((value.seconds, value.nanos).cmp(&(bound.seconds, bound.nanos))),
+        _ => None,
+    }
+}
+fn validate_value(value: &SettingValue, action: &str) -> Result<(), Error> {
     let valid = match &value.value {
         None => false,
         Some(Value::Number(value)) => value.is_finite(),
@@ -290,9 +333,70 @@ fn validate_value(value: &SettingValue) -> Result<(), Error> {
         Some(_) => true,
     };
     if !valid {
-        return Err(Error::new("setting_value", "Validate Plugin Setting", "select a finite, valid typed value"));
+        return Err(Error::new("setting_value", action, "select a finite, valid typed value"));
     }
     Ok(())
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harmos_protocol::model::Section;
+
+    fn declaration(default: Value, minimum: Value, maximum: Value) -> SettingDeclaration {
+        SettingDeclaration {
+            name: "limit".into(),
+            default: Some(SettingValue { value: Some(default) }),
+            minimum: Some(SettingValue { value: Some(minimum) }),
+            maximum: Some(SettingValue { value: Some(maximum) }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn bounds_are_typed_ordered_and_inclusive() {
+        for (default, minimum, maximum) in [
+            (Value::Integer(7), Value::Integer(0), Value::Integer(10)),
+            (Value::Number(0.5), Value::Number(-1.0), Value::Number(1.0)),
+            (
+                Value::Duration(prost_types::Duration { seconds: 0, nanos: 0 }),
+                Value::Duration(prost_types::Duration { seconds: -1, nanos: -1 }),
+                Value::Duration(prost_types::Duration { seconds: 0, nanos: 1 }),
+            ),
+        ] {
+            let declaration = declaration(default, minimum, maximum);
+            validate_setting(&declaration, declaration.default.as_ref().unwrap()).unwrap();
+            validate_setting(&declaration, declaration.minimum.as_ref().unwrap()).unwrap();
+            validate_setting(&declaration, declaration.maximum.as_ref().unwrap()).unwrap();
+            let mut reversed = declaration.clone();
+            std::mem::swap(&mut reversed.minimum, &mut reversed.maximum);
+            assert!(validate_setting(&reversed, reversed.default.as_ref().unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_defaults_values_and_bounds_are_refused() {
+        let valid = declaration(Value::Integer(7), Value::Integer(0), Value::Integer(10));
+        for value in [Value::Integer(-1), Value::Integer(11), Value::Number(7.0)] {
+            assert!(validate_setting(&valid, &SettingValue { value: Some(value) }).is_err());
+        }
+        for invalid in [
+            declaration(Value::Integer(-1), Value::Integer(0), Value::Integer(10)),
+            declaration(Value::Integer(7), Value::Number(0.0), Value::Integer(10)),
+            declaration(Value::Number(0.0), Value::Number(f64::NAN), Value::Number(10.0)),
+            declaration(Value::Flag(false), Value::Flag(false), Value::Flag(true)),
+            declaration(Value::Text("a".into()), Value::Text("a".into()), Value::Text("z".into())),
+        ] {
+            let declarations = Declarations {
+                sections: vec![Section {
+                    r#type: "harmos.model.v1.SettingsDeclarations".into(),
+                    payload: SettingsDeclarations { values: vec![invalid] }.encode_to_vec(),
+                }],
+                ..Default::default()
+            };
+            assert!(select(&declarations, None).is_err());
+        }
+    }
+}

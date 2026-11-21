@@ -106,7 +106,12 @@ class WindowChildren(IsolatedAsyncioTestCase):
     async def test_observer_children_keep_window_scope_and_reject_invalid_traffic(self) -> None:
         # Declare Typed Settings and Serve the Observer.
         reader = Reader()
-        declaration = SettingDeclaration(name="interval", default=SettingValue(duration=Duration(seconds=2)))
+        declaration = SettingDeclaration(
+            name="interval",
+            default=SettingValue(duration=Duration(seconds=2)),
+            minimum=SettingValue(duration=Duration(seconds=1)),
+            maximum=SettingValue(duration=Duration(seconds=3)),
+        )
         plugin = Plugin(
             id="example",
             version="1.0.0",
