@@ -25,6 +25,7 @@ use super::{
     invoke_support::{HostFixture, payload, pending},
     support,
 };
+use harmos_runtime::operations::CallContext;
 use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
 
 /* === Constants === */
@@ -61,11 +62,11 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     // Bind Two Independent Timelines to the Existing Activation.
     let (left_clock, left_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let (right_clock, right_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH + Duration::from_secs(100));
-    let left = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.unwrap();
+    let left = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone(), &CallContext::default()).await.unwrap();
     left.start_samples(["fixture.scoped_samples"]).await.unwrap();
-    let right = host.runtime.bind_grpc(&activation, "unit/right", right_clock.clone()).await.unwrap();
+    let right = host.runtime.bind_grpc(&activation, "unit/right", right_clock.clone(), &CallContext::default()).await.unwrap();
     right.start_samples(["fixture.scoped_samples"]).await.unwrap();
-    assert!(host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.is_err());
+    assert!(host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone(), &CallContext::default()).await.is_err());
     let left_call = left.operations().submit_encoded("fixture.clock", payload(b"clock")).unwrap();
     let right_call = right.operations().submit_encoded("fixture.clock", payload(b"clock")).unwrap();
     let left_id = left_call.id();
@@ -155,12 +156,12 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     // The Original Unscoped Demand Continues on the Runtime Clock.
     controller.advance_until(Duration::from_secs(5), || host.rows().iter().any(|row| row.context.is_none())).await.unwrap();
     assert!(activation.is_connected());
-    let dropped = host.runtime.bind_grpc(&activation, "unit/dropped", left_clock.clone()).await.unwrap();
+    let dropped = host.runtime.bind_grpc(&activation, "unit/dropped", left_clock.clone(), &CallContext::default()).await.unwrap();
     dropped.start_samples(["fixture.scoped_samples"]).await.unwrap();
     drop(dropped);
 
     // A Lost Connection Still Settles the Scope's Already Accepted Ingestion.
-    let rebound = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.unwrap();
+    let rebound = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone(), &CallContext::default()).await.unwrap();
     rebound.start_samples(["fixture.scoped_samples"]).await.unwrap();
     let previous = rows_for("unit/left").len();
     host.signals.storage_hold.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -196,7 +197,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     let reconnected = attached.activation().unwrap();
     assert_eq!(reconnected.number, activation.number + 1);
     assert!(status.borrow().failure.is_none());
-    let resumed = host.runtime.bind_grpc(&reconnected, "unit/left", left_clock).await.unwrap();
+    let resumed = host.runtime.bind_grpc(&reconnected, "unit/left", left_clock, &CallContext::default()).await.unwrap();
     resumed.start_samples(["fixture.scoped_samples"]).await.unwrap();
     let previous = rows_for("unit/left").len();
     left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous).await.unwrap();

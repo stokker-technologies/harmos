@@ -44,6 +44,7 @@ use harmos_protocol::{
     schema,
 };
 use harmos_runtime::clock::{Clock, Source};
+use harmos_runtime::operations::CallContext;
 use harmos_runtime::plugin::grpc::{Error, Placement, PlacementSettings};
 
 /* === Constants === */
@@ -275,8 +276,8 @@ async fn collection_scopes_share_members_but_keep_independent_clocks_and_selecti
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings()).await.unwrap();
     let (first_clock, first_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let (second_clock, second_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let first = host.runtime.bind_grpc(&attached.activation().unwrap(), "first", first_clock).await.unwrap();
-    let second = host.runtime.bind_grpc(&attached.activation().unwrap(), "second", second_clock).await.unwrap();
+    let first = host.runtime.bind_grpc(&attached.activation().unwrap(), "first", first_clock, &CallContext::default()).await.unwrap();
+    let second = host.runtime.bind_grpc(&attached.activation().unwrap(), "second", second_clock, &CallContext::default()).await.unwrap();
     first.start_samples(["alpha"]).await.unwrap();
     second.start_samples(["beta"]).await.unwrap();
     first_time.advance_by(Duration::from_secs(4)).await;

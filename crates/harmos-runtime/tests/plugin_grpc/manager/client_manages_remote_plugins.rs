@@ -30,6 +30,7 @@ use harmos_protocol::host::PluginsRestartRequest;
 use harmos_protocol::host::PluginsSetRequest;
 use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::plugins_watch_response::Event;
+use harmos_runtime::operations::CallContext;
 use harmos_runtime::plugin::manager::Management;
 
 /* === Tests === */
@@ -106,7 +107,8 @@ async fn client_manages_remote_plugins() {
 
     // Bind the Existing Managed Activation Without a Second Attachment
     let activation = host.manager.activation("remote").await.unwrap();
-    let binding = host.runtime.bind_grpc(&activation, "bound-unit", host.runtime.operations.clock().clone()).await.unwrap();
+    let binding =
+        host.runtime.bind_grpc(&activation, "bound-unit", host.runtime.operations.clock().clone(), &CallContext::default()).await.unwrap();
     binding.start_samples(["conformance.interval"]).await.unwrap();
     let response = binding.operations().call_encoded("conformance.step.0", payload(b"scope")).await.unwrap();
     assert_eq!(response, payload(b"bound-unit"));
@@ -127,7 +129,9 @@ async fn client_manages_remote_plugins() {
         .unwrap();
     assert_eq!(disabled.state, PluginState::Stopped as i32);
     assert!(host.manager.activation("remote").await.is_err());
-    assert!(host.runtime.bind_grpc(&activation, "stale-unit", host.runtime.operations.clock().clone()).await.is_err());
+    assert!(
+        host.runtime.bind_grpc(&activation, "stale-unit", host.runtime.operations.clock().clone(), &CallContext::default()).await.is_err()
+    );
     assert!(host.runtime.operations.call_encoded("conformance.step.0", payload(b"disabled")).await.is_err());
     assert!(
         host.client

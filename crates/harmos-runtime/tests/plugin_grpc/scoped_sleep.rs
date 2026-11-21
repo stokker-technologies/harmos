@@ -37,7 +37,7 @@ use tokio::{
 
 // Local Imports
 use super::{
-    invoke_support::{HostFixture, payload, pending},
+    invoke_support::{HostFixture, Python, payload, pending},
     support,
 };
 use harmos_operations::clock;
@@ -47,9 +47,10 @@ use harmos_runtime::operations;
 use harmos_runtime::{
     Scope,
     clock::{Clock, Reading, Sleep, Source},
+    facade::plugins::{BindRequest, LoadRequest, SettleRequest, StartSamplesRequest},
     operations::{
-        ExecutionContext, Lane, NativeOperation, OperationFactory, OperationPolicy, ProtobufDependency, ProtobufOperation, Resource,
-        ServingError,
+        CallContext, ExecutionContext, Lane, NativeOperation, OperationFactory, OperationPolicy, ProtobufDependency, ProtobufOperation,
+        Resource, ServingError,
         middleware::{Enter, Invocation, Middleware},
     },
     plugin::grpc::{Placement, PlacementSettings},
@@ -93,6 +94,8 @@ struct Admission {
 }
 
 struct Gate(mpsc::UnboundedSender<Admission>);
+
+struct Inherited(Arc<Notify>);
 
 /// A Host Operation That Sleeps Through a Typed Child Call.
 struct TypedSleeper;
@@ -242,6 +245,20 @@ impl Middleware for Gate {
     }
 }
 
+impl Middleware for Inherited {
+    fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a> {
+        Box::pin(async move {
+            if matches!(call.operation().id.as_str(), "harmos.host.v1.Time/Sleep" | "harmos.plugin.v1.Time/Sleep") {
+                let resource = call.context().get::<Arc<Notify>>().expect("inherited admission resource");
+                assert!(Arc::ptr_eq(resource, &self.0));
+                assert_eq!(call.context().get::<Scope>().unwrap().as_str(), "unit/inherited");
+                resource.notify_one();
+            }
+            Ok(())
+        })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -253,7 +270,11 @@ async fn retain_rows(requested: usize) {
     let sdk = host.sdk("scoped-sleep").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/boundary", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/boundary", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
     unit.start_samples(["fixture.scoped_samples"]).await.unwrap();
 
     // Start the First Window on the Controlled Clock.
@@ -300,7 +321,7 @@ async fn count_after_sleep(requested: u64) {
     };
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings).await.unwrap();
     let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/counted", clock).await.unwrap();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/counted", clock, &CallContext::default()).await.unwrap();
     unit.start_samples(["fixture.counted_samples"]).await.unwrap();
 
     // The Plugin Sleeps Once, Then Reads Its Count; the Last Sample Shares the Sleep's Instant.
@@ -321,6 +342,96 @@ async fn count_after_sleep(requested: u64) {
 /* === Tests === */
 
 #[tokio::test]
+async fn observer_children_inherit_the_bindings_call_resources() {
+    let resource = Arc::new(Notify::new());
+    let host = HostFixture::with_middleware(Arc::new(Inherited(resource.clone()))).await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let mut context = CallContext::default();
+    context.insert(resource.clone()).unwrap();
+    context.insert(Scope::new("parent").unwrap()).unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/inherited", Clock::with_clock(source.clone()), &context)
+        .await
+        .unwrap();
+    unit.start_samples(["fixture.scoped_samples"]).await.unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    resource.notified().await;
+    unit.close().await.unwrap();
+    assert!(attached.activation().unwrap().is_connected());
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn observer_children_inherit_the_facade_call_resources() {
+    let resource = Arc::new(Notify::new());
+    let host = HostFixture::with_middleware(Arc::new(Inherited(resource.clone()))).await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let mut context = CallContext::default();
+    context.insert(resource.clone()).unwrap();
+    let caller = host.runtime.for_call(&context);
+    let plugin = caller
+        .plugins()
+        .load(LoadRequest {
+            placement: Placement::Remote(sdk.address.clone()),
+            settings: support::settings(),
+        })
+        .await
+        .unwrap();
+    let source = Controlled::new();
+    let binding = caller
+        .plugins()
+        .bind(BindRequest {
+            plugin: plugin.clone(),
+            scope: "unit/inherited".into(),
+            clock: Clock::with_clock(source.clone()),
+        })
+        .await
+        .unwrap();
+    let samples = caller
+        .plugins()
+        .start_samples(StartSamplesRequest {
+            binding: binding.clone(),
+            streams: vec!["fixture.scoped_samples".into()],
+        })
+        .await
+        .unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    resource.notified().await;
+    caller.plugins().settle(SettleRequest::Binding(binding)).await.unwrap();
+    drop(samples);
+    caller.plugins().settle(SettleRequest::Plugin(plugin)).await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn python_children_inherit_the_bindings_call_resources() {
+    let resource = Arc::new(Notify::new());
+    let host = HostFixture::with_middleware(Arc::new(Inherited(resource.clone()))).await;
+    let sdk = Python::start(&["--clock-only"]).await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let mut context = CallContext::default();
+    context.insert(resource.clone()).unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/inherited", Clock::with_clock(Controlled::new()), &context)
+        .await
+        .unwrap();
+    let call = unit.operations().submit_encoded("conformance.clock", payload(b"clock")).unwrap();
+    resource.notified().await;
+    unit.close().await.unwrap();
+    assert!(call.await.is_err());
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+    assert!(sdk.close().await.success());
+}
+
+#[tokio::test]
 async fn native_and_encoded_calls_own_registration_before_middleware() {
     // Bind a Scoped Unit Without Publication Timers.
     let (admitted, mut admissions) = mpsc::unbounded_channel();
@@ -328,7 +439,11 @@ async fn native_and_encoded_calls_own_registration_before_middleware() {
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/calls", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/calls", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
     let request = TimeSleepRequest {
         duration: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
     };
@@ -361,7 +476,11 @@ async fn closing_a_unit_during_timer_registration_removes_the_timer() {
     let sdk = host.sdk("scoped-sleep").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/cancel", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/cancel", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
     unit.start_samples(["fixture.scoped_samples"]).await.unwrap();
     source.wait_registered().await;
     let (entered, registering) = oneshot::channel();
@@ -425,9 +544,11 @@ async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
     let activation = attached.activation().unwrap();
     let left_source = Controlled::new();
     let right_source = Controlled::new();
-    let left = host.runtime.bind_grpc(&activation, "unit/left", Clock::with_clock(left_source.clone())).await.unwrap();
+    let left =
+        host.runtime.bind_grpc(&activation, "unit/left", Clock::with_clock(left_source.clone()), &CallContext::default()).await.unwrap();
     left.start_samples(["fixture.scoped_samples"]).await.unwrap();
-    let right = host.runtime.bind_grpc(&activation, "unit/right", Clock::with_clock(right_source.clone())).await.unwrap();
+    let right =
+        host.runtime.bind_grpc(&activation, "unit/right", Clock::with_clock(right_source.clone()), &CallContext::default()).await.unwrap();
     right.start_samples(["fixture.scoped_samples"]).await.unwrap();
 
     // Start Both Timelines Before Receiving Either Unit's Sleep.
@@ -496,7 +617,11 @@ async fn native_operations_register_their_declared_wait_at_admission() {
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/native", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/native", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
 
     // Admission Owns the Timer Before Middleware Sees the Native Call.
     let call = unit.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(2)), ()).unwrap();
@@ -519,7 +644,11 @@ async fn closing_during_an_in_flight_window_settles_without_failure() {
     let sdk = host.sdk("scoped-sleep").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/racing", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/racing", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
     unit.start_samples(["fixture.scoped_samples"]).await.unwrap();
     source.wait_registered().await;
     source.advance_by(Duration::from_secs(1));
@@ -546,7 +675,11 @@ async fn stopping_samples_during_an_in_flight_window_keeps_calls_and_restarts_de
     let sdk = host.sdk("scoped-sleep").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/paused", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/paused", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
     unit.start_samples(["fixture.scoped_samples"]).await.unwrap();
     source.wait_registered().await;
     source.advance_by(Duration::from_secs(1));
@@ -590,7 +723,11 @@ async fn typed_child_sleeps_register_at_admission() {
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
     let request = TimeSleepRequest {
         duration: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
     };

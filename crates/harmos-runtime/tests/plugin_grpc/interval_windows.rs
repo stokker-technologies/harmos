@@ -22,8 +22,9 @@ use std::time::{Duration, SystemTime};
 
 // Local Imports
 use super::{invoke_support::HostFixture, support};
+use harmos_runtime::operations::CallContext;
 use harmos_runtime::{
-    clock::{Clock, Source as _},
+    clock::{Clock, Source},
     plugin::grpc::{Error, Placement, PlacementSettings},
 };
 
@@ -137,7 +138,7 @@ async fn a_sampling_scope_pauses_only_its_requested_streams_unscoped_schedule_wi
     let _watching = host.watch("fixture.counts");
     let _overriding = host.watch("fixture.override");
     let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000));
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/windows", unit_clock).await.unwrap();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/windows", unit_clock, &CallContext::default()).await.unwrap();
     let scoped = |host: &HostFixture| host.batches_of("fixture.counts").into_iter().filter(|(_, _, scope)| scope.is_some()).count();
     let unscoped = |host: &HostFixture| {
         host.batches_of("fixture.counts")
@@ -185,7 +186,11 @@ async fn a_controlled_step_longer_than_the_window_is_one_window() {
     let unit_time = support::Manual::new();
     let origin = unit_time.read().instant;
     let origin_date = unit_time.read().date.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/step", Clock::with_clock(unit_time.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/step", Clock::with_clock(unit_time.clone()), &CallContext::default())
+        .await
+        .unwrap();
     unit.start_samples(["fixture.counts"]).await.unwrap();
     unit_time.registered_at(origin + Duration::from_secs(4)).await;
 

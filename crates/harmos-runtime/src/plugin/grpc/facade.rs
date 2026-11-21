@@ -279,7 +279,7 @@ impl NativeOperation for Bind {
     const ID: &'static str = "plugins.bind";
     const POLICY: OperationPolicy = super::Load::POLICY;
     async fn run(context: ExecutionContext, request: BindRequest, _: &()) -> Result<Binding, ServingError> {
-        let operations = operations(&context)?;
+        let operations = operations(&context)?.with_context(context.call.clone());
         request.plugin.check(&operations)?;
         let plugin = request.plugin.clone();
         let scoped = host(&context)?.0.bind(&operations, request).map_err(native_failure)?;

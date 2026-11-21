@@ -24,12 +24,13 @@ use std::{
 
 // Third Party Imports
 use tokio::sync::Notify;
-use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
 use super::{invoke_support::HostFixture, support};
+use harmos_runtime::operations::CallContext;
 use harmos_runtime::{
-    clock::{Clock, Source as _},
+    clock::{Clock, Source},
     plugin::grpc::{Attached, Error, IntervalLag, Placement, PlacementSettings},
 };
 
@@ -214,7 +215,11 @@ async fn a_scope_reads_the_plugins_failed_window_from_stop_samples_and_close() {
     let sdk = host.sdk("failing").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), windows(Duration::from_secs(4))).await.unwrap();
     let unit_time = support::Manual::new();
-    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/failing", Clock::with_clock(unit_time.clone())).await.unwrap();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/failing", Clock::with_clock(unit_time.clone()), &CallContext::default())
+        .await
+        .unwrap();
     let failed = |error: &Error| {
         matches!(
             error,
