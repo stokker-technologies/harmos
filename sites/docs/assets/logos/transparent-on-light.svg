@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="1024" height="1024" viewBox="0 0 640 640">
+  <title>Harmos — Transparent On Light</title>
+  <defs>
+    <mask id="ink-cutout" maskUnits="userSpaceOnUse" x="0" y="0" width="640" height="640" style="mask-type:luminance">
+      <g id="instrument" inkscape:groupmode="layer" inkscape:label="Instrument" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" fill="#000000" transform="translate(-10 15)">
+        <g id="base">
+          <path d="M183 425H443L467 445V458H159V445Z" fill="#FFFFFF" />
+          <path d="M179 444H446" stroke="#000000" stroke-width="3" />
+          <path d="M203 458V473H225V458M405 458V473H427V458" fill="#FFFFFF" />
+          <path d="M218 382V422H263V382" />
+          <path d="M207 425H275" />
+          <path d="M374 402V424H425V402" fill="#FFFFFF" />
+        </g>
+        <g id="pressure-cylinder">
+          <path d="M212 252C212 240 269 240 269 252V375C269 387 212 387 212 375Z" />
+          <ellipse cx="240.5" cy="252" rx="28.5" ry="8" />
+          <path d="M212 365C224 373 257 373 269 365" stroke-width="3" />
+          <path d="M256 268V352" stroke-width="3" />
+          <path d="M236 246V220H245V246" stroke-width="3" />
+          <path d="M228 232H253V241H228Z" />
+          <path d="M218 393H188V407H218" />
+          <path id="valve-handle" d="M182 397L164 379L156 387Q153 390 150 387L147 384Q144 381 147 378L169 356Q172 353 175 356L178 359Q181 362 178 365L170 373L188 391Z" fill="#FFFFFF" stroke="none" />
+          <circle cx="188" cy="400" r="10" />
+          <circle cx="188" cy="400" r="2.5" fill="#FFFFFF" stroke="none" />
+        </g>
+        <g id="drum">
+          <path d="M339 197C339 181 461 181 461 197V384C461 406 339 406 339 384Z" />
+          <ellipse cx="400" cy="197" rx="61" ry="16" />
+          <path d="M339 378C353 395 447 395 461 378" stroke-width="3" />
+          <path d="M349 216V384M450 216V384" stroke-width="3" />
+          <path d="M391 181V166H409V181" fill="#FFFFFF" />
+          <path d="M384 162H416V168H384Z" fill="#FFFFFF" />
+          <path d="M390 153H410" />
+          <path d="M398 402V412" />
+        </g>
+        <g id="engraved-details" stroke-width="3" fill="none">
+          <path id="drum-hatching" d="M432 229.5L441 220.5M432 244.5L441 235.5M432 259.5L441 250.5M432 274.5L441 265.5M432 289.5L441 280.5M432 304.5L441 295.5M432 319.5L441 310.5M432 334.5L441 325.5M432 349.5L441 340.5M432 364.5L441 355.5M432 379.5L441 370.5" />
+          <path id="cylinder-hatching" d="M220 279.785714L226 273.785714M220 293.071429L226 287.071429M220 306.357143L226 300.357143M220 319.642857L226 313.642857M220 332.928571L226 326.928571M220 346.214286L226 340.214286" />
+        </g>
+        <g id="recorded-trace" fill="none" stroke-width="3">
+          <path id="pressure-volume-trace" d="M364 333C364 315 364 286 366 276C368 267 375 265 384 268C392 271 394 287 401 297C406 304 413 309 419 312L419 330C405 333 380 335 364 333Z" />
+        </g>
+        <g id="pencil-linkage">
+          <path id="pivot-lug" d="M233.5 230V216A7 7 0 0 1 247.5 216V230Z" stroke-width="3" />
+          <path d="M242 208C271 184 303 187 326 211C343 229 347 249 369 259L366 267C340 259 331 243 317 229C295 207 273 204 245 223Z" fill="#FFFFFF" stroke="#000000" stroke-width="7" />
+          <path id="cast-pencil-arm" d="M242 208C271 184 303 187 326 211C343 229 347 249 369 259L366 267C340 259 331 243 317 229C295 207 273 204 245 223Z" fill="#FFFFFF" stroke="none" />
+          <circle id="pivot-eye" cx="240.5" cy="216" r="7" stroke-width="3" />
+          <circle id="pivot-pin" cx="240.5" cy="216" r="2" fill="#FFFFFF" stroke="none" />
+          <path d="M365 257L379 262L376 271L362 266Z" fill="#FFFFFF" stroke-width="3" />
+          <path d="M378 266L384 268" stroke-width="3" />
+        </g>
+      </g>
+    </mask>
+  </defs>
+  <rect width="640" height="640" fill="#161616" mask="url(#ink-cutout)" />
+</svg>

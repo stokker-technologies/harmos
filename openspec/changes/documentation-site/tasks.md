@@ -11,3 +11,7 @@
 - [x] 4.1 Add `docs:image`: assemble published archives, write the selector entries and `latest`.
 - [ ] 4.2 Deploy the image.
 - [ ] 5.1 Hosted pipelines publish the archive and the assembled site shows `latest`, a release and `dev`.
+
+## Site Alignment
+
+- [x] 6.2 Port the reference visual language, typography, logos, controls and 56rem content column into one local stylesheet.

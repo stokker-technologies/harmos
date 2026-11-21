@@ -31,6 +31,12 @@ from the body; relative links between guides become site routes and links to oth
 files point to the repository browser at the built revision. The build fails on a broken page link
 or heading anchor. The organization logo and typefaces live in `sites/docs/assets/`.
 
+## Authoring and Presentation
+
+`sites/docs/src/theme.css` owns the local company tokens, font faces and generator
+styles, including a 56rem content column. Assets live under `sites/docs/assets/`.
+The release selector draws its caret with the same visible inset as its text.
+
 ## Archives
 
 | Channel | Asset | Source | Site Entry |

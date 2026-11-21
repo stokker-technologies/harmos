@@ -1,0 +1,15 @@
+---
+// Harmos — SPDX-License-Identifier: Apache-2.0
+import ThemeProvider from "@astrojs/starlight/components/ThemeProvider.astro";
+---
+
+<ThemeProvider />
+<script is:inline>
+  // Starlight Owns the Mode; the Site Tokens Read the Dark Class.
+  (() => {
+    const root = document.documentElement;
+    const syncTheme = () => root.classList.toggle("dark", root.dataset.theme === "dark");
+    syncTheme();
+    new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  })();
+</script>

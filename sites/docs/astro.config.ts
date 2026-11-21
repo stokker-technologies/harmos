@@ -23,11 +23,46 @@ export default defineConfig({
     starlight({
       title: "Harmos",
       logo: {
-        src: "./assets/logos/mark.svg",
+        light: "./assets/logos/transparent-on-light.svg",
+        dark: "./assets/logos/transparent-on-dark.svg",
         replacesTitle: false,
       },
       customCss: ["./src/theme.css"],
-      components: { ThemeSelect: "./src/components/ReleaseSelect.astro" },
+      components: {
+        ThemeProvider: "./src/components/ThemeProvider.astro",
+        ThemeSelect: "./src/components/ReleaseSelect.astro",
+      },
+      expressiveCode: {
+        customizeTheme(theme) {
+          theme.fg = "var(--foreground)";
+          theme.colors["editor.foreground"] = "var(--foreground)";
+          theme.settings = [
+            { scope: ["comment", "punctuation.definition.comment"], settings: { foreground: "var(--muted-foreground)" } },
+            { scope: ["keyword", "storage", "constant.language"], settings: { foreground: "var(--link)" } },
+            { scope: ["string", "entity.name", "support", "constant.numeric"], settings: { foreground: "var(--foreground)" } },
+          ];
+          return theme;
+        },
+        styleOverrides: {
+          borderRadius: "var(--brand-radius)",
+          borderColor: "var(--border)",
+          codeBackground: "var(--muted)",
+          codeForeground: "var(--foreground)",
+          codeSelectionBackground: "var(--input)",
+          frames: {
+            editorBackground: "var(--muted)",
+            terminalBackground: "var(--muted)",
+            editorActiveTabBackground: "var(--muted)",
+            editorActiveTabForeground: "var(--foreground)",
+            editorTabBarBackground: "var(--background)",
+            terminalTitlebarBackground: "var(--background)",
+            terminalTitlebarForeground: "var(--foreground)",
+            inlineButtonForeground: "var(--foreground)",
+            inlineButtonBorder: "var(--input)",
+            frameBoxShadowCssValue: "none",
+          },
+        },
+      },
       social: [{ icon: "github", label: "Source", href: "https://github.com/stokker-technologies/harmos" }],
       sidebar: [
         { label: "Start", items: ["index", "schematic", "examples"] },

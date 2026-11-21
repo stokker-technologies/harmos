@@ -1,23 +1,325 @@
 /* Harmos — SPDX-License-Identifier: Apache-2.0 */
-/* Organization Typography for the Documentation Site. */
+/* Company Tokens and Starlight Presentation for the Documentation Site. */
 
 @font-face {
-  font-display: swap;
-  font-family: "Roboto Variable";
+  font-family: "Roboto";
   font-style: normal;
+  font-display: swap;
   font-weight: 100 900;
   src: url("../assets/fonts/roboto-latin-wght-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-display: swap;
-  font-family: "Roboto Mono Variable";
+  font-family: "Roboto Slab";
   font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../assets/fonts/roboto-slab-latin-wght-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Roboto Mono";
+  font-style: normal;
+  font-display: swap;
   font-weight: 100 700;
   src: url("../assets/fonts/roboto-mono-latin-wght-normal.woff2") format("woff2");
 }
 
 :root {
-  --sl-font: "Roboto Variable", system-ui, sans-serif;
-  --sl-font-mono: "Roboto Mono Variable", ui-monospace, monospace;
+  --brand-font-sans: "Roboto", "Segoe UI", system-ui, sans-serif;
+  --brand-font-heading: "Roboto Slab", "Roboto", sans-serif;
+  --brand-font-mono: "Roboto Mono", "SFMono-Regular", Consolas, monospace;
+  --brand-text-xs: 0.75rem;
+  --brand-text-xl: 1.333rem;
+  --brand-text-2xl: 1.777rem;
+  --brand-text-3xl: 2.369rem;
+  --brand-text-4xl: 3.158rem;
+  --brand-text-5xl: 4.209rem;
+  --brand-text-6xl: 5.611rem;
+  --brand-text-7xl: 7.48rem;
+}
+
+/* Shared brand behavior. Palette and typography values belong in their mode files. */
+
+html {
+  accent-color: var(--primary);
+}
+
+::selection {
+  color: var(--accent-foreground);
+  background: var(--accent);
+}
+
+:root {
+  --brand-radius: 0.125rem;
+  --color-ring: var(--focus-ring, light-dark(#001b4a, #93c5fd));
+}
+
+:root {
+  color-scheme: light;
+  --background: #efecdf;
+  --foreground: #161616;
+  --card: #efecdf;
+  --card-foreground: #161616;
+  --popover: #efecdf;
+  --popover-foreground: #161616;
+  --link: #8f4128;
+  --primary: #161616;
+  --primary-foreground: #efecdf;
+  --secondary: #d9d4be;
+  --secondary-foreground: #161616;
+  --muted: #d9d4be;
+  --muted-foreground: color-mix(in srgb, #161616 70%, #efecdf);
+  --accent: #d9d4be;
+  --accent-foreground: #161616;
+  --destructive: #a6463f;
+  --success: #5f6842;
+  --success-foreground: #ffffff;
+  --warning: #7a5a28;
+  --warning-foreground: #ffffff;
+  --info: #6b6557;
+  --info-foreground: #ffffff;
+  --border: color-mix(in srgb, #161616 21%, transparent);
+  --input: color-mix(in srgb, #161616 30%, transparent);
+  --ring: #8b6a32;
+  --chart-1: #b54a46;
+  --chart-2: #de9046;
+  --chart-3: #847514;
+  --chart-4: #67b36a;
+  --chart-5: #008574;
+  --chart-6: #619dda;
+  --chart-7: #6f4fa1;
+  --chart-8: #d887ae;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #111111;
+  --foreground: #ddd9c8;
+  --card: #111111;
+  --card-foreground: #ddd9c8;
+  --popover: #111111;
+  --popover-foreground: #ddd9c8;
+  --link: #c9714f;
+  --primary: #ddd9c8;
+  --primary-foreground: #111111;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ddd9c8;
+  --muted: #1a1a1a;
+  --muted-foreground: color-mix(in srgb, #ddd9c8 70%, #111111);
+  --accent: #1a1a1a;
+  --accent-foreground: #ddd9c8;
+  --destructive: #dc7770;
+  --success: #a7b178;
+  --success-foreground: #1b1915;
+  --warning: #d0aa63;
+  --warning-foreground: #1b1915;
+  --info: #b7ae9a;
+  --info-foreground: #1b1915;
+  --border: color-mix(in srgb, #ddd9c8 21%, transparent);
+  --input: color-mix(in srgb, #ddd9c8 30%, transparent);
+  --ring: #d0aa63;
+  --chart-1: #d67069;
+  --chart-2: #eeaf6e;
+  --chart-3: #a2933b;
+  --chart-4: #88cf8a;
+  --chart-5: #37a69a;
+  --chart-6: #85bcf5;
+  --chart-7: #987aca;
+  --chart-8: #eca0c4;
+}
+
+/* Starlight's Neutral Scale Runs From Ink to Ground in Both Modes. */
+:root,
+::backdrop {
+  --sl-font: var(--brand-font-sans);
+  --sl-font-mono: var(--brand-font-mono);
+  --sl-font-system-mono: var(--brand-font-mono);
+  --sl-color-white: var(--foreground);
+  --sl-color-gray-1: var(--foreground);
+  --sl-color-gray-2: var(--muted-foreground);
+  --sl-color-gray-3: var(--muted-foreground);
+  --sl-color-gray-4: var(--input);
+  --sl-color-gray-5: var(--border);
+  --sl-color-gray-6: var(--muted);
+  --sl-color-gray-7: var(--muted);
+  --sl-color-black: var(--background);
+  --sl-color-accent-low: var(--accent);
+  --sl-color-accent: var(--link);
+  --sl-color-accent-high: var(--link);
+  --sl-color-text: var(--foreground);
+  --sl-color-text-accent: var(--link);
+  --sl-color-text-invert: var(--primary-foreground);
+  --sl-color-bg: var(--background);
+  --sl-color-bg-nav: var(--background);
+  --sl-color-bg-sidebar: var(--background);
+  --sl-color-bg-inline-code: var(--muted);
+  --sl-color-bg-accent: var(--primary);
+  --sl-color-hairline: var(--border);
+  --sl-color-hairline-light: var(--border);
+  --sl-color-hairline-shade: var(--border);
+  --sl-color-backdrop-overlay: color-mix(in srgb, var(--background) 80%, transparent);
+  --sl-color-orange: var(--warning);
+  --sl-color-orange-high: var(--warning);
+  --sl-color-orange-low: var(--muted);
+  --sl-color-green: var(--success);
+  --sl-color-green-high: var(--success);
+  --sl-color-green-low: var(--muted);
+  --sl-color-blue: var(--info);
+  --sl-color-blue-high: var(--info);
+  --sl-color-blue-low: var(--muted);
+  --sl-color-purple: var(--info);
+  --sl-color-purple-high: var(--info);
+  --sl-color-purple-low: var(--muted);
+  --sl-color-red: var(--destructive);
+  --sl-color-red-high: var(--destructive);
+  --sl-color-red-low: var(--muted);
+  --sl-shadow-sm: none;
+  --sl-shadow-md: none;
+  --sl-shadow-lg: none;
+  --sl-text-xl: var(--brand-text-xl);
+  --sl-text-2xl: var(--brand-text-2xl);
+  --sl-text-3xl: var(--brand-text-3xl);
+  --sl-text-4xl: var(--brand-text-4xl);
+  --sl-text-5xl: var(--brand-text-5xl);
+  --sl-text-6xl: var(--brand-text-6xl);
+  --sl-text-h1: clamp(var(--brand-text-2xl), 4vw, var(--brand-text-3xl));
+  --sl-text-h2: var(--brand-text-2xl);
+  --sl-text-h3: var(--brand-text-xl);
+  --sl-text-h4: var(--sl-text-lg);
+  --sl-line-height: 1.65;
+  --sl-content-width: 56rem;
+  --sl-sidebar-width: 18rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+h1,
+.site-title {
+  font-family: var(--brand-font-heading);
+  font-weight: 600;
+}
+
+.site-title {
+  gap: 0.75rem;
+  color: var(--foreground);
+  font-size: var(--brand-text-xl);
+}
+
+.site-title img {
+  height: 2.5rem;
+}
+
+.sidebar-content :is(a, summary),
+starlight-toc a {
+  border-radius: var(--brand-radius);
+}
+
+.sidebar-content :is(a, summary):hover,
+starlight-toc a:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.sidebar-content a[aria-current="page"] {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.sidebar-content .group-label,
+starlight-toc h2,
+.starlight-aside__title {
+  font-family: var(--brand-font-mono);
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+}
+
+starlight-toc a[aria-current="true"] {
+  color: var(--link);
+  background: var(--muted);
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content h2:not(:where(.not-content *)) {
+  padding-block-end: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sl-markdown-content :is(code, pre):not(:where(.not-content *)),
+.pagination-links a,
+site-search :is(button[data-open-modal], dialog, kbd),
+starlight-theme-select select,
+.sl-link-button {
+  border-radius: var(--brand-radius);
+}
+
+.pagination-links a:hover {
+  background: var(--muted);
+  border-color: var(--link);
+}
+
+.pagination-links .link-title {
+  font-size: var(--brand-text-xl);
+}
+
+.sl-markdown-content th:not(:where(.not-content *)) {
+  background: var(--muted);
+  font-size: var(--sl-text-sm);
+}
+
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
+  padding: 0.75rem;
+  border-color: var(--border);
+}
+
+.starlight-aside {
+  --sl-color-asides-text-accent: var(--foreground);
+  border-inline-start-width: 1px;
+  background: var(--muted);
+}
+
+.starlight-aside__icon {
+  display: none;
+}
+
+.sl-badge {
+  --sl-color-bg-badge: var(--muted);
+  --sl-color-text-badge: var(--foreground);
+  border-radius: var(--brand-radius);
+  font-family: var(--brand-font-mono);
+}
+
+site-search dialog::backdrop {
+  background: var(--sl-color-backdrop-overlay);
+  backdrop-filter: none;
+}
+
+#starlight__search {
+  --pagefind-ui-primary: var(--link);
+  --pagefind-ui-text: var(--foreground);
+  --pagefind-ui-font: var(--brand-font-sans);
+  --pagefind-ui-background: var(--popover);
+  --pagefind-ui-border: var(--input);
+  --pagefind-ui-border-radius: var(--brand-radius);
+  --pagefind-ui-tag: var(--muted);
+  --sl-search-corners: var(--brand-radius);
+}
+
+#starlight__search mark {
+  color: var(--foreground);
+  background: var(--muted);
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 0.15em;
+}
+
+.hero h1 {
+  font-family: var(--brand-font-heading);
+  font-size: var(--sl-text-h1);
 }
