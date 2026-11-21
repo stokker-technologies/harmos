@@ -16,7 +16,7 @@ mod operations;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{env, path::PathBuf};
+use std::path::PathBuf;
 
 // Third Party Imports
 
@@ -39,8 +39,7 @@ use harmos::plugin::Plugin;
 
 /* === Public Functions === */
 
-pub fn plugin() -> Plugin {
-    let directory = env::var_os("SCHEMATIC_DIRECTORY").map(PathBuf::from).unwrap_or_else(|| ".".into());
+pub fn plugin(directory: PathBuf) -> Plugin {
     operations::plugin(directory)
 }
 
