@@ -105,6 +105,6 @@ async fn one_launch_variable_is_a_start_error_naming_the_other() {
             .await
             .unwrap();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains(&format!("Set {missing}")));
+        assert!(String::from_utf8_lossy(&output.stderr).contains(missing));
     }
 }

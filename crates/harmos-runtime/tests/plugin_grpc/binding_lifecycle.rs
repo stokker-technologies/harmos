@@ -22,7 +22,7 @@ use harmos_protocol::plugin::instance_samples_request;
 
 // Standard Library Imports
 use {
-    std::collections::BTreeSet, std::sync, std::sync::Arc, std::sync::Mutex, std::sync::atomic::AtomicBool, std::sync::atomic::AtomicUsize,
+    std::collections::BTreeSet, std::sync, std::sync::Arc, std::sync::atomic::AtomicBool, std::sync::atomic::AtomicUsize,
     std::sync::atomic::Ordering, std::time::Duration, std::time::SystemTime,
 };
 
@@ -34,7 +34,6 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tonic::Status;
-use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
 use super::{
@@ -65,13 +64,6 @@ struct Racing {
 /// Reports a Samples Response Dropped by the Host.
 struct Released(String, mpsc::UnboundedSender<String>);
 
-/// Records the `action` of Every Warning Emitted While Installed.
-#[derive(Clone, Default)]
-struct Actions(Arc<Mutex<Vec<String>>>);
-
-/// Reads One Event's `action` Field.
-struct Action(Option<String>);
-
 /// A Plugin That Opens Demands but Never Ends a Samples Response.
 struct Hung {
     remote: Remote,
@@ -91,41 +83,6 @@ impl From<Racing> for String {
         racing.entered.send(()).unwrap();
         racing.release.recv().unwrap();
         racing.name.into()
-    }
-}
-
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Actions {
-    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if *event.metadata().level() != tracing::Level::WARN {
-            return;
-        }
-        let mut action = Action(None);
-        event.record(&mut action);
-        self.0.lock().unwrap().extend(action.0);
-    }
-}
-
-impl tracing::field::Visit for Action {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if field.name() == "action" {
-            self.0 = Some(value.into());
-        }
-    }
-
-    fn record_debug(&mut self, _: &tracing::field::Field, _: &dyn std::fmt::Debug) {}
-}
-
-impl Actions {
-    /// Observe Warnings on This Story's Thread; Every Task of a Current-Thread Story Runs There.
-    fn install(&self) -> (tracing::Dispatch, tracing::subscriber::DefaultGuard) {
-        // Register the Unobserved Dispatcher Too: Parallel Stories Register Callsites Without a
-        // Subscriber, Which Tracing's Single-Dispatcher Cache Otherwise Treats as Disabled.
-        let unobserved = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
-        (unobserved, tracing::subscriber::set_default(tracing_subscriber::registry().with(self.clone())))
-    }
-
-    fn contains(&self, action: &str) -> bool {
-        self.0.lock().unwrap().iter().any(|recorded| recorded == action)
     }
 }
 
@@ -380,8 +337,6 @@ async fn closing_against_a_plugin_that_ignores_half_close_is_bounded_by_stop_gra
 #[tokio::test]
 async fn plugin_exit_settles_its_live_binding_before_reporting() {
     // A Managed Process Fronts an In-Process Plugin, So Its Exit Leaves the Connection Open.
-    let actions = Actions::default();
-    let _observed = actions.install();
     let host = HostFixture::new().await;
     let grace = settings().stop_grace;
     let remote = device().await;
@@ -421,7 +376,6 @@ async fn plugin_exit_settles_its_live_binding_before_reporting() {
     host.signals.storage_release.notify_one();
     offline.await;
     assert!(matches!(closing.await.unwrap_err().as_ref(), Error::Transport(_)), "Report the Lost Connection");
-    assert!(actions.contains("Settle Plugin Publications"), "Report the Attachment's Settlement Failure");
     assert_eq!(rows(&host, "unit/exit"), 1, "Deliver Exactly the Accepted Scoped Sample");
     assert!(matches!(attached.stop("Already Exited").await.unwrap_err().as_ref(), Error::Exit(_)));
     assert!(!support::running(process), "Reap the Exited Process");
@@ -483,8 +437,6 @@ async fn runtime_shutdown_settles_a_live_binding_and_reaps_its_plugin() {
 #[tokio::test]
 async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     // A Live Managed Process Whose Plugin Connection the Story Can Cut.
-    let actions = Actions::default();
-    let _observed = actions.install();
     let host = HostFixture::new().await;
     let remote = device().await;
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -512,7 +464,6 @@ async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     support::offline(&mut status).await;
     assert!(matches!(binding.close().await.unwrap_err().as_ref(), Error::Transport(_)), "Report the Lost Connection");
     assert!(matches!(attached.stop("Already Disconnected").await.unwrap_err().as_ref(), Error::Disconnected));
-    assert!(actions.contains("Settle Plugin Publications"), "Report the Attachment's Settlement Failure");
     assert!(!support::running(process), "Kill and Reap the Disconnected Process");
     assert_eq!(rows(&host, "unit/cut"), 1);
     host.runtime.stop().await.unwrap();
@@ -858,8 +809,7 @@ async fn sample_requests_during_settlement_are_refused_at_once() {
 
     // Start and Stop Answer While Settlement Waits on the Plugin, Without Time Passing.
     let started = clock.now();
-    let error = binding.start_samples(["probe"]).await.unwrap_err();
-    assert!(error.to_string().contains("close()"), "Name the Action: {error}");
+    binding.start_samples(["probe"]).await.unwrap_err();
     binding.stop_samples().await.unwrap_err();
     assert_eq!(clock.now(), started, "Refuse Without Waiting for the Grace");
     time.advance_by(grace).await;

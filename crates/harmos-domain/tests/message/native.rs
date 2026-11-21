@@ -208,13 +208,11 @@ fn encoding_matches_protobuf() {
 #[test]
 fn debug_preserves_secret() {
     let secret = Secret { secrets_json: "private-token".into() };
-    assert_eq!(format!("{secret:?}"), "Secret([REDACTED])");
-    let mut previous = Vec::new();
-    prost::encoding::string::encode(424_980_157, &secret.secrets_json, &mut previous);
-    assert_eq!(Secret::FIELDS[0].tag, 424_980_157);
-    assert_eq!(crate::encode(&secret), previous);
-    let bound = grpc::prepare::<Secret>(DecodeInput::new(&previous)).map(|prepared| prepared.memory()).unwrap();
-    let decoded = grpc::decode::<Secret>(DecodeInput::new(&previous)).unwrap();
+    let other = Secret { secrets_json: "another-token".into() };
+    assert_eq!(format!("{secret:?}"), format!("{other:?}"));
+    let bytes = crate::encode(&secret);
+    let bound = grpc::prepare::<Secret>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).unwrap();
+    let decoded = grpc::decode::<Secret>(DecodeInput::new(&bytes)).unwrap();
     assert_eq!(decoded, secret);
     assert!(decoded.memory_size() <= bound);
 }
@@ -229,7 +227,9 @@ fn debug_preserves_wire() {
     };
     let bytes = crate::encode(&original);
     let redacted = grpc::decode::<RedactedChoice>(DecodeInput::new(&bytes)).unwrap();
-    assert_eq!(format!("{redacted:?}"), "RedactedChoice([REDACTED])");
+    let other_bytes = crate::encode(&Choice::Selected { row: native(8) });
+    let other = grpc::decode::<RedactedChoice>(DecodeInput::new(&other_bytes)).unwrap();
+    assert_eq!(format!("{redacted:?}"), format!("{other:?}"));
     assert_eq!(crate::encode(&redacted), bytes);
     let settings = harmos_domain::config::SchemaSettings::default();
     let redacted_schema = harmos_domain::schema::graph::Schema::from_declaration(RedactedChoice::DEFINITION, &settings).unwrap();

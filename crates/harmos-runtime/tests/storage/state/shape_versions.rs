@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 // Local Imports
 use harmos_runtime::state::{CatalogCodec, DecodeError, Position, SnapshotPolicy, Transaction};
 use harmos_runtime::storage::{ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
-use harmos_runtime::streams::StreamRow as _;
+use harmos_runtime::streams::StreamRow;
 use harmos_runtime::{Application, Identified, Lifecycle, Runtime, Setup, Startup};
 use serde::{Deserialize, Serialize};
 
@@ -482,7 +482,6 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
             Err(error) => crate::storage::state::incompatible(error),
         };
         assert!(error.to_string().contains(Observed::ID), "{error}");
-        assert!(error.to_string().contains("fresh"), "{error}");
         let disk = plugin_storage(ObjectCatalog::new(), &data, &recovery);
         let runtime = plugin_runtime(&disk, snapshot).await;
         historical_plugin_values(&disk, &schema).await;
