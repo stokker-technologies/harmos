@@ -1,5 +1,50 @@
 # gRPC Plugins Design
 
+## Nightly Repair Decisions
+
+The Schematic example uses the existing managed registry placement, including its
+verified bundle and immutable content path, so the runtime both spawns and stops
+the sidecar. Delete the example's manual launcher and child-exit wait. Keep
+registry-backed settings, the caller's directory and walkthrough output; retain
+every existing operation deadline and stop grace. A command bundle passes the
+directory as an explicit sidecar argument instead of a launcher environment variable.
+The removed launcher was the application's only direct Tokio consumer. Remove
+that normal dependency and retain the existing test-only Tokio declaration.
+
+Delete the obsolete segmented-recovery benchmark and its registration. Durable
+compaction superseded its full-journal assumption; the native
+`tests/storage/state/snapshots/segmented_snapshot_matches_full_replay.rs` test
+remains the correctness proof.
+
+All focused Rust selections, including exact package/target selections, use the
+existing Nextest runner and its native hang guards. Delete the direct Cargo test
+dispatch branch. Remove the unused RecoverySnapshot fixture export. Compile-only
+`--no-run` selections preserve prior JUnit evidence and omit the execution-only
+`--no-tests` option that Nextest ignores during compilation. An executing selection still
+removes its stale report before running so old evidence cannot satisfy new proof.
+
+Run `lint:rust` once before repairs and once at final handoff. This explicitly
+extends the earlier one-run budget and authorizes the lint task's declared
+compiler selections. Repair findings at their source; allow an exception only
+for a demonstrated lint false positive, with its exact reason recorded here.
+Native Linux proof remains outstanding. Documentation under `docs/` is owner-written.
+
+The initial lint run found only native observer callback/count reads absent on
+WebAssembly. Guest metadata explicitly rejects observers in
+`sdk/rust/src/wasm/registration.rs`; the shared authoring values remain valid API
+input for that rejection. These two fields receive WebAssembly-only dead-code
+exceptions with reasons; native warnings and every other warning remain enabled.
+This is a platform lint false positive, not permission to add guest observer support.
+
+The requested `--changed` test selector and `check:rust:supply` task do not exist
+in this checkout: the maintained selector is `--paths`, and dependency analysis
+is `check:rust`. Workspace-qualified feature lists cannot be forwarded wholesale
+to the focused runner's separate package invocations. The workspace test-target
+compile therefore uses the existing `build.cargo focused test` entry with
+`--workspace --no-run` and the lint task's declared feature selections; no alias
+or second test executor is added. All three tracked Cargo locks are refreshed
+through native offline metadata resolution, retaining their resolved versions.
+
 ## Durable Plugin State
 
 The plugin host owns one opaque, revisioned value per persisted plugin entry.
@@ -92,6 +137,22 @@ protocol bindings remain tracked. Documentation changes are reported to the owne
   tree. The C++ build and Rust generator consume these separate inventories.
   Prefer generating the C++ inventory from the authoritative descriptors and
   deleting its hand-maintained list.
+- `examples/schematic/app/src/services/{sidecar,guest}.rs` each registers the
+  same seven host analysis/transfer operations and progress publisher. Each
+  backend's start entry calls its copy. Prefer one host registration owner and
+  delete both backend-local copies after owner direction; this repair preserves them.
+- `crates/harmos-runtime/benches/runtime/main.rs` runs the writer workloads once
+  in `in_place_writer_against_deleted_clone_and_publish_path` for a printed
+  comparison and again in the Criterion measurements. `benchmarks` calls both.
+  Prefer deleting the manual comparison/report pass and retaining Criterion;
+  the snapshot-benchmark deletion does not authorize that separate removal.
+
+The remaining `#[path]` declarations in
+`crates/harmos-runtime/benches/runtime/main.rs` and
+`crates/harmos-runtime/tests/support/storage_fixture.rs` cross Rust harness/crate
+roots to reuse existing fixture source. Normal module resolution cannot reach
+those files; replacing them requires the fixture-ownership decision above, not
+another copy or an include-path workaround. No new override is introduced.
 
 `tools/python/tests/fixtures/shared_sdk_inventory.json` is a hand-frozen generated
 output regression snapshot, not an independently authored SDK call inventory.

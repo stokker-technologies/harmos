@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
-use tracing::{Instrument, Subscriber, instrument::WithSubscriber};
+use tracing::{Event, Instrument, Level, Subscriber, instrument::WithSubscriber};
 use {tracing_subscriber::Layer, tracing_subscriber::layer, tracing_subscriber::prelude::*, tracing_subscriber::registry::LookupSpan};
 
 // Local Imports
@@ -50,7 +50,14 @@ struct TraceFields(BTreeMap<String, String>);
 
 /// Captures Log Events: Their Target, Level and Fields.
 #[derive(Clone, Default)]
-struct EventCapture(Arc<Mutex<Vec<(&'static str, tracing::Level, BTreeMap<String, String>)>>>);
+struct EventCapture(Arc<Mutex<Vec<EventRecord>>>);
+
+#[derive(Debug)]
+struct EventRecord {
+    target: &'static str,
+    level: Level,
+    fields: BTreeMap<String, String>,
+}
 
 /* === Enums === */
 
@@ -117,10 +124,15 @@ const FAIL_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::Operation
 /* === Implementations === */
 
 impl<S: Subscriber> Layer<S> for EventCapture {
-    fn on_event(&self, event: &tracing::Event<'_>, _: layer::Context<'_, S>) {
+    fn on_event(&self, event: &Event<'_>, _: layer::Context<'_, S>) {
         let mut fields = TraceFields(BTreeMap::new());
         event.record(&mut fields);
-        self.0.lock().unwrap().push((event.metadata().target(), *event.metadata().level(), fields.0));
+        let record = EventRecord {
+            target: event.metadata().target(),
+            level: *event.metadata().level(),
+            fields: fields.0,
+        };
+        self.0.lock().unwrap().push(record);
     }
 }
 
@@ -251,22 +263,18 @@ fn family_contract_declaration_operation()
     )
 }
 
-async fn fail_contract_declaration_handler(
-    _: FailContractDeclaration, _: harmos_runtime::operations::FunctionContext<FailContractDeclaration>,
-) -> Result<harmos_runtime::operations::Response<()>, Error> {
-    Err(Error::InvalidInput {
-        field: "label",
-        reason: "the story refuses every label",
-    })
-}
-
 fn fail_contract_declaration_operation()
 -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
     harmos_runtime::operations::OperationFactory::function(
         FAIL_CONTRACT_DECLARATION_OPERATION,
         const { &[] },
-        fail_contract_declaration_handler,
-        |_| harmos_runtime::operations::FailureKind::Invalid,
+        |_, _| async {
+            Err(Error::InvalidInput {
+                field: "label",
+                reason: "the story refuses every label",
+            })
+        },
+        |_: &Error| harmos_runtime::operations::FailureKind::Invalid,
     )
 }
 
@@ -318,13 +326,11 @@ async fn a_failed_request_writes_exactly_one_record_without_its_payload() {
 
     // The Operation Layer Writes One Caller-Correctable Record Naming the Operation, Never the Payload.
     let events = events.0.lock().unwrap();
-    let failures =
-        events.iter().filter(|(target, level, _)| *target == "harmos::operations" && *level <= tracing::Level::WARN).collect::<Vec<_>>();
+    let failures = events.iter().filter(|event| event.target == "harmos::operations" && event.level <= Level::WARN).collect::<Vec<_>>();
     assert_eq!(failures.len(), 1, "{failures:?}");
-    let (_, level, fields) = failures[0];
-    assert_eq!(*level, tracing::Level::WARN);
-    assert_eq!(fields.get("operation").map(String::as_str), Some("causation.fail"));
-    assert!(events.iter().all(|(_, _, fields)| fields.values().all(|value| !value.contains("trace-secret-payload"))));
+    assert_eq!(failures[0].level, Level::WARN);
+    assert_eq!(failures[0].fields.get("operation").map(String::as_str), Some("causation.fail"));
+    assert!(events.iter().all(|event| event.fields.values().all(|value| !value.contains("trace-secret-payload"))));
 }
 
 #[tokio::test]

@@ -34,6 +34,36 @@ from harmos_tools.test import focused, nextest, policy
 
 
 class TestSelection(unittest.TestCase):
+    def test_compile_only_selection_preserves_previous_report(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        try:
+            directory = Path(temporary_directory.name)
+            junit = directory / "target/tests/focused/model/local/project/junit.xml"
+            junit.parent.mkdir(parents=True)
+            evidence = b'<testsuites><testsuite><testcase name="previous"/></testsuite></testsuites>'
+            junit.write_bytes(evidence)
+            rules = policy.Policy({}, dict(policy.DEADLINES), ())
+            with (
+                patch.object(focused.policy, "load", return_value=rules),
+                patch.object(focused.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as execute,
+            ):
+                result = focused.run(directory, package="model", target="lib", no_run=True)
+            self.assertEqual(result, 0)
+            self.assertIn("--no-run", execute.call_args.args[0])
+            self.assertNotIn("--no-tests", execute.call_args.args[0])
+            self.assertEqual(junit.read_bytes(), evidence)
+
+            # An Executing Selection Must Produce Fresh Evidence.
+            with (
+                patch.object(focused.policy, "load", return_value=rules),
+                patch.object(focused.subprocess, "run", return_value=SimpleNamespace(returncode=0)),
+            ):
+                with self.assertRaises(policy.TestError):
+                    focused.run(directory, package="model", target="lib")
+            self.assertFalse(junit.exists())
+        finally:
+            temporary_directory.cleanup()
+
     def test_focused_story_keeps_deadlines_and_does_not_build_an_archive(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         temporary = temporary_directory.name

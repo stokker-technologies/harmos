@@ -176,7 +176,7 @@ impl<A: Application> StateManager<A> {
         let prepared = Prepared::system(&fact).map_err(|error| failure("Prepare Plugin State", error))?;
         let (reply, answer) = oneshot::channel();
         let request = writer::Request::Record {
-            value: Recorded::System(fact),
+            value: Box::new(Recorded::System(fact)),
             prepared,
             preparation,
             context: self.context.clone(),

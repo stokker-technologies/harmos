@@ -76,7 +76,6 @@ impl Lifecycle for SchematicEditor {
             let storage =
                 crate::services::queries::attach(setup, manager::catalog(), config.settings.storage()).map_err(io::Error::other)?;
             let settings = config.settings.plugins(root.join("plugins"));
-            setup.resource(settings.clone());
             let manager = Manager::new(storage, settings).map_err(io::Error::other)?;
             setup.settings().plugins(manager.clone());
         }

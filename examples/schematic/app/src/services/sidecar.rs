@@ -15,23 +15,24 @@
 
 // Standard Library Imports
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::Arc;
-use tokio::process::{Child, Command};
+use std::{env, error, fs, io};
 
 // Third Party Imports
 
 // Local Imports
 use crate::app::Runtime;
+use harmos_packaging::bundle::{self, Identity, Source};
 use harmos_protocol::host::{
-    PluginPlacement, PluginRemote, PluginState, PluginValue, PluginsCreateRequest, PluginsDeleteRequest, PluginsGetRequest,
+    PluginManaged, PluginPlacement, PluginState, PluginValue, PluginsCreateRequest, PluginsDeleteRequest, PluginsGetRequest,
     PluginsWatchRequest, plugin_change::Kind, plugin_placement, plugins_watch_response::Event,
 };
-use harmos_runtime::clock::Clock;
-use harmos_runtime::operations::NativeOperation;
-use harmos_runtime::plugin::grpc::{Launches, Load};
-use harmos_runtime::plugin::manager::{Management, Manager, PluginManagerSettings};
-use harmos_runtime::{Error, Result};
+use harmos_runtime::operations::{Lane, Registration};
+use harmos_runtime::plugin::manager::{Management, Manager};
+use harmos_runtime::{Error, Identifier, Result};
+use harmos_storage::{FileMetadata, StorageManager};
+use schematic_operations::schematic::upload::AnalysisResources;
+use schematic_operations::{AnalyzeExchange, AnalyzeSchematic, AnalyzeUpload, transfer};
 
 /* === Constants === */
 
@@ -45,9 +46,6 @@ pub const NAME: &str = "schematic_tools";
 
 pub struct Running {
     manager: Arc<Manager>,
-    settings: Arc<PluginManagerSettings>,
-    clock: Clock,
-    child: Child,
 }
 
 /* === Enums === */
@@ -57,7 +55,7 @@ pub struct Running {
 /* === Implementations === */
 
 impl Running {
-    pub async fn stop(mut self) -> Result<()> {
+    pub async fn stop(self) -> Result<()> {
         let entry =
             self.manager.get(PluginsGetRequest { name: NAME.into(), at: None }).await.map_err(failed)?.entry.ok_or(Error::NotReady {
                 domain: "Stop Schematic Plugin: Missing Entry",
@@ -69,19 +67,6 @@ impl Running {
             })
             .await
             .map_err(failed)?;
-        let status = self
-            .clock
-            .timeout(self.settings.placement.stop_grace, self.child.wait())
-            .await
-            .map_err(|_| Error::NotReady {
-                domain: "Stop Schematic Plugin: Process Exit Timed Out",
-            })?
-            .map_err(failed)?;
-        if !status.success() {
-            return Err(Error::NotReady {
-                domain: "Stop Schematic Plugin: Process Failed",
-            });
-        }
         Ok(())
     }
 }
@@ -89,46 +74,67 @@ impl Running {
 /* === Public Functions === */
 
 pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<Running> {
-    let executable = std::fs::canonicalize(path).map_err(failed)?;
-    let directory = std::fs::canonicalize(directory).map_err(failed)?;
+    let executable = fs::canonicalize(path).map_err(failed)?;
+    let directory = fs::canonicalize(directory).map_err(failed)?;
 
     // Keep Operation Streaming in the Host
-    let resources = runtime.operations.context().resource::<schematic_operations::schematic::upload::AnalysisResources>()?;
+    let resources = runtime.operations.context().resource::<AnalysisResources>()?;
     let streams = runtime.streams.clone();
     resources.progress.get_or_init(|| Arc::new(move |row| streams.publish(row)));
-    let registration = harmos_runtime::operations::Registration::new(harmos_runtime::operations::Lane::default())
-        .protobuf::<schematic_operations::AnalyzeSchematic>()?
-        .protobuf::<schematic_operations::AnalyzeUpload>()?
-        .protobuf::<schematic_operations::AnalyzeExchange>()?
-        .protobuf::<schematic_operations::transfer::Upload>()?
-        .protobuf::<schematic_operations::transfer::Download>()?
-        .protobuf::<schematic_operations::transfer::Put>()?
-        .protobuf::<schematic_operations::transfer::Take>()?;
+    let registration = Registration::new(Lane::default())
+        .protobuf::<AnalyzeSchematic>()?
+        .protobuf::<AnalyzeUpload>()?
+        .protobuf::<AnalyzeExchange>()?
+        .protobuf::<transfer::Upload>()?
+        .protobuf::<transfer::Download>()?
+        .protobuf::<transfer::Put>()?
+        .protobuf::<transfer::Take>()?;
     runtime.register_batch(registration).await?;
 
-    // Launch the Example's Process and Register Its Entry With Library-Owned Settings
-    let manager = runtime.operations.context().resource::<Manager>()?;
-    let settings = runtime.operations.context().resource::<PluginManagerSettings>()?;
-    let clock = runtime.operations.clock().clone();
-    // The Process Announces Its Listener Through a Launch Credential Instead of Printing It.
-    let launches = Launches::new();
-    let mut launch = launches.reserve(NAME).await.map_err(failed)?;
-    let mut command = Command::new(executable);
-    command
-        .env("SCHEMATIC_DIRECTORY", directory)
-        .envs(launch.environment())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(0x08000000);
-    let child = command.spawn().map_err(failed)?;
-    let announced = clock.timeout(<Load as NativeOperation>::POLICY.timeout, launch.announced()).await.map_err(|_| Error::NotReady {
-        domain: "Start Schematic Plugin: Endpoint Timed Out",
+    // Package the Sidecar for the Existing Managed Registry
+    let bytes = fs::read(executable).map_err(failed)?;
+    let program = format!("schematic-sidecar{}", env::consts::EXE_SUFFIX);
+    let directory = directory.to_str().ok_or(Error::InvalidInput {
+        field: "schematic directory",
+        reason: "select a directory with a UTF-8 path",
     })?;
-    let address = format!("http://{}", announced.map_err(failed)?);
-    drop(launch);
-    launches.shutdown().await;
+    let launch = vec![format!("./{program}"), directory.into()];
+    let bundle = bundle::build(
+        Identity {
+            name: NAME.into(),
+            version: env!("CARGO_PKG_VERSION").parse().map_err(failed)?,
+            description: "Schematic Tools".into(),
+            package: Default::default(),
+        },
+        &[Source {
+            path: &program,
+            bytes: &bytes,
+            executable: None,
+        }],
+        Some(&launch),
+        Default::default(),
+    )
+    .map_err(failed)?;
+
+    // Publish Immutable Content Through the Host's Storage Owner
+    let storage = runtime.operations.context().resource::<StorageManager>()?;
+    let mut production = storage
+        .produce_file(FileMetadata {
+            id: Identifier::new("schematic-tools").map_err(failed)?,
+            scope: None,
+            media_type: "application/x-tar".into(),
+            expected_length: Some(bundle.bytes().len() as u64),
+            expected_sha256: None,
+        })
+        .await
+        .map_err(failed)?;
+    production.write_all(bundle.bytes().to_vec()).await.map_err(failed)?;
+    let file = production.finish().await.map_err(failed)?;
+    storage.flush_until(&file.position).await.map_err(failed)?;
+    let sha256 = file.sha256.to_vec();
+
+    // Let the Registry Own Launch, Settings and Process Settlement
+    let manager = runtime.operations.context().resource::<Manager>()?;
     let mut watch = manager.watch(PluginsWatchRequest { name: Some(NAME.into()), at: None }).await.map_err(failed)?;
     manager
         .create(PluginsCreateRequest {
@@ -136,7 +142,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
             request_id: "schematic-tools".into(),
             name: NAME.into(),
             placement: Some(PluginPlacement {
-                kind: Some(plugin_placement::Kind::Remote(PluginRemote { url: address })),
+                kind: Some(plugin_placement::Kind::Managed(PluginManaged { content: Some(file.into()), sha256 })),
             }),
             value: Some(PluginValue { enabled: true }),
         })
@@ -158,18 +164,18 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
             continue;
         };
         if let Some(failure) = entry.failure {
-            return Err(failed(std::io::Error::other(failure.message)));
+            return Err(failed(io::Error::other(failure.message)));
         }
         if entry.state == PluginState::Ready as i32 {
             break;
         }
     }
-    Ok(Running { manager, settings, clock, child })
+    Ok(Running { manager })
 }
 
 /* === Private Functions === */
 
-fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
+fn failed(source: impl error::Error + Send + Sync + 'static) -> Error {
     Error::OperationFailed {
         operation: "Manage Schematic Plugin".into(),
         source: Arc::new(source),

@@ -211,7 +211,7 @@ impl<A: Application> StateManager<A> {
     ) -> Result<Receipt, Error> {
         let (reply, answer) = oneshot::channel();
         let request = Request::Record {
-            value,
+            value: Box::new(value),
             prepared,
             plugin: None,
             preparation: permit,

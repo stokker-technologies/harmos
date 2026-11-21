@@ -25,8 +25,10 @@ use std::path::Path;
 // Local Imports
 use self::sidecar::Running;
 use crate::app::{Runtime, SchematicEditor};
-use harmos::{OperationRequest, encoding::Message as _};
-use harmos_runtime::guest::Loaded;
+use harmos::OperationRequest;
+use harmos::encoding::Message;
+use harmos_runtime::guest::{Loaded, PluginHost};
+use harmos_runtime::{Error, MessageError, Result};
 
 /* === Constants === */
 
@@ -39,8 +41,8 @@ use harmos_runtime::guest::Loaded;
 /* === Enums === */
 
 pub enum Plugin {
-    Guest { manager: harmos_runtime::guest::PluginHost<SchematicEditor> },
-    Sidecar { attached: Box<Running> },
+    Guest { manager: PluginHost<SchematicEditor> },
+    Sidecar { running: Running },
 }
 
 /* === Traits === */
@@ -48,31 +50,31 @@ pub enum Plugin {
 /* === Implementations === */
 
 impl Plugin {
-    pub async fn guest(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos_runtime::Result<Self> {
+    pub async fn guest(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> Result<Self> {
         guest::start(runtime, loaded).await?;
         Ok(Self::Guest { manager: runtime.plugin.clone() })
     }
 
-    pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos_runtime::Result<Self> {
-        let attached = sidecar::start(runtime, path, directory).await?;
-        Ok(Self::Sidecar { attached: Box::new(attached) })
+    pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> Result<Self> {
+        let running = sidecar::start(runtime, path, directory).await?;
+        Ok(Self::Sidecar { running })
     }
 
-    pub async fn stop(self) -> harmos_runtime::Result<()> {
+    pub async fn stop(self) -> Result<()> {
         match self {
             Self::Guest { manager } => manager.stop(guest::NAME).await,
-            Self::Sidecar { attached } => attached.stop().await,
+            Self::Sidecar { running } => running.stop().await,
         }
     }
 }
 
 /* === Public Functions === */
 
-pub async fn call<Q: OperationRequest>(runtime: &Runtime, request: Q) -> harmos_runtime::Result<Q::Response> {
+pub async fn call<Q: OperationRequest>(runtime: &Runtime, request: Q) -> Result<Q::Response> {
     let response = runtime.operations.call_encoded(Q::ID, request.encode_to_vec()).await?;
-    Q::Response::decode(response.as_slice()).map_err(|error| harmos_runtime::Error::OperationPayload {
+    Q::Response::decode(response.as_slice()).map_err(|error| Error::OperationPayload {
         operation: Q::ID.into(),
-        source: harmos_runtime::MessageError::new(error.to_string()),
+        source: MessageError::new(error.to_string()),
     })
 }
 

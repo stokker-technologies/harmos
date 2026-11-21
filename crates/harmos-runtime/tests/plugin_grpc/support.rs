@@ -11,20 +11,11 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::InstanceGetRequest;
-use harmos_protocol::plugin::InstanceGetResponse;
-use harmos_protocol::plugin::InstanceInvokeRequest;
-use harmos_protocol::plugin::InstanceInvokeResponse;
-use harmos_protocol::plugin::InstanceSamplesRequest;
-use harmos_protocol::plugin::InstanceSamplesResponse;
-use harmos_protocol::plugin::InstanceStopRequest;
-use harmos_protocol::plugin::InstanceStopResponse;
-use harmos_protocol::plugin::instance_client::InstanceClient;
-
 // Standard Library Imports
 use std::{
     path::PathBuf,
     pin::Pin,
+    process::Stdio,
     sync::{
         Arc, Mutex,
         atomic::{AtomicI64, AtomicUsize, Ordering},
@@ -37,6 +28,7 @@ use futures_core::Stream;
 use futures_util::stream;
 use tokio::{
     net::{TcpListener, TcpStream},
+    process::{Child, Command},
     sync::{Notify, mpsc, oneshot, watch},
     task::{JoinHandle, JoinSet},
     time::Instant,
@@ -45,11 +37,16 @@ use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
 use harmos_protocol::model;
+use harmos_protocol::plugin::instance_client::InstanceClient;
 use harmos_protocol::plugin::instance_server::{Instance, InstanceServer};
+use harmos_protocol::plugin::{
+    InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
+    InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse,
+};
 use harmos_runtime::{
     Runtime,
     clock::{Clock, Reading, Sleep, Source},
-    plugin::grpc::{Activation, PlacementSettings},
+    plugin::grpc::{Activation, Launches, PlacementSettings},
 };
 
 /* === Type Aliases === */
@@ -446,15 +443,18 @@ pub fn settings() -> PlacementSettings {
 /// Start a Plugin Process With Launch Credentials and Return It With the Address It Announced.
 ///
 /// Its standard output carries no protocol, so it is discarded; the caller chooses the other streams.
-pub async fn announced(command: &mut tokio::process::Command) -> (tokio::process::Child, String) {
-    let launches = harmos_runtime::plugin::grpc::Launches::new();
+pub async fn announced(command: &mut Command) -> (Child, String) {
+    let launches = Launches::new();
     let mut launch = launches.reserve("story plugin").await.unwrap();
-    let mut child = command.envs(launch.environment()).stdout(std::process::Stdio::null()).kill_on_drop(true).spawn().unwrap();
+    let mut child = command.envs(launch.environment()).stdout(Stdio::null()).kill_on_drop(true).spawn().unwrap();
+    // Child::wait Closes Stdin; Retain the Caller's Pipe During the Announcement Race.
+    let stdin = child.stdin.take();
     let address = tokio::select! {
         biased;
         exit = child.wait() => panic!("the plugin exited with {exit:?} before announcing its address"),
         address = launch.announced() => address.unwrap(),
     };
+    child.stdin = stdin;
     drop(launch);
     launches.shutdown().await;
     (child, address.to_string())
