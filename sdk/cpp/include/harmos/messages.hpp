@@ -48,6 +48,8 @@ using ::harmos::detail::payloads::CLASSIFICATION_UNSPECIFIED;
 using ::harmos::detail::payloads::File;
 using ::harmos::detail::payloads::FileMetadata;
 using ::harmos::detail::payloads::FileReference;
+using ::harmos::detail::payloads::ListFileProductionsRequest;
+using ::harmos::detail::payloads::ListFileProductionsResponse;
 using ::harmos::detail::payloads::MessageSettings;
 using ::harmos::detail::payloads::PageRequest;
 using ::harmos::detail::payloads::StorageTransferSettings;

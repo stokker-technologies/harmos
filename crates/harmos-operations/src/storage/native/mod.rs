@@ -15,6 +15,7 @@
 mod compound;
 mod definitions;
 mod file_access;
+mod file_productions;
 mod file_watches;
 mod lists;
 mod maintenance;
@@ -56,6 +57,7 @@ pub use handlers::{
     SetProjectionDefinition, WatchDirectoryEntries, WatchFileBytes, WatchFileProduction, WatchRows,
 };
 
+pub use file_productions::ListFileProductions;
 pub use snapshot::SavedSnapshots;
 
 pub use compound::Mutate;

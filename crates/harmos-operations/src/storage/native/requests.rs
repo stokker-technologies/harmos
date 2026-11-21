@@ -22,7 +22,7 @@ pub use harmos_domain::model::storage::{
 };
 pub use harmos_storage::query::Source;
 pub use harmos_storage::query::columnar::StorageCapabilities;
-pub use harmos_storage::{FileProducer, ReadLimits};
+pub use harmos_storage::{FileProducer, FileProduction, ReadLimits};
 
 /* === Imports === */
 
@@ -55,6 +55,20 @@ macro_rules! memory {
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct ListFileProductionsRequest {
+    pub scope: Identifier,
+    pub page: Option<PageRequest>,
+    pub at: Option<ReadCut>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListFileProductionsResponse {
+    pub productions: Vec<FileProduction>,
+    pub next_page_token: String,
+    pub resolved_at: Option<ReadCut>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ColumnSource {
@@ -1431,6 +1445,23 @@ impl MemorySize for GetSchemaResponse {
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.exists.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
+    }
+}
+
+impl MemorySize for ListFileProductionsRequest {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>()
+            + self.scope.memory_size()
+            + self.page.as_ref().map_or(0, Message::encoded_len)
+            + self.at.as_ref().map_or(0, Message::encoded_len)
+    }
+}
+impl MemorySize for ListFileProductionsResponse {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>()
+            + self.productions.memory_size()
+            + self.next_page_token.capacity()
+            + self.resolved_at.as_ref().map_or(0, Message::encoded_len)
     }
 }
 

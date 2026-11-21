@@ -712,6 +712,24 @@ impl ReflectMessage for crate::model::Failure {
     }
 }
 
+impl ReflectMessage for crate::model::PageRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.model.v1.PageRequest").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::model::ListFileProductionsRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.model.v1.ListFileProductionsRequest").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::model::ListFileProductionsResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.model.v1.ListFileProductionsResponse").expect("generated message")
+    }
+}
+
 impl ReflectMessage for crate::model::FileMetadata {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.model.v1.FileMetadata").expect("generated message")
@@ -733,12 +751,6 @@ impl ReflectMessage for crate::model::File {
 impl ReflectMessage for crate::model::Upload {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.model.v1.Upload").expect("generated message")
-    }
-}
-
-impl ReflectMessage for crate::model::PageRequest {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.model.v1.PageRequest").expect("generated message")
     }
 }
 

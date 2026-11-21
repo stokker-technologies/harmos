@@ -52,6 +52,7 @@ pub fn storage_catalog_batch() -> __private::Catalog {
         operations::OperationFactory::native::<super::Mutate>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::CreateFileProduction>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::GetFileProduction>().expect("native storage declaration"),
+        operations::OperationFactory::native::<super::ListFileProductions>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::AppendFileBytes>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::CreateFileWriter>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::PublishFileProduction>().expect("native storage declaration"),

@@ -45,3 +45,8 @@
   - [ ] Native Linux and hosted validation remain pending integration.
 - [ ] 4.2 Publish an authorized usable Harmos revision after operation-boundary and plugin-lifecycle, and verify its product pin without local overrides. Product extraction, disk-backend adoption and product benchmarks remain in the consuming product change; no publication is authorized by this reconciliation.
 - [x] Consumer adoption follows protocol → operations → runtime → SDKs → examples → guides; retain ordinary bounded query fallback and streamed batch writes.
+
+- [x] 2.9.1 Lock exact-scope discovery inventory and scenarios: staging owner, native request/handler/catalog, runtime storage facade, shared protocol messages and generated projections; retain private admission and existing recovery.
+- [x] 2.9.2 Implement bounded restart-resumable unfinished-production discovery with generation and recorded byte progress.
+- [x] 2.9.3 Prove scope isolation, published exclusion, paging, lost-response startup recovery, codec/catalog and discover/settle/DeleteScope through focused tests.
+- [ ] 2.9.4 Regenerate every SDK projection and prove generation drift, workspace test-target compilation, formatting, repository contracts, tooling and strict specification validation.

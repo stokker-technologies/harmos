@@ -21,21 +21,22 @@ pub use harmos_operations::storage::{
     CreateFileProductionResponse, CreateFileWriterRequest, CreateFileWriterResponse, CreateSnapshotRequest, CreateSnapshotResponse,
     DataBatch, DeleteFileProductionRequest, DeleteFileProductionResponse, DeleteFileRequest, DeleteFileResponse, DeleteObjectRequest,
     DeleteScopeRequest, DeleteSnapshotRequest, DeleteSnapshotResponse, DirectoryCompletion, DirectoryEntry, DirectoryEvent,
-    DirectorySelection, DisposeBackendRequest, FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FileProducer, FileProgress,
-    FileReference, FileSession, FileSource, FollowStart, GetFileBytesRequest, GetFileBytesResponse, GetFileHashRequest,
+    DirectorySelection, DisposeBackendRequest, FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FileProducer, FileProduction,
+    FileProgress, FileReference, FileSession, FileSource, FollowStart, GetFileBytesRequest, GetFileBytesResponse, GetFileHashRequest,
     GetFileHashResponse, GetFileProductionRequest, GetFileProductionResponse, GetIndexDefinitionRequest, GetIndexDefinitionResponse,
     GetObjectRequest, GetObjectResponse, GetProjectionDefinitionRequest, GetProjectionDefinitionResponse, GetProjectionStatusRequest,
     GetProjectionStatusResponse, GetSchemaRequest, GetSchemaResponse, IndexDefinition, IndexEntry, IndexPage, IndexSelection, InfoRequest,
     InfoResponse, IpcBatch, ListColumnRowsRequest, ListColumnRowsResponse, ListDirectoryEntriesRequest, ListDirectoryEntriesResponse,
-    ListIndexEntriesRequest, ListIndexEntriesResponse, ListProjectionRowsRequest, ListProjectionRowsResponse, ListRowsRequest,
-    ListRowsResponse, MutateRequest, MutateResponse, MutationId, MutationItem, MutationWindow, ObjectEntry, ObjectKey, ObjectValue,
-    ObjectVersionToken, Offset, ProjectionDefinition, ProjectionPage, ProjectionSelection, ProjectionStatus, ProjectionTransform,
-    PublishFileProductionRequest, PublishFileProductionResponse, ReadLimits, RowOutput, SavedSnapshot, ScalarValue, Scale, SchemaInput,
-    SchemaKey, SetIndexDefinitionRequest, SetIndexDefinitionResponse, SetObjectRequest, SetObjectResponse, SetProjectionDefinitionRequest,
-    SetProjectionDefinitionResponse, SetSchemaRequest, SetSchemaResponse, Source, StagedFile, StorageCapabilities, StorageCursor,
-    StoreHistory, StoredRecord, StoredRow, TimeBounds, TimeBucketPlan, Transform, WatchDirectoryEntriesRequest,
-    WatchDirectoryEntriesResponse, WatchFileBytesRequest, WatchFileBytesResponse, WatchFileProductionRequest, WatchFileProductionResponse,
-    WatchRowsRequest, WatchRowsResponse, set_object_response, watch_file_production_response, watch_rows_response,
+    ListFileProductionsRequest, ListFileProductionsResponse, ListIndexEntriesRequest, ListIndexEntriesResponse, ListProjectionRowsRequest,
+    ListProjectionRowsResponse, ListRowsRequest, ListRowsResponse, MutateRequest, MutateResponse, MutationId, MutationItem, MutationWindow,
+    ObjectEntry, ObjectKey, ObjectValue, ObjectVersionToken, Offset, ProjectionDefinition, ProjectionPage, ProjectionSelection,
+    ProjectionStatus, ProjectionTransform, PublishFileProductionRequest, PublishFileProductionResponse, ReadLimits, RowOutput,
+    SavedSnapshot, ScalarValue, Scale, SchemaInput, SchemaKey, SetIndexDefinitionRequest, SetIndexDefinitionResponse, SetObjectRequest,
+    SetObjectResponse, SetProjectionDefinitionRequest, SetProjectionDefinitionResponse, SetSchemaRequest, SetSchemaResponse, Source,
+    StagedFile, StorageCapabilities, StorageCursor, StoreHistory, StoredRecord, StoredRow, TimeBounds, TimeBucketPlan, Transform,
+    WatchDirectoryEntriesRequest, WatchDirectoryEntriesResponse, WatchFileBytesRequest, WatchFileBytesResponse, WatchFileProductionRequest,
+    WatchFileProductionResponse, WatchRowsRequest, WatchRowsResponse, set_object_response, watch_file_production_response,
+    watch_rows_response,
 };
 pub use harmos_protocol::model::{PageRequest, ReadCut, Receipt};
 
@@ -180,6 +181,10 @@ impl Storage<'_> {
 
     pub async fn list_directory_entries(&self, request: ListDirectoryEntriesRequest) -> Result<ListDirectoryEntriesResponse> {
         self.call.call::<storage::ListDirectoryEntries>(request).await
+    }
+
+    pub async fn list_file_productions(&self, request: ListFileProductionsRequest) -> Result<ListFileProductionsResponse> {
+        self.call.call::<storage::ListFileProductions>(request).await
     }
 
     pub async fn list_index_entries(&self, request: ListIndexEntriesRequest) -> Result<ListIndexEntriesResponse> {
