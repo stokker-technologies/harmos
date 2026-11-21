@@ -26,7 +26,7 @@ Reopened: 2 symbols, 1 net, 3 route points
 Both backends read typed settings from their library-owned plugin entries. The
 guest is registered in-process with `PluginPlacement.guest`; it reads only its own
 values through caller-scoped `plugins.Settings.List`. The host supplies its module again
-after restart, while its entry retains settings. See [Guest Entries](plugin-manager.md#webassembly-guests).
+after restart, while its entry retains settings. See [Guest Entries](guides/plugin-manager.md#webassembly-guests).
 
 Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
 stderr for both backends. Guest component compilation finishes before
@@ -48,7 +48,7 @@ The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The protocol crate exposes generated contracts without the host stack.
 Shared values use the SDK root; client and plugin types use their respective barrels.
-The protocol package mapping is documented in [Architecture](architecture.md). Every operation
+The protocol package mapping is documented in [Architecture](project/architecture.md). Every operation
 declares CLIENTS, PLUGINS or ALL. The SDK handler keeps its `context` API; its host
 resources include only operations callable by plugins.
 

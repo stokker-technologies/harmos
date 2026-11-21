@@ -73,5 +73,5 @@ where each plugin runs its stop and cleanup hooks.
 No native protocol changes. `crates/harmos-runtime` (runtime verbs, plugin activation,
 Wasm guest host, carrier), `crates/harmos-operations` (application, service and carrier
 hooks), all four SDKs and their generators, `tools/conformance`, the Schematic example,
-runtime stories, `docs/architecture.md`, `docs/product-guide.md`, `docs/plugin-manager.md`
+runtime stories, `docs/project/architecture.md`, `docs/index.md`, `docs/guides/plugin-manager.md`
 and the four SDK guides. Products adopt the landed revision in their own change.

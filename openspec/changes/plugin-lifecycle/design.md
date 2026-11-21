@@ -30,13 +30,13 @@ Current surface (landed, verified 2026-11-16):
   `serve`.
 - Declarations: plugins compose builder chains (`operation`, `stream`, `observer`,
   `settings`, `section`); `declarations()` returns the frozen `harmos.model.v1.Declarations`
-  reported by `Instance.Get` and `GuestRegistration`. docs/architecture.md (Guest Entries
+  reported by `Instance.Get` and `GuestRegistration`. docs/project/architecture.md (Guest Entries
   and Reported Declarations) keeps catalog terminology for internal registries and names
   the wire payload declarations.
 - Aliases: products import the Harmos `Plugin` under renamed aliases, and the SDKs, their
   generators and tests contain import aliases and `#[path]`/`sys.path` overrides.
 
-Touched invariant: docs/architecture.md says "There is no Catalog alias" for the reported
+Touched invariant: docs/project/architecture.md says "There is no Catalog alias" for the reported
 declarations. Its purpose, one name for the wire payload, holds: `catalog()` names the
 author-side module contribution, never the payload, and `declarations()` stays.
 
@@ -191,10 +191,10 @@ its author state with subsequent invocation contexts and retain ordinary operati
 policy enforcement. The old callbacks and new lifecycle operations would otherwise
 be two independent release paths; delete the context-free callbacks in those owners.
 
-The documentation owner updates `docs/tooling.md` to replace `@on_stop` with async
+The documentation owner updates `docs/project/tooling.md` to replace `@on_stop` with async
 instance hooks, explain transport-only Stop and use `FailureError(model.Failure(...))`.
-`docs/python-sdk.md` documents `ctx.plugin` and invocation-owned resources separately.
-`docs/plugin-manager.md` records initialization before Ready. `docs/architecture.md`
+`docs/sdks/python.md` documents `ctx.plugin` and invocation-owned resources separately.
+`docs/guides/plugin-manager.md` records initialization before Ready. `docs/project/architecture.md`
 records hidden lifecycle operations, their ordinary policies and the required native
 shutdown ordering; the native runtime now separates plugin settlement from transport Stop.
 The Stop comments in `proto/harmos/plugin/v1/instance.proto` still describe SDK cleanup;
@@ -303,7 +303,7 @@ C# `using X = Y;`, C++ `namespace x = y;` and `using X = other::Y;` renames, Rus
 and Python `sys.path` edits. Defining a new name for a composed type (for example a callback
 signature `using Hook = std::function<void()>;`) is a definition, not a rename. Generators stop
 emitting aliases. An exception is allowed only when unavoidable and must be named with its
-reason in docs/architecture.md; the inventory task proposes candidates (for example Rust
+reason in docs/project/architecture.md; the inventory task proposes candidates (for example Rust
 integration-test targets that share one support module, or third-party generated code the
 project does not author) and keeps only those with no alternative such as a support crate or
 an ordinary module tree.

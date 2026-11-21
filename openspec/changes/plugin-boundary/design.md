@@ -159,7 +159,7 @@ Task 2.1 owns `tools/python/src/harmos_tools/build/resource_roots.py`,
 The consuming product contributes its descriptor schema and four renderers; those
 duplicate modules are deleted after adoption. Product-specific selector defaults,
 namespace/output paths and authored barrel exports remain product configuration.
-Focused generator fixtures live in `tools/python/tests/`; `docs/tooling.md` and
+Focused generator fixtures live in `tools/python/tests/`; `docs/project/tooling.md` and
 this architecture contract document the invocation. Generated SDK files remain
 tracked and are changed only through generation tasks. Runtime, protocol declarations
 and SDK host-client removal belong to the operation-boundary worker.
@@ -171,7 +171,7 @@ revision, remove the override and prove the published dependency graph.
 The generator source inventory includes the native entry points
 `tools/python/src/harmos_tools/csharp.py` and `build/cpp.py`, which delegate to
 the shared wire projector and reuse the C++ export table. README claims are
-unchanged; invocation inputs and adapter prerequisites live in `docs/tooling.md`.
+unchanged; invocation inputs and adapter prerequisites live in `docs/project/tooling.md`.
 The complete-SDK fixture proves repeatable generation, read-only drift checks
 and obsolete-output retirement. Its C# compiler boundary is substituted; the
 native C# generation task separately proves the real wire projection.

@@ -1,3 +1,7 @@
+---
+sidebar: { order: 3 }
+---
+
 # C# SDK
 
 The `Harmos` NuGet package targets .NET 10. Import shared carrier values and errors from `Harmos`, reused payloads from
@@ -6,7 +10,7 @@ generate their own client roots; there is no `Harmos.Client`. Wire requests, stu
 
 ## Plugin Settings and Context
 
-The [plugin example](../sdk/csharp/examples/Plugin/Program.cs) serves an echo
+The [plugin example](../../sdk/csharp/examples/Plugin/Program.cs) serves an echo
 operation and reads its own library-stored prefix setting. Declare defaults and
 requirements when building the plugin:
 
@@ -31,7 +35,7 @@ The response includes declarations, complete values, revision and `ResolvedAt`.
 
 `Time`, discovery and own invocation Get/Cancel/Watch are plugin carrier facilities.
 Product wrappers own client operations. Product descriptors own these audiences; runtime assembly has no
-caller overrides. See [Product Wrappers and the Native Facade](architecture.md#product-wrappers-and-the-native-facade).
+caller overrides. See [Product Wrappers and the Native Facade](../project/architecture.md#product-wrappers-and-the-native-facade).
 The host remains responsible for caller authorization.
 
 ## Interval Observers

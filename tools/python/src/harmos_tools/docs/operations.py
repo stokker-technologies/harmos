@@ -185,7 +185,7 @@ def overview(ordered: list[str], packages: dict[str, list[FileDescriptorProto]],
             "describe their payloads. Schematic packages demonstrate product-owned remote wrappers.",
             "",
             "Host operations are native-only and products choose their own remote wrappers. See",
-            "[Native Storage Operations](../../../storage/) and [Architecture](../../../architecture/)",
+            "[Native Storage Operations](../../../guides/storage/) and [Architecture](../../../project/architecture/)",
             "for native contracts. The retired host-client projection is excluded from this reference.",
         ]
     )

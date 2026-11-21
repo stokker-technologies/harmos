@@ -1,3 +1,7 @@
+---
+sidebar: { order: 3 }
+---
+
 # Access and Host Status
 
 Host applications configure access through `runtime.grpc().configure_access` and

@@ -14,7 +14,7 @@ support:
 | A listener does not currently own the Samples connection lifetime. | `crates/harmos-runtime/src/plugin/grpc/publish.rs:141` prepares and opens streams before their demand gates run. Resource hooks therefore cannot be attached to RPC open/close alone. |
 | Handler errors fail the window. | `sdk/rust/src/server.rs:485` maps handler errors to a gRPC status; `crates/harmos-runtime/src/plugin/grpc/samples.rs:153` turns that status into `WindowFailed`. |
 | Existing batches cannot express sparse or repeated rows per tick. | `proto/harmos/plugin/v1/stream.proto:36` encodes exactly one column value per sample; `crates/harmos-runtime/src/plugin/grpc/samples.rs:171` requires positive consecutive counts completing the grant. |
-| Scoped clocks are independent. | `docs/architecture.md:1235` and `crates/harmos-runtime/src/plugin/grpc/publish.rs:567` retain an independent schedule for each scope and its clock. |
+| Scoped clocks are independent. | `docs/project/architecture.md:1235` and `crates/harmos-runtime/src/plugin/grpc/publish.rs:567` retain an independent schedule for each scope and its clock. |
 
 The reported product-side producer is outside this repository. Its location and
 removal cannot be verified here.
@@ -276,13 +276,13 @@ No documentation files are edited. After implementation, the owner should update
 
 | File and Line | Required Statement |
 | --- | --- |
-| `docs/architecture.md:1258` | Samples demand groups requested member streams by collection within each scope. |
-| `docs/architecture.md:1323` | Window answers include dense observer columns and sparse collection rows; exact host ticks use existing `context.source_time`. |
-| `docs/architecture.md:1342` | Collection demand and unscoped suppression operate on a whole collection; row restrictions depend on the encoding. |
-| `docs/architecture.md:1362` | A collection handler failure ends the collection's listened demands together. |
-| `docs/python-sdk.md:64` | Document collection bindings and report whether Python authoring is available. |
-| `docs/csharp-sdk.md:37` | Document collection bindings and report whether C# authoring is available. |
-| `docs/cpp-sdk.md:138` | Document collection bindings and report whether C++ authoring is available. |
+| `docs/project/architecture.md:1258` | Samples demand groups requested member streams by collection within each scope. |
+| `docs/project/architecture.md:1323` | Window answers include dense observer columns and sparse collection rows; exact host ticks use existing `context.source_time`. |
+| `docs/project/architecture.md:1342` | Collection demand and unscoped suppression operate on a whole collection; row restrictions depend on the encoding. |
+| `docs/project/architecture.md:1362` | A collection handler failure ends the collection's listened demands together. |
+| `docs/sdks/python.md:64` | Document collection bindings and report whether Python authoring is available. |
+| `docs/sdks/csharp.md:37` | Document collection bindings and report whether C# authoring is available. |
+| `docs/sdks/cpp.md:138` | Document collection bindings and report whether C++ authoring is available. |
 
 README impact: its gRPC placement feature at `README.md:51` remains true; a
 collection example belongs beside the maintained SDK guidance after landing.

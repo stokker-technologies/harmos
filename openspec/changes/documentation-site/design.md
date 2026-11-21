@@ -33,6 +33,12 @@ or heading anchor. The organization logo and typefaces live in `sites/docs/asset
 
 ## Authoring and Presentation
 
+The landing guide is `docs/index.md`; ordinary slug generation maps it to the entry root.
+Start lists the landing, schematic and examples explicitly. Guides, SDKs and Project
+autogenerate from `docs/guides/`, `docs/sdks/` and `docs/project/`; sidebar order
+frontmatter preserves their reading order. Contributing remains at the docs root
+and is listed last in Project. Operations Reference remains generated.
+
 `sites/docs/src/theme.css` owns the local company tokens, font faces and generator
 styles, including a 56rem content column. Assets live under `sites/docs/assets/`.
 The release selector draws its caret with the same visible inset as its text.

@@ -1,3 +1,7 @@
+---
+sidebar: { order: 2 }
+---
+
 # Plugin Management
 
 `harmos_runtime::plugin::manager` owns a persistent set of hosted plugins.
@@ -10,7 +14,7 @@ Products call `runtime.for_call(&ctx).plugins()` to load, bind a scope and clock
 start or stop its samples, settle handles and inspect a candidate. Requests and
 opaque generation-fenced handles live in `harmos_runtime::facade::plugins`.
 A binding's `for_call()` calls native operations under its scoped clock. See the
-[Product Guide](product-guide.md) for policies and settlement.
+[Product Guide](../index.md) for policies and settlement.
 
 Inspection returns generic-validated frozen metadata within `metadata_bytes` and
 the registered operation deadline. It performs no installation, initialization,

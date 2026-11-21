@@ -41,7 +41,7 @@ release, CI and package settings live in `tools/project.toml`.
 Explicit tool configuration lives in `tools/config/`: git-cliff uses `cliff.toml`
 and Taplo uses `taplo.toml`. Tasks pass these paths; editor settings select Taplo
 explicitly. Mise puts Ruff caches in `tools/python/.ruff_cache/`.
-Contributor guidance lives in [Contributing](CONTRIBUTING.md).
+Contributor guidance lives in [Contributing](../CONTRIBUTING.md).
 The SDK's development group includes tooling for reference-host test support;
 this dependency does not enter the tooling workspace or the SDK runtime.
 Other entry points use `uv run --locked --no-sync`; the root `check` synchronizes
@@ -66,7 +66,7 @@ Generated-Python-only checks need Python and uv.
 
 ## Documentation Site
 
-The Starlight project in `site/` renders maintained guides directly from `docs/`,
+The Starlight project in `sites/docs/` renders maintained guides directly from `docs/`,
 with static search and a release selector. Each guide's first heading becomes its
 page title. `harmos_tools.docs.operations` generates reference pages from the
 protocol definitions and their comments, using a `buf` descriptor set with source
@@ -95,7 +95,7 @@ publication requires `harmos-docs-<version>.zip`. Nightly builds documentation i
 parallel with publication; its final report attaches `harmos-docs-nightly.zip`
 when available and records whether it was attached. Documentation failure does
 not block Nightly package publication. Pull requests and `dev` pushes require
-`Build / Documentation`. Documentation-only paths, including `site/` and its
+`Build / Documentation`. Documentation-only paths, including `sites/docs/` and its
 Python generator package, select only documentation jobs through `ci:impact`.
 
 `docs:image` downloads the newest archive of each stable release line and the
@@ -268,7 +268,7 @@ per builder (`CARGO_BUILD_JOBS=8`). Give each independent checkout its own build
 directory and share the machine-wide compiler cache. Commands in one checkout
 share Cargo's target lock. Do not share one writable cache between cache servers.
 Windows measurements and remaining unmeasured cases are recorded in
-[Tooling Streamline](../openspec/changes/tooling-streamline/tasks.md#windows-build-measurements).
+[Tooling Streamline](../../openspec/changes/tooling-streamline/tasks.md#windows-build-measurements).
 
 ## Protocol Generation
 
@@ -439,7 +439,7 @@ with their SDK selector and output filename; C++ also emits the plugin implement
 Product protobuf bindings retain their qualified message identity. Rust product
 roots take the existing client's `transport_handle()`. Python generates explicit
 resource classes and composes them with ordinary typed attributes; see the
-[Python SDK Guide](python-sdk.md#product-roots). Actual leaf collisions are refused
+[Python SDK Guide](../sdks/python.md#product-roots). Actual leaf collisions are refused
 during generation. No serialized resource inventory is committed, shipped or read.
 
 Generate only a composed Python root into a product-owned module with:
@@ -456,9 +456,9 @@ remain child calls and have no independent gRPC listener.
 
 ## Python Plugin SDK
 
-The [Python SDK Guide](python-sdk.md) covers typed clients, product composition
-and the runnable [client](../sdk/python/examples/client.py) and
-[plugin](../sdk/python/examples/plugin.py) examples.
+The [Python SDK Guide](../sdks/python.md) covers typed clients, product composition
+and the runnable [client](../../sdk/python/examples/client.py) and
+[plugin](../../sdk/python/examples/plugin.py) examples.
 
 `sdk/python` builds the pure Python `harmos-sdk` distribution for Python 3.13+.
 Its runtime dependencies are `grpcio` and `protobuf`; it contains no native code.
@@ -524,7 +524,7 @@ Import `HostOperation` from `harmos.plugin` and declare `HostOperation.TIME_SLEE
 and `HostOperation.TIME_GET` in `requires` to use
 `await ctx.sleep(Duration(...))` and `await ctx.now()`. These are host child calls;
 the SDK has no local timer. All SDKs fingerprint clock contracts with the shared
-[canonical projection](../proto/harmos/),
+[canonical projection](../../proto/harmos/),
 which discards file options from imported well-known types. The runtime integration
 story `plugin_grpc::python_clock` starts the prepared `sdk/python/.venv/` interpreter,
 admits the full conformance catalog and invokes echo on the real host. It then
@@ -606,10 +606,10 @@ against the packaged SDK. C++ stages the standalone example and test input in
 
 Each SDK includes a reference-product fixture entry program that uses carrier helpers
 and the fixture product's generated client root:
-[Rust](../sdk/rust/src/bin/install_itself.rs),
-[Python](../sdk/python/tests/fixtures/conformance/install_itself.py),
-[C#](../sdk/csharp/tests/Harmos.Conformance/InstallItself.cs) and
-[C++](../sdk/cpp/examples/conformance/install_itself.cpp).
+[Rust](../../sdk/rust/src/bin/install_itself.rs),
+[Python](../../sdk/python/tests/fixtures/conformance/install_itself.py),
+[C#](../../sdk/csharp/tests/Harmos.Conformance/InstallItself.cs) and
+[C++](../../sdk/cpp/examples/conformance/install_itself.cpp).
 Run the conformance program with `--install-itself serve` to serve its minimal
 Public `example.echo` instance. Then run that same program with
 `--install-itself http://HOST:PORT http://INSTANCE:PORT`. Python uses
@@ -622,7 +622,7 @@ C# and C++ programs alongside Rust fixtures; consumers never compile missing inp
 
 ## C++ Plugin SDK
 
-The [C++ SDK guide](cpp-sdk.md) covers pinned vcpkg dependencies, Ninja presets,
+The [C++ SDK guide](../sdks/cpp.md) covers pinned vcpkg dependencies, Ninja presets,
 installation with `Harmos::Cpp`, generated headers and conformance test support.
 Root C++ selections delegate to `sdk/cpp/mise.toml`; `mise -C sdk/cpp tasks` lists
 its prepare, build, test, check, format, generation and installed-consumer operations.
@@ -664,7 +664,7 @@ build prerequisites; `bench --extended` consumes `build --artifact bench --exten
 
 ### C# Plugin SDK
 
-The [C# SDK Guide](csharp-sdk.md) covers public imports, client calls, plugin
+The [C# SDK Guide](../sdks/csharp.md) covers public imports, client calls, plugin
 settings, declared callers and the .NET 10 build/test/check/package tasks.
 Use `sdk/csharp/Harmos.slnx` for the SDK, examples and conformance fixture.
 Root task selections with `--language csharp` delegate to the SDK's mise verbs.
@@ -893,7 +893,7 @@ History is an append-only record beside the existing benchmark results under
 revisions. A rolling baseline of twenty Nightly runs supplies trend warnings;
 it does not replace the paired base/head comparison. These are proposed reporting
 and comparison contracts, not a claim that the automation already implements them.
-The owning [storage-interface design](../openspec/changes/storage-interface/design.md#proposed-nightly-budget-scheme)
+The owning [storage-interface design](../../openspec/changes/storage-interface/design.md#proposed-nightly-budget-scheme)
 and tasks 3.10–3.13 retain the four separate storage optimization cases.
 
 ```sh
@@ -943,7 +943,7 @@ mise run generate -- --sdk cpp
 Protocol generation refreshes messages, service stubs and reflection together.
 Storage stays in-process; products declare their own wire operations and use shared
 File/Upload vocabulary from the SDK root. See
-[Private Native Operations](storage.md#private-native-operations).
+[Private Native Operations](../guides/storage.md#private-native-operations).
 
 Shared SDK client inputs live in `sdk/tests/fixtures/client/proto/`.
 Each SDK composes those roots with the real library Status and nested Diagnostics

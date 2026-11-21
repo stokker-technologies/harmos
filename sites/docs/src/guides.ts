@@ -10,8 +10,6 @@ import { visit } from "unist-util-visit";
 
 /** Guide Roots Relative to the Site Project; Generated References Live Under target/. */
 const SOURCES = ["../../docs", "../../target/docs/generated"];
-/** The Product Guide Is the Landing Page of Every Entry. */
-const LANDING = "product-guide";
 
 export interface Routes {
   /** The Repository Root Holding docs/ and target/. */
@@ -24,8 +22,7 @@ export interface Routes {
 
 /** The Route Slug of One Guide Path Relative to Its Source Root. */
 export function slug(path: string): string {
-  const name = path.split(sep).join("/").replace(/\.md$/i, "").toLowerCase();
-  return name === LANDING ? "index" : name;
+  return path.split(sep).join("/").replace(/\.md$/i, "").toLowerCase();
 }
 
 /** Load Guides and Generated References, Taking Each Title From Its Frontmatter or First Heading. */

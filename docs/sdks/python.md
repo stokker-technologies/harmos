@@ -1,3 +1,7 @@
+---
+sidebar: { order: 2 }
+---
+
 # Python SDK Guide
 
 Install `harmos-sdk` on Python 3.13 or later. The SDK and repository tooling ship
@@ -105,7 +109,7 @@ make child calls.
 ## Product Roots
 
 Generate product messages and typed stubs into a private protocol package using the
-[import mapping](architecture.md#product-wrappers-and-the-native-facade). Then generate its composed roots:
+[import mapping](../project/architecture.md#product-wrappers-and-the-native-facade). Then generate its composed roots:
 
 ```sh
 mise run generate -- --sdk python --descriptors path/to/descriptors.bin --output path/to/application/_generated/client.py --namespace application
@@ -133,12 +137,12 @@ uv run --locked --no-sync --project sdk/python python sdk/python/examples/plugin
 mise -C sdk/python run test:examples
 ```
 
-The [client](../sdk/python/examples/client.py) discovers operations, reads status,
+The [client](../../sdk/python/examples/client.py) discovers operations, reads status,
 consumes one status update and closes its stream and connection. The
-[plugin](../sdk/python/examples/plugin.py) serves a public echo operation with a typed
+[plugin](../../sdk/python/examples/plugin.py) serves a public echo operation with a typed
 prefix setting; its first stdout line announces its bound endpoint. Two integration
 stories drive these actual entry points through gRPC. The client uses the reference product wrappers; the plugin uses carrier facilities.
-The separate [dynamic invocation example](../sdk/python/examples/invocation.py)
+The separate [dynamic invocation example](../../sdk/python/examples/invocation.py)
 discovers an operation's fingerprint and calls `client.invocations.create(...)` with
 encoded bytes; it returns the unwrapped response bytes and owns its connection:
 
@@ -151,5 +155,5 @@ The separate conformance fixture
 covers the reference-host rules, including caller refusal from operations and windows,
 window children, window observers, typed settings and discovery.
 
-See [Python Plugin SDK](tooling.md#python-plugin-sdk) for declarations, child calls
-and packaging, and [Repository Tooling](tooling.md) for generation drift checks.
+See [Python Plugin SDK](../project/tooling.md#python-plugin-sdk) for declarations, child calls
+and packaging, and [Repository Tooling](../project/tooling.md) for generation drift checks.

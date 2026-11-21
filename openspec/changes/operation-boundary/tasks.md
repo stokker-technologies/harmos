@@ -9,7 +9,7 @@ change; each completed group records the revision a product can pin below (owner
 ## 1. Inventory and Contract
 
 - [x] 1.1 Lock the source inventory against design.md: every public export of `harmos-runtime`, `harmos`, `harmos-operations`, `harmos-storage`, `harmos-query` and `harmos-domain`, every manager `Deref` and getter, every engine type in an operation signature, every `callers` option under `proto/harmos/host/v1`, every composition reader and every statistics kernel; record any surprise in design.md before editing. Accept when the inventory lists owners and consumers (runtime, operations, SDKs, conformance, Schematic, stories) for each item.
-- [x] 1.2 Update `docs/architecture.md`: quote and replace Product Composition and Narrowing, record the facade, private host operations, plugin protocol facilities, storage coverage and statistics home as locked direction with proposed status, and update Storage and Query Ownership and Consumer Work Lists. Accept when the document names no manager registration or narrowing contract as current; prove with `mise run check -- --repository`.
+- [x] 1.2 Update `docs/project/architecture.md`: quote and replace Product Composition and Narrowing, record the facade, private host operations, plugin protocol facilities, storage coverage and statistics home as locked direction with proposed status, and update Storage and Query Ownership and Consumer Work Lists. Accept when the document names no manager registration or narrowing contract as current; prove with `mise run check -- --repository`.
 - [x] 1.3 Amend D7, facade and SDK/policy ownership for the 2026-11-16 `plugin-boundary` decision; verify the three changes with strict OpenSpec validation. Documentation only; implementation remains open.
 
 Group 1 Pin: `cffd2ec57486c7ad5e7de405495a340681612b99`.
@@ -18,7 +18,7 @@ Group 1 Pin: `cffd2ec57486c7ad5e7de405495a340681612b99`.
 
 - [x] 2.1 Add the compound mutation request/result to the native storage contracts in `harmos-domain/src/model/storage` and `harmos-operations/src/storage/native` (create, conditional set, delete, record append items; one mutation identity). Accept when the declaration registers in the storage catalog; prove with `mise run build -- --package harmos-operations --check`.
 - [x] 2.2 Add the backend capability and one-commit primitive to `harmos-storage/src/backend.rs`, implement it in the in-memory reference backend, and refuse with a capability error elsewhere. Harmos owns this contract and memory reference only; durable product backends live in the product. Supply an importable backend conformance test kit for products to prove atomic commits, conflicts and receipt replay. Prove with new stories `compound_mutation_commits_atomically`, `compound_mutation_conflict_leaves_no_effect` and `compound_mutation_replays_receipt` under `crates/harmos-storage/tests/integration` run by `mise run test -- --paths <story file>`.
-- [x] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through operation dispatch. Prove with `mise run test -- --package harmos-runtime --target integration --exact compound_mutation_through_operations`; document the operation in `docs/storage.md`.
+- [x] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through operation dispatch. Prove with `mise run test -- --package harmos-runtime --target integration --exact compound_mutation_through_operations`; document the operation in `docs/guides/storage.md`.
 
 - [x] 2.4 Keep receipt cache eviction independent of issuance windows under the 2026-11-18 owner decision. Add required keyed backend receipt lookup, one pending-entry miss resolver for every admission owner, backend acknowledgement before eviction, reference/product conformance and deterministic capacity, replay, conflict, duplicate, lookup-failure, bounded-recovery and expiry proof. Documentation updates remain with the owner.
 
@@ -30,7 +30,7 @@ Group 2 Pin: `502121ff` (product backend conformance kit; focused compound stori
 
 - [x] 3.1 Add object deletion (optional expected revision, deletion revision) as a native storage operation and backend primitive in the contract and memory reference backend. Prove with `object_delete_hides_at_new_cuts_only` in `crates/harmos-storage/tests/integration`.
 - [x] 3.2 Add scoped deletion of objects, records, samples, projection rows and files under one opaque scope with replayable receipts and reclamation after retained cut release. Prove with `scoped_delete_reclaims_after_cut_release` and `scoped_delete_replays_receipt`.
-- [x] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through operation dispatch; document deletion and reclamation semantics in `docs/storage.md`.
+- [x] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through operation dispatch; document deletion and reclamation semantics in `docs/guides/storage.md`.
 
 - [x] 3.4 G1: Persist scope-qualified retained-cut ownership in the backend, reopen native handles after restart, release scope ownership atomically on deletion, preserve independent readers, and reclaim unreferenced rows/files without pinning unrelated deleted scopes. Extend the backend conformance kit with a two-stage restart proof. Prove with the retained-scope restart/reclamation and native-registry restart tests, focused storage/operations build and lint.
 - [x] 3.5 G3: Include compound entries in followers, observe applied conditional revisions, suppress conflicts, and issue watch/projection cursors only at complete mutation frontiers. Define deletion/expired-cut resync and prove bounded compound pages, conditional/conflict/delete sequences, historical replay and the backend conformance kit with deterministic tests.
@@ -46,13 +46,13 @@ G1/G3 Product Candidate Pin: `bf297bf672cbfe841abfc087ae9fe3358957a13e` (durable
 ## 4. Storage Before Full Startup
 
 - [x] 4.1 Let the builder produce a storage-only runtime that owns the storage manager and admits storage operations without listeners, plugins or services, then drains and closes before the full runtime reopens the same registered backends, or closes for offline use. Prove with `storage_only_runtime_admits_operations` in `crates/harmos-runtime/tests/storage`.
-- [x] 4.2 Add maintenance operations for a consistent backend copy to a target and backend disposal through new backend hooks, with capability errors when absent; implement the hooks in the reference backend. Prove with `maintenance_copy_is_consistent_at_one_cut` and `maintenance_without_hook_refuses`; document both in `docs/storage.md` and `docs/product-guide.md`.
+- [x] 4.2 Add maintenance operations for a consistent backend copy to a target and backend disposal through new backend hooks, with capability errors when absent; implement the hooks in the reference backend. Prove with `maintenance_copy_is_consistent_at_one_cut` and `maintenance_without_hook_refuses`; document both in `docs/guides/storage.md` and `docs/index.md`.
 
 Group 4 Pin: `b3b37c6e115dddfdbd8dff72dbccfda969be08d4` (drain/reopen assembly, consistent primary-backend copy with lifecycle/I/O guards and offline disposal; build, Rust lint, format, repository/dependency checks and 17 focused stories passed).
 
 ## 5. Expression Transforms
 
-- [x] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/storage.md`.
+- [x] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/guides/storage.md`.
 
 Group 5 Pin: `b3b37c6e115dddfdbd8dff72dbccfda969be08d4` (streaming Float64 scale/offset and typed string/list containment; build, Rust lint, format, repository/dependency checks, 5 query tests, 4 native dispatch stories and 12 backend conformance stories passed).
 
@@ -62,12 +62,12 @@ Group 5 Pin: `b3b37c6e115dddfdbd8dff72dbccfda969be08d4` (streaming Float64 scale
 - [x] 6.2 Make several percentiles of one field share one spool and rank selection in aggregate execution. Prove with a deterministic test that counts spool passes and compares results with single-percentile requests.
 - [x] 6.2a Extend the existing accumulator with `finish_ranks` for a typed exact median and any requested floating percentiles from one accumulation. Share that accumulation per field in aggregate execution, keep spill appends buffered within the supplied memory budget, sort budget-sized runs and collect all ranks from one sorted output pass. Prove in-memory/spilled equivalence, exact integers above floating precision, empty/singleton input, cancellation and independent clone branches with focused query tests.
 - [x] 6.3 Add mergeable summaries with first/last carrying time and position, and expose ordered first/last as aggregate measures. Prove merge equivalence over adjacent ranges with deterministic data.
-- [x] 6.4 Add the box-summary transform (quartiles, Tukey whiskers, bounded deterministic outliers with total count). Prove constant, extreme-range and over-bound outlier cases; document the transform in `docs/storage.md`.
+- [x] 6.4 Add the box-summary transform (quartiles, Tukey whiskers, bounded deterministic outliers with total count). Prove constant, extreme-range and over-bound outlier cases; document the transform in `docs/guides/storage.md`.
 - [x] 6.5 Bound the query benchmark's percentile comparison by floating-point precision and replace its test-support path overrides with benchmark-owned storage and projection fixtures.
 
 ## 7. Bounded Bucket Summaries
 
-- [x] 7.1 Add the bucket-summary transform with a bucket bound, width doubling and pairwise merge, preserving first/last/min/max points with positions, count, mean and moments, plus continuation from a supplied prior summary and source cut. Prove that continued summaries equal whole-range summaries, cancellation and the bucket bound with deterministic data through `list_rows`; document it in `docs/storage.md`.
+- [x] 7.1 Add the bucket-summary transform with a bucket bound, width doubling and pairwise merge, preserving first/last/min/max points with positions, count, mean and moments, plus continuation from a supplied prior summary and source cut. Prove that continued summaries equal whole-range summaries, cancellation and the bucket bound with deterministic data through `list_rows`; document it in `docs/guides/storage.md`.
 
 Groups 6–7 Pin: `9745a250b5ae1882864c1e1b7e4b530d0211d780` (local statistics checkpoint; not pushed).
 The checkpoint includes shared exact percentile selection, ordered mergeable summaries,
@@ -105,7 +105,7 @@ G2 Proof: Windows `mise run build -- --package harmos-storage --lib`, `mise run 
   - [x] Expose the backend-authoring contracts and value/error closure through `harmos_runtime::backend`, remove the storage-only session's operation-manager getter and wrapper, migrate its drain/reopen/cancellation story to typed calls, retain catalog-separation coverage internally, and prove the absent exports with compile-fail doctests. Builder ownership, the other manager getters and both manager `Deref` implementations remain open.
 - [ ] 9.7 Migrate Harmos's own consumers: Schematic example, runtime and storage stories, SDK fixtures and benchmarks, to the facade and operations; add the repository check rejecting direct internal-crate dependencies outside implementation crates. Prove with `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app` and `mise run check -- --repository`.
   - [x] Migrate the affected Schematic storage journeys and native expression row-listing story to the storage facade and explicit DTO exports; the Schematic app build and three existing journeys pass. The remaining consumer inventory and dependency fence stay open.
-- [ ] 9.8 Update `docs/architecture.md`, `docs/product-guide.md` and `docs/storage.md` to the builder and facade contract and remove direct manager examples; prove with `mise run check -- --repository`.
+- [ ] 9.8 Update `docs/project/architecture.md`, `docs/index.md` and `docs/guides/storage.md` to the builder and facade contract and remove direct manager examples; prove with `mise run check -- --repository`.
 
   - [x] Document the landed native families, generation-fenced handles, scoped calls and metadata-only inspection in the README and affected guides. Broader builder/privacy and consumer cutover guidance remains with its owning tasks.
 
@@ -162,7 +162,7 @@ Composition Removal Pin: `5ecd6a96326c1a3adc0c47e78da4002bf4461a64` (10.3; local
   - [x] Retire the standalone/inherited Python client rendering branches in `tools/python/src/harmos_tools/build/resources/python.py` with the host-client roots instead of preserving two client composition mechanisms.
   - [x] Reconcile shared generator qualification and Python payload/transport separation with typed registration and host-client removal; regenerate tracked SDK outputs, migrate removed failure renames and packaged serving callers, and replace stale host-client generator expectations with product fixture coverage.
 - [x] 10.6 Move conformance to a fixture product that declares wrappers, replace wrong-caller rules with unreachable-host-operation and wrapper-audience rules, keep plugin protocol rules; make Schematic declare wrappers for what its client uses. Prove with `mise run build -- --package harmos-conformance` and the Schematic client example build.
-- [x] 10.7 Update `docs/architecture.md` (Caller Options and SDK Projection, Application Operations in Discovery, Next Pin), SDK guides and the README for private host operations, product wrappers and plugin protocol facilities; prove with `mise run check -- --repository`.
+- [x] 10.7 Update `docs/project/architecture.md` (Caller Options and SDK Projection, Application Operations in Discovery, Next Pin), SDK guides and the README for private host operations, product wrappers and plugin protocol facilities; prove with `mise run check -- --repository`.
 
 - [x] 10.8 Allocate C++ constructor and call parameter names against resource members and call locals, cover nested naming collisions in a generator regression test, and regenerate the tracked C++ output.
 

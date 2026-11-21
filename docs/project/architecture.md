@@ -17,7 +17,7 @@ scope. Expiry refuses rather than renewing a continuation. Native hosts use
 `open_content(&reference, scope, at)` and `ContentRead::get_bytes(offset, maximum)`.
 Library-history references keep their saved-storage path; no application bytes or
 metadata enter library persistence. Diagnostics and bundle installation use the
-same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
+same content boundary. See [Application-Owned Content](../guides/storage.md#application-owned-content).
 
 ## Lifecycle Vocabulary
 
@@ -29,7 +29,7 @@ signal policy. Resource acquisition/release hooks use initialize/finalize.
 Application prepare and application/service stop retain their existing semantics.
 
 The remaining plugin lifecycle cutover is locked direction under
-[Plugin Lifecycle](../openspec/changes/plugin-lifecycle/design.md): local inert
+[Plugin Lifecycle](../../openspec/changes/plugin-lifecycle/design.md): local inert
 register → admission → initialize → finalize. Registration declares typed module
 `catalog()` values and opaque product sections; `declarations()` remains the one
 frozen host-facing payload name. Generic carrier helpers accumulate registrations;
@@ -44,7 +44,7 @@ or path overrides; clashing names use qualified module paths.
 **Locked owner decision, 2026-11-16; policy transfer pending:** several products embed
 Harmos. Typed activation and bounded inspection are implemented below; the product
 policy and carrier cutovers remain open. Harmos owns plugin runtime machinery; a product owns policy and everything
-an author touches. [Plugin Boundary](../openspec/changes/plugin-boundary/design.md)
+an author touches. [Plugin Boundary](../../openspec/changes/plugin-boundary/design.md)
 amends `operation-boundary` and `plugin-lifecycle` together.
 
 | Harmos | A Product |
@@ -325,7 +325,7 @@ authoring contracts and pass the backend pair, catalog and storage settings to t
 builder. The in-memory adapters retain cuts, receipts, files and recovery only for
 their shared-instance lifetime; a product backend owns process durability. Primary
 compound transactions do not promise a cross-owner transaction with state recovery.
-See [Storage Interfaces](storage.md#backend-registration). The builder migration
+See [Storage Interfaces](../guides/storage.md#backend-registration). The builder migration
 remains proposed; the source inventory records the existing constructors to remove.
 
 ### Unconditional Arrow Dependencies
@@ -395,7 +395,7 @@ typed async iteration and native cancellation. `sdk/python/src/harmos/client.py`
 initializes the library root and owns connections created by `Client.connect`.
 Products generate and compose their own typed resources. No runtime attribute
 binding or serialized resource table participates in any SDK's client naming.
-See the [Python SDK Guide](python-sdk.md).
+See the [Python SDK Guide](../sdks/python.md).
 
 Read this contract before proposing architecture, protocol, public API or ownership
 changes. A proposal touching an invariant must quote it, explain the purpose of the
@@ -490,7 +490,7 @@ native facade and product-wrapper direction. Manager ownership remains internal.
 
 Wire operation admission uses the protocol-owned validator in
 `crates/harmos-protocol/src/schema/mod.rs`, independently of native dotted identities.
-The [wire identity contract](../openspec/changes/operation-grammar/design.md#wire-operation-identity-admission)
+The [wire identity contract](../../openspec/changes/operation-grammar/design.md#wire-operation-identity-admission)
 covers numeric template bindings and application-owned face packages. Declaration admission,
 guest admission and host protobuf declarations share it; visibility, descriptor fingerprints
 and caller-face authorization remain independent checks.
@@ -710,7 +710,7 @@ and caller-face authorization remain independent checks.
     **Why:** one generic read/write label would erase consistency and conflict behavior.
     **Where:** `crates/harmos-storage/src/snapshot.rs`,
     `crates/harmos-storage/src/backend.rs`, `crates/harmos-storage/src/memory/`,
-    `docs/storage.md`; requirement: Distinct Storage Guarantees in
+    `docs/guides/storage.md`; requirement: Distinct Storage Guarantees in
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
     **Proof:** `saved_windows_match_fallback_while_live_writes_and_cancellation_advance`
     in `crates/harmos-storage/tests/integration/columnar_snapshot.rs`;
@@ -730,14 +730,14 @@ and caller-face authorization remain independent checks.
     Back up before deliberately choosing/resetting a root; the application owns that decision.
     **Why:** an API/schema migration must not become silent data loss.
     **Where:** `crates/harmos-domain/src/state/transaction.rs`,
-    `crates/harmos-runtime/src/storage/attachments.rs`, `docs/storage.md`;
+    `crates/harmos-runtime/src/storage/attachments.rs`, `docs/guides/storage.md`;
     `openspec/specs/plugin-state-history/spec.md` and Safe Root Opening in
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
     **Proof:** `changed_record_shape_refuses_root_and_preserves_history` in
     `crates/harmos-runtime/tests/storage/state/shape_versions.rs`;
     `corrupt_snapshot_blocks` in
     `crates/harmos-runtime/tests/storage/state/snapshots/corrupt_snapshot_blocks.rs`.
-    **Status:** landed; backup/reset guidance is maintained in `docs/storage.md`.
+    **Status:** landed; backup/reset guidance is maintained in `docs/guides/storage.md`.
 
 15. **Callee-Owned Policy and Consumer Budgets.** Deadlines, delays and retries come
     from owning operation policies/configuration; callers override one call only.
@@ -1322,7 +1322,7 @@ whose last one the sleep cuts short, with no wait in the plugin.
 
 For an interval stream the host grants `harmos.plugin.v1.Window` frames and the
 plugin answers each with `SampleBatch` parts whose columns hold one value per
-sample ([behaviour rules 10 and 35](../proto/harmos/plugin/v1/behaviour.md)).
+sample ([behaviour rules 10 and 35](../../proto/harmos/plugin/v1/behaviour.md)).
 Sample `i` of a demand is due at its origin plus `i` periods; a window covers the
 samples due since the previous window and ends on the `origin + k * window` grid at
 or after the next sample, extended to the clock's reading when the wake is late or

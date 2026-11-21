@@ -8,7 +8,7 @@
 
 <img src="https://stokkertechnologies.ch/logo.svg" height="256" alt="Stokker Technologies Mark">
 
-[Website](https://github.com/stokker-technologies/harmos) · [Getting Started](#quick-start) · [Tutorials](docs/schematic.md) · [Examples](docs/examples.md) · [Documentation](docs/product-guide.md)
+[Website](https://github.com/stokker-technologies/harmos) · [Getting Started](#quick-start) · [Tutorials](docs/schematic.md) · [Examples](docs/examples.md) · [Documentation](docs/index.md)
 
 **Build stateful Rust applications with history, live data and plugins.**
 
@@ -41,17 +41,17 @@ Your application defines each change; Harmos manages its accepted history.
 - **Managed State**: Apply typed transactions, inspect history and scope undo or redo to selected changes.
 - **Operations and Services**: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
-  Query rows with [scale, offset and containment transforms](docs/storage.md#expression-transforms),
-  [shared percentiles, box summaries and bounded preview envelopes](docs/storage.md#statistics-transforms).
-  Retain [scope-qualified evidence cuts across restarts](docs/storage.md#object-and-scoped-deletion)
+  Query rows with [scale, offset and containment transforms](docs/guides/storage.md#expression-transforms),
+  [shared percentiles, box summaries and bounded preview envelopes](docs/guides/storage.md#statistics-transforms).
+  Retain [scope-qualified evidence cuts across restarts](docs/guides/storage.md#object-and-scoped-deletion)
   and observe compound writes and columnar sample appends at complete watch frontiers.
-  Run [storage operations during preparation](docs/storage.md#storage-before-full-startup) or offline maintenance before full startup.
+  Run [storage operations during preparation](docs/guides/storage.md#storage-before-full-startup) or offline maintenance before full startup.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **gRPC Plugin Placement**: Invoke managed or remote gRPC plugins, capture their streams and drive plugin waits and observers from the host clock or [a scoped unit's clock](docs/architecture.md#scoped-plugin-bindings).
+- **gRPC Plugin Placement**: Invoke managed or remote gRPC plugins, capture their streams and drive plugin waits and observers from the host clock or [a scoped unit's clock](docs/project/architecture.md#scoped-plugin-bindings).
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
-- **[Plugin Management](docs/plugin-manager.md)**: Persist settings and revisioned plugin recovery state, and manage native or WebAssembly plugin entries.
-- **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
+- **[Plugin Management](docs/guides/plugin-manager.md)**: Persist settings and revisioned plugin recovery state, and manage native or WebAssembly plugin entries.
+- **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/guides/access-status.md).
 - **gRPC Interfaces** [`grpc`]: Declare product wrappers over native operations and generate product client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
@@ -81,7 +81,7 @@ Applications generate their own protobuf messages and own connection and authent
 
 #### Examples
 
-The [Python SDK Guide](docs/python-sdk.md) covers typed clients, product roots and
+The [Python SDK Guide](docs/sdks/python.md) covers typed clients, product roots and
 the runnable [client](sdk/python/examples/client.py) and
 [plugin](sdk/python/examples/plugin.py) examples. Keep generated clients matched
 to the application revision that produced them.
@@ -106,31 +106,31 @@ managed or remote gRPC placement and optional guest hosting.
 Assemble with `Builder::new(origin)`, register catalogs, then call `start()` and
 end with `Runtime::stop()`. `builder.run(stop_request)` starts, waits for the
 product's stop-request future and stops.
-See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
+See the [product guide](docs/index.md#cargo-features) for crate boundaries.
 Native calls bind `runtime.for_call(&ctx)`, then select `storage()`, `streams()`,
 `plugins()`, `time()`, `settings()`, `status()` or `invocations()`. Each call uses its registered
 operation policy and retains typed payloads without encoding. See the
-[product guide](docs/product-guide.md) for call contexts and storage-only assembly.
+[product guide](docs/index.md) for call contexts and storage-only assembly.
 
 Host operations, state catalogs and record registries are values; data shapes use
-field-reading derives. See [Native Operation Values](docs/product-guide.md#native-operation-values).
+field-reading derives. See [Native Operation Values](docs/index.md#native-operation-values).
 
 Portable messages support standard Rust maps with deterministic key ordering
-and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
+and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/index.md)
 describes their repeated key/value entry representation.
 
 `harmos-storage` ships a process-lifetime memory backend, manager and backend contracts.
 A runtime selects memory storage automatically unless setup registers a product backend.
 `harmos-query` executes Arrow scans, transforms, time merges and reductions below storage;
 products register their own durable primary and recovery backends.
-See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations, bounded pages and retained-cut query examples.
+See [Storage Interfaces](docs/guides/storage.md) for native APIs, backend obligations, bounded pages and retained-cut query examples.
 Applications expose their own wire operations over private native storage.
 Applications can expose resumable unary file productions and bounded content ranges through product operations.
-Hosts can register [application-owned immutable content](docs/storage.md#application-owned-content)
+Hosts can register [application-owned immutable content](docs/guides/storage.md#application-owned-content)
 for those ranged reads without copying it into library persistence.
 
 Structured operation and storage tracing supports performance investigation;
-applications control collection. See [Performance](docs/product-guide.md#performance).
+applications control collection. See [Performance](docs/index.md#performance).
 
 #### Examples
 
@@ -140,18 +140,18 @@ editing, plugin validation, undo/redo and save/reopen. Its
 while its runtime stories use the public memory adapter.
 Its native plugin serves unary advice over gRPC; analysis and transfer streams run
 in the host. The guest uses SDK builders with `harmos/wasm` and exposes unary transfer endpoints under its `benchmark` feature
-for the [performance suites](docs/product-guide.md#performance).
+for the [performance suites](docs/index.md#performance).
 
 ### C++
 
 The C++20 SDK serves gRPC plugins with protobuf messages and builder values for
-operations, streams and observers. See the [C++ SDK guide](docs/tooling.md#c-plugin-sdk)
+operations, streams and observers. See the [C++ SDK guide](docs/project/tooling.md#c-plugin-sdk)
 for toolchain setup and managed or remote serving.
 
 Clients take request content directly, own their transport context and project single-field
 responses. Products generate their own client roots and keep wire packages internal;
 Harmos retains the carrier and connection helpers used by those SDKs.
-See [SDK Call Contracts](docs/architecture.md#sdk-call-contracts).
+See [SDK Call Contracts](docs/project/architecture.md#sdk-call-contracts).
 
 #### Examples
 
@@ -186,7 +186,7 @@ On Windows, run the corresponding executable under
 
 The conformance tool package lives in `tools/conformance`; build and generation tooling
 lives in `tools/packaging`, outside the core libraries.
-Every SDK includes an importable fixture for [layered SDK conformance](docs/tooling.md#conformance-for-a-layered-sdk).
+Every SDK includes an importable fixture for [layered SDK conformance](docs/project/tooling.md#conformance-for-a-layered-sdk).
 
 [Releases](https://github.com/stokker-technologies/harmos/releases) attach
 `harmos-proto-<version>.zip`, one `harmos-conformance-<version>-<platform>.zip|tar.gz`
@@ -215,9 +215,9 @@ and result types are exported under `harmos_runtime::facade::storage`.
 
 Focused fixes, API feedback and useful examples are welcome. Read
 [Contributing](docs/CONTRIBUTING.md) for setup, validation and pull requests.
-Read [Architecture](docs/architecture.md) before proposing architecture or public API changes.
+Read [Architecture](docs/project/architecture.md) before proposing architecture or public API changes.
 Run targeted tasks locally; hosted CI and Nightly provide full validation.
-Tool configuration lives in `tools/config/`; see [Repository Tooling](docs/tooling.md).
+Tool configuration lives in `tools/config/`; see [Repository Tooling](docs/project/tooling.md).
 
 ## About
 

@@ -1,3 +1,7 @@
+---
+sidebar: { order: 1 }
+---
+
 # Storage Interfaces
 
 `harmos-storage` owns backend contracts, manager admission, saved scans, index and
@@ -257,7 +261,7 @@ backend's lifetime, not a disk guarantee. Products own explicit budgets and poli
 the defaults above. Storage remains always present because the plugin manager
 uses it for entries, settings and content. The owner closed the feature-isolation
 proposal on 2026-11-14: storage and query remain unconditional. See
-[Unconditional Arrow Dependencies](architecture.md#unconditional-arrow-dependencies).
+[Unconditional Arrow Dependencies](../project/architecture.md#unconditional-arrow-dependencies).
 
 ## Saved Reads and Capabilities
 

@@ -1,3 +1,7 @@
+---
+sidebar: { order: 1 }
+---
+
 # Rust SDK
 
 The `harmos` crate supplies reusable connection plumbing and native or WebAssembly plugin carrier helpers. Products own their authoring SDKs and generated client roots.
@@ -40,12 +44,12 @@ of generated methods; runtime assembly has no audience overrides.
 ## Application and Dynamic Calls
 
 Application typed calls belong to the application's generated SDK; see the
-[Schematic walkthrough](../examples/schematic/cli/src/walkthrough.rs). The reference
+[Schematic walkthrough](../../examples/schematic/cli/src/walkthrough.rs). The reference
 client example uses the fixture product's generated wrapper root.
 
-[The separate dynamic example](../tools/conformance/examples/dynamic.rs) discovers
+[The separate dynamic example](../../tools/conformance/examples/dynamic.rs) discovers
 `conformance.step.0`, an echo operation using `Value` from the
-[shared conformance fixture](../sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto).
+[shared conformance fixture](../../sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto).
 It passes an encoded payload and the discovered fingerprint to
 `client.invocations.create(operation, fingerprint, payload)`. Use this path when
 choosing a contract at runtime rather than binding generated application messages.

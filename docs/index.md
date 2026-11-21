@@ -54,11 +54,11 @@ Storage operation results now use operation-owned IPC frames and page DTOs.
 `ListRows` returns `RowOutput`, and column/projection batches contain schema and
 batch bytes in `IpcBatch`. Index and projection definitions are operation DTOs;
 engine readers, Arrow arrays and backend seek cursors stay behind the boundary.
-See [Native Storage Operations](storage.md) for continuation and cut handling.
+See [Native Storage Operations](guides/storage.md) for continuation and cut handling.
 
 Compound atomic mutation is available through the native `storage.mutate` operation:
 ordered conditional object writes, deletion and record appends share a backend commit
-and replayable durable receipt. See [Compound Atomic Mutation](storage.md#compound-atomic-mutation)
+and replayable durable receipt. See [Compound Atomic Mutation](guides/storage.md#compound-atomic-mutation)
 for requests, conflict handling and backend authoring. The remaining boundary work is
 tracked separately; this additive group does not remove existing callers.
 
@@ -110,7 +110,7 @@ The other streams stay under unscoped demand and sample only while watched.
 Scoped settlement retains the placement's `stop_grace`; a plugin that does not
 end its sample demand reports that failure and its remaining work is cancelled.
 Concurrent bindings share the admitted connection while retaining independent
-clocks and sample selections. See [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
+clocks and sample selections. See [Scoped Plugin Bindings](project/architecture.md#scoped-plugin-bindings).
 
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
@@ -135,7 +135,7 @@ Original refusal codes, detail maps and diagnostics remain in the report. Displa
 renders readable root prose rather than Rust Debug output.
 
 Native and plugin stream revisions are derived automatically in the Rust core when a declaration
-becomes a runtime definition. The input is the [stream identity domain separator](architecture.md#native-type-ownership), the window as a
+becomes a runtime definition. The input is the [stream identity domain separator](project/architecture.md#native-type-ownership), the window as a
 little-endian `u64`, and the canonical row-schema encoding in
 `crates/harmos-domain/src/schema/identity.rs`. SHA-256's first four bytes are read
 as a little-endian `u32`, with zero mapped to one. Field order, names, wire tags,
@@ -217,7 +217,7 @@ value; `Application` and operation managers carry no lane type parameter.
 
 Typed record and transaction entries compute schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
-the [record identity domain separator](architecture.md#native-type-ownership) followed by the same canonical graph encoding; SHA-256's
+the [record identity domain separator](project/architecture.md#native-type-ownership) followed by the same canonical graph encoding; SHA-256's
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
 Rust module paths and graph indices do not participate. Entry values own stored identities and revisions; use `entry.definition()`.
 Record rows select an entry value, which owns their stable identity:
@@ -380,7 +380,7 @@ Register storage before full startup, then use `setup.settings().storage_only().
 for bootstrap reads, mutations or offline maintenance. Call its native storage operations,
 await `close()` and release the session before starting the application. The full runtime
 reopens the same backends after the earlier worker has drained. No listeners, plugins or
-application services start in the minimal assembly. See [Storage Before Full Startup](storage.md#storage-before-full-startup)
+application services start in the minimal assembly. See [Storage Before Full Startup](guides/storage.md#storage-before-full-startup)
 for consistent primary-backend copies and permanent offline disposal. A primary copy does
 not include the separate application recovery journal.
 
@@ -831,7 +831,7 @@ otherwise close, not-ready and persistence failures terminate the wait.
 `Storage.WatchRows` observes records, samples or object revisions from an issued
 durable boundary. It reports the opening cut, then exclusive committed events and
 progress through filtered data. Retention gaps require a fresh list and reopening;
-accepted native followers remain separate. See [Storage Interfaces](storage.md#durable-row-observation).
+accepted native followers remain separate. See [Storage Interfaces](guides/storage.md#durable-row-observation).
 File following uses the source/start contract above; staged producers use `Storage.WatchFileProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
@@ -851,7 +851,7 @@ The built-in `harmos_storage::memory::RecoveryBackend` retains integrity-checked
 snapshot bytes and bounded recovery entries in memory. Share its instance to
 reopen within the process. A product implements `StateBackend` for durable media;
 there is no built-in file journal or database backend. See
-[Backend Registration](storage.md#backend-registration).
+[Backend Registration](guides/storage.md#backend-registration).
 
 State persistence uses `storage::state::StateBackend`; the state manager owns
 transactions and replay while the storage manager owns admission and durability.
@@ -1047,7 +1047,7 @@ The storage schema validator checks the graph before mutation admission.
 
 
 The declaration's `GRPC` is optional; Protected and Private native operations leave it `None`.
-See [Protocol Mapping](architecture.md#protocol-boundary-definition-and-consumer-migration) for executor identities.
+See [Protocol Mapping](project/architecture.md#protocol-boundary-definition-and-consumer-migration) for executor identities.
 Declare typed callees in `OPERATIONS` and invoke them through the execution context:
 
 ```rust
@@ -1233,7 +1233,7 @@ this owner for both plugin backends.
 
 ### gRPC Plugin Placement
 
-Use the [Plugin Manager](plugin-manager.md) for persistent entries, verified
+Use the [Plugin Manager](guides/plugin-manager.md) for persistent entries, verified
 bundle installation and client management; the attachment API below owns each activation.
 
 From `harmos-runtime`, attach a the host protocol endpoint with
@@ -1258,7 +1258,7 @@ the configured policy again. A missed deadline fails with `Error::LoadDeadline`,
 the plugin, the applied timeout and its source.
 Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
 `stop_grace` before a managed child is killed and reaped within another; see
-[Managed Process Ownership](architecture.md#managed-process-ownership).
+[Managed Process Ownership](project/architecture.md#managed-process-ownership).
 `Attached::status()` watches connection state and failures; `activation()` captures
 the current connection. An activation exposes its `description`, monotonic `number`,
 `previous_started_at`, optional `executable_digest` and managed `process_id`. Compare the current and
@@ -1508,16 +1508,16 @@ status payloads use `Harmos.V1.StatusResources` while `client.Status` retains it
 
 ## Documentation
 
-- [Plugin Management](plugin-manager.md) — persistent managed and remote entries, verified bundles, client operations and host adoption.
-- [Architecture](architecture.md) — invariants, their purposes, current implementation and guarding proofs.
-- [Repository Tooling](tooling.md) — workstation builds, shared compiler cache and `tools/config/` configuration.
+- [Plugin Management](guides/plugin-manager.md) — persistent managed and remote entries, verified bundles, client operations and host adoption.
+- [Architecture](project/architecture.md) — invariants, their purposes, current implementation and guarding proofs.
+- [Repository Tooling](project/tooling.md) — workstation builds, shared compiler cache and `tools/config/` configuration.
 - [Contributing](CONTRIBUTING.md) — development setup and validation.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
-- [C++ Plugin SDK](tooling.md#c-plugin-sdk) — C++20 authoring with protobuf messages and gRPC plugin serving.
+- [C++ Plugin SDK](project/tooling.md#c-plugin-sdk) — C++20 authoring with protobuf messages and gRPC plugin serving.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../sdk/rust/src/lib.rs) — the standalone protocol SDK.
 - [Cargo Features](../crates/harmos-runtime/Cargo.toml) — select the facilities your application needs.
-- [Storage Interfaces](storage.md) — saved Arrow reads, indexes, projections, conditional objects and backend registration.
+- [Storage Interfaces](guides/storage.md) — saved Arrow reads, indexes, projections, conditional objects and backend registration.
 - [Document Serialization](../examples/schematic/app/src/document.rs) — explicit Save/Open.
 
 
@@ -1652,7 +1652,7 @@ The listener's bind address, admission, middleware and shutdown ownership do not
 The Private in-process storage catalog exposes bounded Arrow scans, ordered indexes,
 exact-frontier projections and atomic conditional object updates. A runtime automatically
 selects in-memory primary and recovery adapters. Register a product manager during setup
-to replace them; see [Backend Registration](storage.md#backend-registration). Products own
+to replace them; see [Backend Registration](guides/storage.md#backend-registration). Products own
 their wire operations and retain/release saved cuts; the library storage catalog has no
 generated SDK storage surface.
 
@@ -1660,7 +1660,7 @@ generated SDK storage surface.
 
 The gRPC manager owns client access and the service manager owns host status.
 Supply a credential store, identity and optional health/diagnostics contributions;
-see [Access and Host Status](access-status.md) for composition, paging, redaction
+see [Access and Host Status](guides/access-status.md) for composition, paging, redaction
 and ranged archive reads.
 
 ## Reported Plugin Declarations
@@ -1671,4 +1671,4 @@ with Rust/Python/C++ `plugin.declarations()` or C# `plugin.Declarations()`. Cons
 regenerate bindings and migrate these message, field and builder names when pinning
 this revision; no Catalog alias remains. In-process operation and storage registries
 retain their catalog APIs. Configure and start the plugin entry manager before
-registering guests; see [Guest Entries](plugin-manager.md#webassembly-guests).
+registering guests; see [Guest Entries](guides/plugin-manager.md#webassembly-guests).

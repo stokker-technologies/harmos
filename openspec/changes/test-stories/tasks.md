@@ -16,7 +16,7 @@
 - [x] 7.3 Consolidate retained slow stories and reduce benchmark workloads to boundary cases, preserving distinct behaviors; keep guest replacement suites unchanged.
 - [x] 7.3.1 Gate the runtime benchmark server behind its benchmark fixture feature; enable it in the benchmark producer, consumers and benchmark lint selection without building it for ordinary tests.
 - [x] 7.3.2 Remove empty conformance executable test/benchmark harness targets while retaining the executable fixtures and conformance stories.
-- [x] 7.4 Document focused invocations in `docs/tooling.md`, review README impact, repeat measurements and run each touched suite through its focused task.
+- [x] 7.4 Document focused invocations in `docs/project/tooling.md`, review README impact, repeat measurements and run each touched suite through its focused task.
 - [x] 7.5 Run the requested format, Rust/Python/repository checks and Tests artifact build; repair owned failures and report native Linux proof separately.
 - [x] 7.5.1 Update the feature-catalog compiler fixture's moved policy import and rerun its focused story.
 - [x] 7.6 Repair runtime typed admission in the host rebuild and prove closing/admission refusal and charged-request release with both existing assertions unchanged.

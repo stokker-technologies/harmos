@@ -446,7 +446,7 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
 ## Shared Operation Grammar
 
 Executor definitions and generated bindings are migrated; runtime and SDK
-consumers remain assigned in the [consumer mapping](../../../../docs/architecture.md#protocol-boundary-definition-and-consumer-migration).
+consumers remain assigned in the [consumer mapping](../../../../docs/project/architecture.md#protocol-boundary-definition-and-consumer-migration).
 
 Services name resources; methods use bare verbs. Model values live in
 `harmos.model.v1`, host operations in `harmos.host.v1` and plugin operations and

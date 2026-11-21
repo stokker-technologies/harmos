@@ -390,7 +390,7 @@ file/directory and runtime sources retain their own contracts.
 | 4 plugin carriers | `proto/harmos/v1/plugin.proto` and runtime `plugin/grpc/{connection,invoke,publish}.rs`; all four SDKs implement them. |
 | 11 static Storage methods | `proto/harmos/v1/storage.proto:service Storage` is a subset of 34 declarations. Rust `sdk/rust/src/storage_contracts.rs` also binds 11 requests. |
 | Automatic twins | `crates/harmos-runtime/src/grpc/projection.rs` emits `Run{method}` and managed envelopes unconditionally. |
-| Durable snapshots | `crates/harmos-storage/src/snapshot.rs` and `docs/storage.md` reject positions beyond saved progress; follows also join accepted data today. That is not an existing durable-watch contract. |
+| Durable snapshots | `crates/harmos-storage/src/snapshot.rs` and `docs/guides/storage.md` reject positions beyond saved progress; follows also join accepted data today. That is not an existing durable-watch contract. |
 | Flush cadence and commits | `crates/harmos-storage/src/config.rs` defines 100 ms, a 1 MB batch target and a 16 MB cap; `worker.rs` schedules flushes; `sqlite/mod.rs` sets WAL and `synchronous=FULL`. Each batch commits synchronously under `backend.rs`; flush duration adds to the cadence and grows with bytes written. The three-load benchmark below measures durable lag. |
 | Native inventory | `StorageBackend` in `backend.rs` has 58 hooks; `StateBackend` in `state/mod.rs` has 8. Other methods in that module are implementations, not extra provider hooks. |
 
@@ -1386,7 +1386,7 @@ Owned source inventory: `proto/harmos/v1/plugins.proto`,
 `crates/harmos-runtime/src/plugin/manager/**`,
 `crates/harmos-operations/src/plugins/**`, manager stories under
 `crates/harmos-runtime/tests/plugin_grpc/manager/**`,
-descriptor-generated SDK client roots, and `docs/plugin-manager.md`.
+descriptor-generated SDK client roots, and `docs/guides/plugin-manager.md`.
 Existing hosting extensions are confined to `plugin/grpc/mod.rs` (shared
 attachment supervision, process identity and awaited reaping after disconnect), `plugin/grpc/managed.rs` (explicit
 endpoint and platform launch), and `plugin/grpc/managed/{windows,unix}.rs`
@@ -1841,7 +1841,7 @@ status reasons and diagnostics serialization; credentials and keys never enter a
 Ownership: grpc/access/**; services/status/**; operations/access/** and status/**;
 proto/harmos/v1/access/**, status.proto and status/**; five access/status stories in tests/grpc/access and tests/services/status,
 with tests/support/access_status.rs;
-docs/access-status.md. Coupling extensions: GrpcManager retains access and closes its
+docs/guides/access-status.md. Coupling extensions: GrpcManager retains access and closes its
 attachment; ServiceManager retains status in its shared host resources; operation-manager
 resource provision supplies narrow access/status ports; protocol generation includes new
 client files/reflection; Rust generated roots consume their descriptors. Existing listener,
@@ -2009,7 +2009,7 @@ from source closure.
 
 `feat/gp-grammar-storage` owns `proto/harmos/v1/storage.proto`, `crates/harmos-storage/**`,
 `crates/harmos-operations/src/storage/**`, storage handlers/tests/benches in runtime,
-storage benchmark tooling and Nightly wiring, `docs/storage.md`, and the storage tasks/design
+storage benchmark tooling and Nightly wiring, `docs/guides/storage.md`, and the storage tasks/design
 in this change. Shared protocol primitives and SDK bindings belong to the parallel core worker.
 Streaming transfers were deleted by the owner's 2026-11-13 amendment; no
 accepted-data snapshot is implemented.

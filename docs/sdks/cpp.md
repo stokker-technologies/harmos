@@ -1,10 +1,14 @@
+---
+sidebar: { order: 4 }
+---
+
 # C++ SDK
 
 `sdk/cpp` supplies C++20 carrier and connection helpers. Include `harmos/harmos.hpp`;
 it includes shared messages and the plugin authoring boundary. The
-[conformance example](../sdk/cpp/examples/conformance/) supplies test support.
-The reference product [client](../sdk/cpp/examples/client/) connects and reads status through product wrappers;
-the minimal [plugin](../sdk/cpp/examples/plugin/) declares one typed library setting.
+[conformance example](../../sdk/cpp/examples/conformance/) supplies test support.
+The reference product [client](../../sdk/cpp/examples/client/) connects and reads status through product wrappers;
+the minimal [plugin](../../sdk/cpp/examples/plugin/) declares one typed library setting.
 The client optionally discovers an operation and calls `invocations.create` with its
 fingerprint and an encoded payload. Its client root is generated from the product fixture descriptors.
 Both are built by the presets and can also use the installed package independently.
@@ -199,7 +203,7 @@ calls keep independent identities. Device-driven publication remains on
 The reported message is `Declarations`; the SDK builder is
 `declarations()`. Regenerate client/plugin bindings when adopting this revision.
 Guest settings use the same library entry and settings services as other placements;
-see [WebAssembly Guests](plugin-manager.md#webassembly-guests).
+see [WebAssembly Guests](../guides/plugin-manager.md#webassembly-guests).
 
 ## Formatting and Composition
 

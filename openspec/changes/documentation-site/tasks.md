@@ -14,4 +14,5 @@
 
 ## Site Alignment
 
+- [x] 6.1 Move the site to `sites/docs/`, group guides by folder, preserve prose and migrate maintained references.
 - [x] 6.2 Port the reference visual language, typography, logos, controls and 56rem content column into one local stylesheet.
