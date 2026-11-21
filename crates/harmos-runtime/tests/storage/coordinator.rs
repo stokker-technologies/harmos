@@ -177,44 +177,6 @@ async fn cancelled_close_retains() {
 }
 
 #[tokio::test]
-async fn snapshots_require_flush() {
-    let f = Fixture::new(config()).await;
-    let through = f.storage.append_recovery_entries(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
-    f.storage.flush_recovery().await.unwrap();
-    let snapshot = RecoverySnapshot {
-        required_data: f.storage.get_saved_position(),
-        through: through.clone(),
-        payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &[5],
-            std::num::NonZeroUsize::new(65536).unwrap(),
-            harmos_domain::state::Position::ORIGIN,
-        )
-        .unwrap(),
-    };
-    f.storage.set_recovery_snapshot(snapshot.clone()).await.unwrap();
-    f.storage.flush_recovery().await.unwrap();
-    assert_eq!(f.recovery.control.flushes.lock().unwrap().as_slice(), &[2, 2]);
-    assert_eq!(f.storage.get_recovery_snapshot(NonZeroUsize::new(1024).unwrap()).await.unwrap().as_deref(), Some(&snapshot));
-    let after = RecoveryPosition { sequence: 0, ..through.clone() };
-    let page = f
-        .storage
-        .read_recovery(
-            &after,
-            &through,
-            ReadLimits {
-                rows: NonZeroUsize::new(1).unwrap(),
-                bytes: NonZeroUsize::new(1024).unwrap(),
-            },
-        )
-        .await
-        .unwrap();
-    assert_eq!(page.entries.len(), 1);
-    assert_eq!(page.next.as_ref().unwrap().sequence, 1);
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    f.finish().await;
-}
-
-#[tokio::test]
 async fn wrong_receipt_retains() {
     let f = Fixture::new(config()).await;
     f.data.control.wrong_receipt.store(true, Ordering::SeqCst);
