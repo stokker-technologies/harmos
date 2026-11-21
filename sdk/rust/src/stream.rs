@@ -58,7 +58,13 @@ pub struct Stream<T: Message> {
 #[derive(Clone)]
 pub struct Observer {
     pub(crate) stream: String,
+
+    #[cfg_attr(
+        target_arch = "wasm32",
+        allow(dead_code, reason = "guest metadata rejects observers; native Samples dispatch owns this handler")
+    )]
     pub(crate) handler: Arc<dyn Handler>,
+
     pub(crate) columns: Option<result::Result<Columns, String>>,
     pub(crate) interval: Option<Duration>,
     pub(crate) interval_setting: String,
@@ -81,7 +87,12 @@ pub struct CollectionOutput {
 }
 
 pub(crate) struct Lifecycle {
+    #[cfg_attr(
+        target_arch = "wasm32",
+        allow(dead_code, reason = "guest metadata rejects observers; native Samples demands own this count")
+    )]
     pub(crate) active: sync::Mutex<usize>,
+
     pub(crate) completed: Arc<AtomicBool>,
     pub(crate) start: Option<Arc<dyn Handler>>,
     pub(crate) stop: Option<Arc<dyn Handler>>,

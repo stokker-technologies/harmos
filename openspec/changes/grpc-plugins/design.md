@@ -8,6 +8,8 @@ the sidecar. Delete the example's manual launcher and child-exit wait. Keep
 registry-backed settings, the caller's directory and walkthrough output; retain
 every existing operation deadline and stop grace. A command bundle passes the
 directory as an explicit sidecar argument instead of a launcher environment variable.
+The removed launcher was the application's only direct Tokio consumer. Remove
+that normal dependency and retain the existing test-only Tokio declaration.
 
 Delete the obsolete segmented-recovery benchmark and its registration. Durable
 compaction superseded its full-journal assumption; the native

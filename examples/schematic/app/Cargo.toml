@@ -59,7 +59,6 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, features = ["io-util", "process"] }
 
 # Networking
 
