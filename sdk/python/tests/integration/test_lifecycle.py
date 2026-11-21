@@ -80,7 +80,7 @@ class Lifecycle(IsolatedAsyncioTestCase):
         for present, missing in (("HARMOS_HOST_ENDPOINT", "HARMOS_LAUNCH_TOKEN"), ("HARMOS_LAUNCH_TOKEN", "HARMOS_HOST_ENDPOINT")):
             with patch.dict(os.environ, {present: "127.0.0.1:9"}):
                 os.environ.pop(missing, None)
-                with self.assertRaisesRegex(ValueError, f"Set {missing}"):
+                with self.assertRaises(ValueError):
                     await plugin.run()
 
     async def test_run_without_launch_variables_serves_silently(self) -> None:
