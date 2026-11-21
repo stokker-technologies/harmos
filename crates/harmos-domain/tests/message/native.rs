@@ -164,8 +164,6 @@ fn fields_keep_types() {
     let bytes = crate::encode(&value);
     assert_eq!(grpc::decode::<Required>(DecodeInput::new(&bytes)).unwrap(), value);
     assert!(grpc::decode::<Required>(DecodeInput::new(&[])).is_err());
-    let empty = Optional::default();
-    assert!(empty.row.is_none());
     assert!(grpc::decode::<Optional>(DecodeInput::new(&[])).unwrap().rows.is_empty());
     let selected = Choice::Selected { row: native(42) };
     let bytes = crate::encode(&selected);

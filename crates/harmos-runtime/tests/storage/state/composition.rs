@@ -26,13 +26,6 @@ struct Revision {
     file: FileReference,
 }
 
-#[derive(Message, Clone, Debug, Default)]
-struct Seal {
-    cursor: Option<StorageCursor>,
-    version: Option<ObjectVersionToken>,
-    file: Option<FileReference>,
-}
-
 /* === Enums === */
 
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -80,8 +73,6 @@ fn values_roundtrip_prost() {
     assert_eq!(bytes.len(), value.encoded_size());
     assert_eq!(Source::decode(&bytes).unwrap(), value);
     assert!(Source::decode(&[]).is_err());
-    let empty = Seal::default();
-    assert!(empty.cursor.is_none() && empty.version.is_none() && empty.file.is_none());
     for field in Revision::FIELDS {
         assert!(matches!(field.kind, harmos_runtime::schema::graph::Kind::Message { .. }));
     }

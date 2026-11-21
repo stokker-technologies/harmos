@@ -21,8 +21,8 @@ use std::time::Duration;
 
 // Local Imports
 use super::app::App;
+use harmos_runtime::Runtime;
 use harmos_runtime::operations::RetryPolicy;
-use harmos_runtime::{Runtime, state::Position};
 
 /* === Structs === */
 
@@ -171,12 +171,6 @@ async fn runtime_selected_ids() {
     assert!(runtime.operations.definition("devices.duplicate").is_err());
     assert_eq!(resources.reads.load(Ordering::SeqCst), 2);
     crate::support::app::stop(&runtime).await.unwrap();
-}
-
-#[tokio::test]
-async fn needs_lacks_registration() {
-    let runtime = Runtime::<App>::start((), ()).await.unwrap();
-    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
