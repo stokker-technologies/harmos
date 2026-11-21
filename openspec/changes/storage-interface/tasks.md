@@ -50,3 +50,7 @@
 - [x] 2.9.2 Implement bounded restart-resumable unfinished-production discovery with generation and recorded byte progress.
 - [x] 2.9.3 Prove scope isolation, published exclusion, paging, lost-response startup recovery, codec/catalog and discover/settle/DeleteScope through focused tests.
 - [ ] 2.9.4 Regenerate every SDK projection and prove generation drift, workspace test-target compilation, formatting, repository contracts, tooling and strict specification validation.
+  - [x] Regenerate Rust, Python, C# and C++ projections; prove clean formatted outputs and the protocol, Python and C# drift checks.
+  - [x] Compile every workspace test target through per-package focused tasks with the declared test features; check the four changed packages.
+  - [x] Run formatting, repository contracts and strict specification validation.
+  - [ ] Resolve the shared SDK inventory fixture's coupling to mutable library descriptors: `tools/python/tests/integration/test_shared_generator_preserves_contracts.py:331` compares `tools/python/tests/fixtures/shared_sdk_inventory.json` against exports that now include the shared discovery messages. Owner decision remains open on isolating the fixture schema or regenerating its baseline through an owned task; do not patch the hashes to hide the tooling failure.
