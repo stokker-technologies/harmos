@@ -26,7 +26,7 @@ use super::{Activation, Error, LoadOptions, Outcome, publish::Publications};
 use crate::{
     Application, Runtime,
     clock::Clock,
-    operations::{Manager, clock::Unit},
+    operations::{CallContext, Manager, clock::Unit},
 };
 
 /* === Constants === */
@@ -76,8 +76,11 @@ struct StopUnit(Arc<Unit>);
 
 impl<A: Application> Runtime<A> {
     /// Bind Calls and Descendant Time Calls Without Opening Another Connection; Samples Start Separately.
-    pub async fn bind_grpc(&self, activation: &Activation, scope: impl Into<String>, clock: Clock) -> Result<ScopedBinding, Error> {
-        ScopedBinding::bind(self.streams.clone(), &self.operations.execution(), activation, scope.into(), clock)
+    pub async fn bind_grpc(
+        &self, activation: &Activation, scope: impl Into<String>, clock: Clock, context: &CallContext,
+    ) -> Result<ScopedBinding, Error> {
+        let operations = self.operations.execution().with_context(context.clone());
+        ScopedBinding::bind(self.streams.clone(), &operations, activation, scope.into(), clock)
     }
 }
 
@@ -90,8 +93,11 @@ impl ScopedBinding {
         if !Arc::ptr_eq(&manager.registry, &source.operations.registry) {
             return Err(Error::Invalid("Bind Scoped Plugin: activation belongs to another runtime".into()));
         }
-        let operations =
-            source.operations.with_scope(scope.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
+        let mut context = manager.call_context().clone();
+        context.remove::<crate::Scope>();
+        context.remove::<Arc<Unit>>();
+        let operations = source.operations.with_context(context);
+        let operations = operations.with_scope(scope.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let unit = Arc::new(Unit::new(clock.clone()));
         let mut context = operations.call_context().clone();
         context.insert(unit.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;

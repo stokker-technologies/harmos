@@ -249,6 +249,8 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
   harmos::SettingDeclaration interval;
   interval.set_name("interval");
   interval.mutable_default_()->mutable_duration()->set_seconds(2);
+  interval.mutable_minimum()->mutable_duration()->set_seconds(1);
+  interval.mutable_maximum()->mutable_duration()->set_seconds(3);
   harmos::plugin::Plugin plugin("example", "1.0.0");
   plugin
       .add([&](harmos::plugin::Registrar &ctx) {
@@ -265,6 +267,8 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
   REQUIRE(settings.values(0).default_().has_flag());
   REQUIRE_FALSE(settings.values(0).default_().flag());
   REQUIRE(settings.values(1).default_().duration().seconds() == 2);
+  REQUIRE(settings.values(1).minimum().duration().seconds() == 1);
+  REQUIRE(settings.values(1).maximum().duration().seconds() == 3);
   REQUIRE_THROWS_AS(plugin.add([&](harmos::plugin::Registrar &ctx) {
     ctx.add(flag);
   }),

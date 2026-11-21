@@ -415,6 +415,19 @@ mod tests {
                     }),
                     ..Default::default()
                 },
+                SettingDeclaration {
+                    name: "limit".into(),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Integer(7)),
+                    }),
+                    minimum: Some(SettingValue {
+                        value: Some(setting_value::Value::Integer(0)),
+                    }),
+                    maximum: Some(SettingValue {
+                        value: Some(setting_value::Value::Integer(10)),
+                    }),
+                    ..Default::default()
+                },
             ],
         };
         let reported = Plugin::new("settings", "1.0.0")

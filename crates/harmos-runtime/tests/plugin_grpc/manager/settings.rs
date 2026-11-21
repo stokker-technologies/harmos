@@ -58,12 +58,16 @@ fn catalog() -> model::Declarations {
                 title: "Enabled".into(),
                 description: String::new(),
                 default: Some(model::SettingValue { value: Some(Value::Flag(false)) }),
+                minimum: None,
+                maximum: None,
             },
             model::SettingDeclaration {
                 name: "limit".into(),
                 title: "Limit".into(),
                 description: String::new(),
                 default: Some(model::SettingValue { value: Some(Value::Integer(7)) }),
+                minimum: Some(model::SettingValue { value: Some(Value::Integer(0)) }),
+                maximum: Some(model::SettingValue { value: Some(Value::Integer(25)) }),
             },
         ],
     };
@@ -137,6 +141,8 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
             }),
         ),
         ("limit", None),
+        ("limit", Some(model::SettingValue { value: Some(Value::Integer(-1)) })),
+        ("limit", Some(model::SettingValue { value: Some(Value::Integer(26)) })),
         ("unknown", Some(model::SettingValue { value: Some(Value::Integer(1)) })),
     ] {
         let mut invalid = request.clone();

@@ -133,7 +133,8 @@ public sealed class Registrar
   }
 
   /// <summary>Declare a library-stored setting with an explicit typed default.</summary>
-  public Registrar Register(string name, SettingValue defaultValue, string title = "", string description = "")
+  public Registrar Register(string name, SettingValue defaultValue, string title = "", string description = "",
+      SettingValue? minimum = null, SettingValue? maximum = null)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(name);
     ArgumentNullException.ThrowIfNull(defaultValue);
@@ -148,7 +149,9 @@ public sealed class Registrar
       Name = name,
       Title = title,
       Description = description,
-      Default = defaultValue.Clone()
+      Default = defaultValue.Clone(),
+      Minimum = minimum?.Clone(),
+      Maximum = maximum?.Clone()
     });
     if (section is null)
       return Register(settings);

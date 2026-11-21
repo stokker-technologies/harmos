@@ -235,6 +235,8 @@ pub fn catalog() -> impl Registration {
                     default: Some(SettingValue {
                         value: Some(setting_value::Value::Flag(false)),
                     }),
+                    minimum: None,
+                    maximum: None,
                 },
                 SettingDeclaration {
                     name: "count".into(),
@@ -243,6 +245,8 @@ pub fn catalog() -> impl Registration {
                     default: Some(SettingValue {
                         value: Some(setting_value::Value::Integer(3)),
                     }),
+                    minimum: None,
+                    maximum: None,
                 },
                 SettingDeclaration {
                     name: "gain".into(),
@@ -251,6 +255,8 @@ pub fn catalog() -> impl Registration {
                     default: Some(SettingValue {
                         value: Some(setting_value::Value::Number(1.5)),
                     }),
+                    minimum: None,
+                    maximum: None,
                 },
                 SettingDeclaration {
                     name: "label".into(),
@@ -259,6 +265,8 @@ pub fn catalog() -> impl Registration {
                     default: Some(SettingValue {
                         value: Some(setting_value::Value::Text("default".into())),
                     }),
+                    minimum: None,
+                    maximum: None,
                 },
                 SettingDeclaration {
                     name: "interval".into(),
@@ -267,6 +275,8 @@ pub fn catalog() -> impl Registration {
                     default: Some(SettingValue {
                         value: Some(setting_value::Value::Duration(prost_types::Duration { seconds: 2, nanos: 0 })),
                     }),
+                    minimum: None,
+                    maximum: None,
                 },
             ],
         })?;

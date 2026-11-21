@@ -16,16 +16,16 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::result::Result as StdResult;
+use std::result;
 
 // Third Party Imports
 #[cfg(not(target_arch = "wasm32"))]
-use prost::Message as _;
-use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor, Value};
+use prost::Message;
+use prost_reflect::{DescriptorPool, DynamicMessage, Kind, MessageDescriptor, Value};
 use tonic::Status;
 
 // Local Imports
-use crate::Message;
+use crate::message;
 #[cfg(not(target_arch = "wasm32"))]
 use harmos_protocol::plugin::{InstanceSamplesResponse, SampleBatch, instance_samples_response::Frame};
 
@@ -52,22 +52,38 @@ pub(crate) struct Columns {
 
 impl Columns {
     /// Derive the Columns of `T`; an Interval Row Holds One Singular Value per Field.
-    pub fn of<T: Message>() -> StdResult<Self, String> {
+    pub fn of<T: message::Message>() -> result::Result<Self, String> {
         let row = descriptor(T::types(), &T::name())?;
         let columns = harmos_protocol::columns::derive(&row)?.columns;
         Ok(Self { row, columns })
     }
 
     /// Check That `C` Repeats Every Field of the Row With Its Number and Type.
-    pub fn check<C: Message>(&self) -> StdResult<(), String> {
+    pub fn check<C: message::Message>(&self) -> result::Result<(), String> {
         let authored = descriptor(C::types(), &C::name())?;
-        let shape = |message: &MessageDescriptor| {
-            let mut fields =
-                message.fields().map(|field| (field.number(), field.is_list(), format!("{:?}", field.kind()))).collect::<Vec<_>>();
-            fields.sort();
-            fields
-        };
-        if shape(&authored) != shape(&self.columns) {
+        let matches = authored.fields().len() == self.row.fields().len()
+            && self.row.fields().all(|field| {
+                let Some(column) = authored.get_field(field.number()) else {
+                    return false;
+                };
+                if !column.is_list() {
+                    return false;
+                }
+                if !field.field_descriptor_proto().proto3_optional.unwrap_or(false) {
+                    return format!("{:?}", column.kind()) == format!("{:?}", field.kind());
+                }
+                let Kind::Message(element) = column.kind() else {
+                    return false;
+                };
+                let Some(value) = element.get_field(1) else {
+                    return false;
+                };
+                element.fields().len() == 1
+                    && value.supports_presence()
+                    && !value.is_list()
+                    && format!("{:?}", value.kind()) == format!("{:?}", field.kind())
+            });
+        if !matches {
             return Err(format!(
                 "Declare Window Observer: columns `{}` must repeat every field of row `{}` with the same number and type",
                 C::name(),
@@ -78,14 +94,26 @@ impl Columns {
     }
 
     /// Transpose Encoded Rows Into One Columns Message, Defaults Included.
-    pub fn transpose(&self, rows: &[Vec<u8>]) -> StdResult<DynamicMessage, Status> {
+    pub fn transpose(&self, rows: &[Vec<u8>]) -> result::Result<DynamicMessage, Status> {
         let fields = self.row.fields().collect::<Vec<_>>();
         let mut values = vec![Vec::with_capacity(rows.len()); fields.len()];
         for row in rows {
             let row = DynamicMessage::decode(self.row.clone(), row.as_slice())
                 .map_err(|error| Status::internal(format!("Answer Sample Window: decode an observer row: {error}")))?;
             for (column, field) in values.iter_mut().zip(&fields) {
-                column.push(row.get_field(field).into_owned());
+                let value = if field.field_descriptor_proto().proto3_optional.unwrap_or(false) {
+                    let Kind::Message(element) = self.columns.get_field(field.number()).unwrap().kind() else {
+                        unreachable!("optional column element")
+                    };
+                    let mut element = DynamicMessage::new(element);
+                    if row.has_field(field) {
+                        element.set_field_by_number(1, row.get_field(field).into_owned());
+                    }
+                    Value::Message(element)
+                } else {
+                    row.get_field(field).into_owned()
+                };
+                column.push(value);
             }
         }
         let mut columns = DynamicMessage::new(self.columns.clone());
@@ -97,7 +125,7 @@ impl Columns {
 
     /// Decode a Window Observer's Columns for Splitting.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn decode(&self, columns: &[u8]) -> StdResult<DynamicMessage, Status> {
+    pub fn decode(&self, columns: &[u8]) -> result::Result<DynamicMessage, Status> {
         DynamicMessage::decode(self.columns.clone(), columns)
             .map_err(|error| Status::internal(format!("Answer Sample Window: decode the observer's columns: {error}")))
     }
@@ -107,7 +135,7 @@ impl Columns {
 
 /// Split `count` Samples Into Parts Whose Encoded Responses Each Fit `limit` Bytes.
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn parts(columns: &Columns, encoded: Vec<u8>, count: u64, limit: usize) -> StdResult<Vec<InstanceSamplesResponse>, Status> {
+pub(crate) fn parts(columns: &Columns, encoded: Vec<u8>, count: u64, limit: usize) -> result::Result<Vec<InstanceSamplesResponse>, Status> {
     let whole = response(0, count, encoded, true);
     if whole.encoded_len() <= limit {
         return Ok(vec![whole]);
@@ -123,7 +151,7 @@ pub(crate) fn parts(columns: &Columns, encoded: Vec<u8>, count: u64, limit: usiz
 
 /* === Private Functions === */
 
-fn descriptor(types: prost_types::FileDescriptorSet, name: &str) -> StdResult<MessageDescriptor, String> {
+fn descriptor(types: prost_types::FileDescriptorSet, name: &str) -> result::Result<MessageDescriptor, String> {
     let pool = DescriptorPool::from_file_descriptor_set(types).map_err(|error| format!("Declare Observer: {error}"))?;
     pool.get_message_by_name(name).ok_or_else(|| format!("Declare Observer: `{name}` is missing from its own descriptors"))
 }
@@ -140,7 +168,7 @@ fn response(offset: u64, count: u64, columns: Vec<u8>, last: bool) -> InstanceSa
 fn split(
     columns: &Columns, message: &DynamicMessage, offset: u64, count: u64, total: u64, limit: usize,
     parts: &mut Vec<InstanceSamplesResponse>,
-) -> StdResult<(), Status> {
+) -> result::Result<(), Status> {
     let mut slice = DynamicMessage::new(columns.columns.clone());
     for field in columns.columns.fields() {
         if let Value::List(values) = message.get_field(&field).as_ref() {
@@ -169,6 +197,7 @@ fn split(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prost_reflect::ReflectMessage;
 
     #[derive(crate::Message)]
     struct Reading {
@@ -180,6 +209,47 @@ mod tests {
     struct Readings {
         value: Vec<f64>,
         label: Vec<String>,
+    }
+
+    #[derive(crate::Message)]
+    struct OptionalReading {
+        value: Option<f64>,
+    }
+
+    #[derive(crate::Message)]
+    struct OptionalReadings {
+        value: Vec<OptionalReading>,
+    }
+
+    #[test]
+    fn optional_values_keep_presence_through_split_windows() {
+        let columns = Columns::of::<OptionalReading>().unwrap();
+        columns.check::<OptionalReadings>().unwrap();
+        let expected = [None, Some(0.0), Some(2.5), None, Some(0.0), Some(-1.0)];
+        let rows = expected.iter().map(|value| prost::Message::encode_to_vec(&OptionalReading { value: *value })).collect::<Vec<_>>();
+        let encoded = columns.transpose(&rows).unwrap().encode_to_vec();
+        let authored = <OptionalReadings as prost::Message>::decode(encoded.as_slice()).unwrap();
+        assert_eq!(authored.value.into_iter().map(|row| row.value).collect::<Vec<_>>(), expected);
+        let parts = parts(&columns, encoded, rows.len() as u64, 32).unwrap();
+        assert!(parts.len() > 1);
+        let mut actual = Vec::new();
+        for part in parts {
+            let Some(Frame::Batch(batch)) = part.frame else {
+                panic!("batch")
+            };
+            let decoded = columns.decode(&batch.columns).unwrap();
+            let Value::List(values) = decoded.get_field_by_number(1).unwrap().into_owned() else {
+                panic!("column")
+            };
+            for value in values {
+                let Value::Message(value) = value else {
+                    panic!("optional element")
+                };
+                let field = value.descriptor().get_field(1).unwrap();
+                actual.push(value.has_field(&field).then(|| value.get_field(&field).as_f64().unwrap()));
+            }
+        }
+        assert_eq!(actual, expected);
     }
 
     #[test]
