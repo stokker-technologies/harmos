@@ -102,6 +102,11 @@ struct Reading {
     value: f64,
 }
 
+#[derive(harmos::Message)]
+struct OptionalReading {
+    value: Option<f64>,
+}
+
 /// The Columns of `Reading`.
 #[derive(harmos::Message)]
 struct Readings {
@@ -310,7 +315,25 @@ fn main() -> Result<()> {
     let request_tag = pool.get_message_by_name(&request).unwrap().get_field_by_name("value").unwrap().number();
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
-    let plugin = if mode == "scoped-sleep" {
+    let plugin = if mode == "optional-window" {
+        let stream = Stream::<OptionalReading>::new("fixture.optional");
+        let observer = Observer::new(&stream, async |context: &Context| {
+            let value = match context.sequence() % 3 {
+                1 => None,
+                2 => Some(0.0),
+                _ => Some(2.5),
+            };
+            Ok(OptionalReading { value })
+        })
+        .every(prost_types::Duration { seconds: 1, nanos: 0 });
+        Plugin::new("optional_window", "1.0.0")
+            .register(|ctx| {
+                ctx.register(stream)?;
+                ctx.register(observer)?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+    } else if mode == "scoped-sleep" {
         let stream = Stream::<Value>::new("fixture.scoped_samples");
         let observer = Observer::new(&stream, scoped_sleep_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         Plugin::new("scoped_sleep", "1.0.0")

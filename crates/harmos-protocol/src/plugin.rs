@@ -401,8 +401,10 @@ pub struct SampleBatch {
     #[prost(uint64, tag = "2")]
     pub count: u64,
     /// A serialized message whose fields mirror the stream row's field numbers and
-    /// types, each repeated, holding one value per sample in sample order. Numeric
-    /// columns are packed; every sample has a value in every column.
+    /// types, each repeated, holding one value per sample in sample order. Proto3
+    /// optional fields instead repeat a message with an optional value at field 1,
+    /// so an empty element is absent and a present zero stays distinct. Ordinary
+    /// numeric columns are packed; every column has one element per sample.
     #[prost(bytes = "vec", tag = "3")]
     pub columns: ::prost::alloc::vec::Vec<u8>,
     /// Set on the part that completes the window. It answers the window and ends its child calls.

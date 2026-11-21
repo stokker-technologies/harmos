@@ -26,7 +26,7 @@ from grpc import StatusCode
 from grpc.aio import AioRpcError
 
 from harmos import MessageSettings
-from harmos._columns import Columns, append, batches, columns_type
+from harmos._columns import Columns, append, batches, columns_type, extract
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest, InstanceSamplesResponse
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
@@ -51,6 +51,40 @@ START = Timestamp(seconds=100)
 
 
 class WindowBatches(IsolatedAsyncioTestCase):
+    def test_optional_values_keep_presence_through_split_windows(self) -> None:
+        file = FileDescriptorProto(name="tests/optional.proto", package="tests.optional", syntax="proto3")
+        row = file.message_type.add(name="Reading")
+        row.oneof_decl.add(name="_value")
+        row.field.add(
+            name="value",
+            number=1,
+            label=FieldDescriptorProto.LABEL_OPTIONAL,
+            type=FieldDescriptorProto.TYPE_DOUBLE,
+            proto3_optional=True,
+            oneof_index=0,
+        )
+        plain = file.message_type.add(name="PlainColumns")
+        plain.field.add(name="value", number=1, label=FieldDescriptorProto.LABEL_REPEATED, type=FieldDescriptorProto.TYPE_DOUBLE)
+        pool = DescriptorPool()
+        pool.Add(file)
+        reading = message_factory.GetMessageClass(pool.FindMessageTypeByName("tests.optional.Reading"))
+        plain = message_factory.GetMessageClass(pool.FindMessageTypeByName("tests.optional.PlainColumns"))
+        window_observer("example.optional", row=reading, columns=columns_type(reading, "example.optional"), interval=SECOND)
+        self.assertRaises(ValueError, window_observer, "example.optional", row=reading, columns=plain, interval=SECOND)
+        expected = [None, 0.0, 2.5, None, 0.0, -1.0]
+        values: Columns = [[]]
+        for value in expected:
+            sample = reading(value=value) if value is not None else reading()
+            append(values, sample)
+        parts = batches(reading, values, len(expected), 58)
+        self.assertGreater(len(parts), 1)
+        actual = []
+        for part in parts:
+            columns = columns_type(reading, "example.optional").FromString(part.columns)
+            actual.extend(extract(reading, columns, part.count)[0])
+        self.assertEqual(actual, expected)
+        self.assertEqual(values, [expected])
+
     async def test_one_sample_observer_answers_a_window_with_exact_columns(self) -> None:
         # Call the Observer Once per Sample, in Order, With Each Sample's Sequence.
         reading, inner, span = _reading()

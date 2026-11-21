@@ -69,6 +69,24 @@ fn sequences(host: &HostFixture, stream: &str) -> Vec<u64> {
 /* === Tests === */
 
 #[tokio::test]
+async fn optional_observer_values_retain_presence_in_storage() {
+    let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let host = HostFixture::with_clock(Some(clock)).await;
+    let sdk = host.sdk("optional-window").await;
+    let settings = PlacementSettings {
+        interval_window: Duration::from_secs(3),
+        ..support::settings()
+    };
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings).await.unwrap();
+    let watching = host.watch("fixture.optional");
+    controller.advance_until(Duration::from_secs(3), || !host.rows().is_empty()).await.unwrap();
+    assert_eq!(host.values()[0]["columns"]["value"], serde_json::json!([{"value": null}, {"value": 0.0}, {"value": 2.5}]));
+    drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn windows_cover_exact_sample_ranges_on_a_controlled_clock() {
     // One-Second Samples: the Host Grants Four-Second Windows, the Plugin's Setting Three-Second Ones.
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);

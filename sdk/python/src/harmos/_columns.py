@@ -19,7 +19,7 @@ from typing import cast
 # Third Party Imports
 from google.protobuf import message_factory
 from google.protobuf.descriptor import Descriptor, FieldDescriptor
-from google.protobuf.descriptor_pb2 import EDITION_2023, FieldDescriptorProto, FileDescriptorProto
+from google.protobuf.descriptor_pb2 import EDITION_2023, DescriptorProto, FieldDescriptorProto, FileDescriptorProto
 from google.protobuf.message import Message
 
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch
@@ -71,7 +71,7 @@ def columns_type(row: type[Message], stream: str) -> type[Message]:
     """Refuse Rows Without One Value per Field and Derive Their Columns Message."""
     descriptor = cast(Descriptor, row.DESCRIPTOR)
     for field in descriptor.fields:
-        if field.is_repeated or field.containing_oneof is not None or field.type == FieldDescriptor.TYPE_GROUP:
+        if field.is_repeated or (field.containing_oneof is not None and not _optional(field)) or field.type == FieldDescriptor.TYPE_GROUP:
             raise ValueError(
                 f"Declare Observer {stream}: Row {descriptor.full_name} Field {field.name} Is Repeated, a Map, a Group or in a Oneof;"
                 " give every interval row field exactly one plain value"
@@ -102,6 +102,13 @@ def columns_type(row: type[Message], stream: str) -> type[Message]:
             entry.type_name = "." + field.message_type.full_name
         elif field.enum_type is not None:
             entry.type_name = "." + field.enum_type.full_name
+        if _optional(field):
+            element = columns.nested_type.add(name=f"Field{field.number}")
+            value = element.field.add(name="value", number=1, label=FieldDescriptorProto.LABEL_OPTIONAL, type=field.type)
+            if entry.type_name:
+                value.type_name = entry.type_name
+            entry.type = FieldDescriptorProto.TYPE_MESSAGE
+            entry.type_name = f".{name}.{element.name}"
     pool.AddSerializedFile(file.SerializeToString())
     return message_factory.GetMessageClass(pool.FindMessageTypeByName(name))
 
@@ -117,8 +124,8 @@ def check_columns(row: type[Message], columns: type[Message], stream: str) -> No
             raise ValueError(f"Declare Window Observer {stream}: Columns {name} and Row Differ at Field {number}; mirror every row field")
         if (
             not column.is_repeated
-            or column.type != field.type
-            or _type_name(column) != _type_name(field)
+            or (not _optional(field) and (column.type != field.type or _type_name(column) != _type_name(field)))
+            or (_optional(field) and not _optional_column(field, column))
             or column.message_type is not None
             and column.message_type.GetOptions().map_entry
         ):
@@ -130,6 +137,9 @@ def check_columns(row: type[Message], columns: type[Message], stream: str) -> No
 def append(columns: Columns, row: Message) -> None:
     """Add One Sample's Row to Its Columns, Copying Values So Later Row Changes Cannot Leak."""
     for values, field in zip(columns, cast(Descriptor, row.DESCRIPTOR).fields, strict=True):
+        if _optional(field) and not row.HasField(field.name):
+            values.append(None)
+            continue
         value = getattr(row, field.name)
         if field.message_type is not None:
             copy = type(value)()
@@ -149,6 +159,8 @@ def extract(row: type[Message], columns: Message, count: int) -> Columns:
                 f"Answer Samples Window: Column {names[field.number]} Holds {len(values)} Values for {count} Samples;"
                 " return one value per sample in every column"
             )
+        if _optional(field):
+            values = [value.value if value.HasField("value") else None for value in values]
         result.append(values)
     return result
 
@@ -160,7 +172,9 @@ def batches(row: type[Message], columns: Columns, count: int, limit: int) -> lis
     whole = _encode(kind, fields, columns, 0, count)
     if FRAMING_BYTES + len(whole) <= limit:
         return [SampleBatch(offset=0, count=count, columns=whole, last=True)]
-    overhead = FRAMING_BYTES + sum(_varint_bytes(field.number << 3) + LENGTH_BYTES for field in fields if field.type not in DELIMITED)
+    overhead = FRAMING_BYTES + sum(
+        _varint_bytes(field.number << 3) + LENGTH_BYTES for field in fields if field.type not in DELIMITED and not _optional(field)
+    )
     totals = [0] * count
     for field, values in zip(fields, columns, strict=True):
         totals = [total + size for total, size in zip(totals, _sizes(field, values), strict=True)]
@@ -190,10 +204,42 @@ def _type_name(field: FieldDescriptor) -> str:
     return ""
 
 
+def _optional(field: FieldDescriptor) -> bool:
+    if field.containing_oneof is None:
+        return False
+    descriptor = DescriptorProto()
+    cast(Descriptor, field.containing_type).CopyToProto(descriptor)
+    return next(value.proto3_optional for value in descriptor.field if value.number == field.number)
+
+
+def _optional_column(field: FieldDescriptor, column: FieldDescriptor) -> bool:
+    element = column.message_type
+    if element is None or len(element.fields) != 1:
+        return False
+    value = element.fields_by_number.get(1)
+    return (
+        value is not None
+        and value.has_presence
+        and not value.is_repeated
+        and value.type == field.type
+        and _type_name(value) == _type_name(field)
+    )
+
+
 def _encode(kind: type[Message], fields: Sequence[FieldDescriptor], columns: Columns, start: int, end: int) -> bytes:
     message = kind()
     for field, values in zip(fields, columns, strict=True):
-        getattr(message, field.name).extend(values[start:end])
+        column = getattr(message, field.name)
+        if _optional(field):
+            for value in values[start:end]:
+                element = column.add()
+                if value is not None:
+                    if field.message_type is not None:
+                        element.value.CopyFrom(value)
+                    else:
+                        element.value = value
+        else:
+            column.extend(values[start:end])
     return message.SerializeToString()
 
 
@@ -203,6 +249,18 @@ def _varint_bytes(value: int) -> int:
 
 def _sizes(field: FieldDescriptor, values: list[object]) -> list[int]:
     """Encoded Bytes of Each Sample's Value Within Its Column."""
+    if _optional(field):
+        descriptor = cast(Descriptor, field.containing_type)
+        row = message_factory.GetMessageClass(descriptor)
+        kind = columns_type(row, descriptor.full_name)
+        element_descriptor = cast(Descriptor, kind.DESCRIPTOR.fields_by_number[field.number].message_type)
+        element = message_factory.GetMessageClass(element_descriptor)
+        lengths = []
+        for value in values:
+            entry = element(value=value) if value is not None else element()
+            lengths.append(entry.ByteSize())
+        tag = _varint_bytes(field.number << 3)
+        return [tag + _varint_bytes(length) + length for length in lengths]
     fixed = FIXED_BYTES.get(field.type)
     if fixed is not None:
         return [fixed] * len(values)
