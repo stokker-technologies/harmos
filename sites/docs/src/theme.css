@@ -323,3 +323,21 @@ site-search dialog::backdrop {
   font-family: var(--brand-font-heading);
   font-size: var(--sl-text-h1);
 }
+
+.d2-diagram {
+  overflow-x: auto;
+}
+
+.d2-diagram > svg {
+  width: 100%;
+  height: auto;
+}
+
+.d2-diagram text {
+  user-select: text;
+}
+
+[data-theme="light"] .d2-diagram > [data-d2-theme="dark"],
+[data-theme="dark"] .d2-diagram > [data-d2-theme="light"] {
+  display: none;
+}

@@ -1,7 +1,6 @@
 ---
 // Harmos — SPDX-License-Identifier: Apache-2.0
 // Offer the Site's Entries From Its Root versions.json; Without It, Show Only the Current Entry.
-import { Icon } from "@astrojs/starlight/components";
 import ThemeSelect from "@astrojs/starlight/components/ThemeSelect.astro";
 
 const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
@@ -14,7 +13,9 @@ const root = base.slice(0, base.length - entry.length - 1);
   <select aria-label="Release">
     <option value={entry} selected>{entry === "dev" ? "Development" : entry}</option>
   </select>
-  <Icon name="down-caret" size="1rem" />
+  <svg width="0.75rem" height="0.5rem" viewBox="0 0 12 8" fill="currentColor" aria-hidden="true">
+    <path d="m0 0 6 6 6-6v2l-6 6-6-6z" />
+  </svg>
 </label>
 <ThemeSelect><slot /></ThemeSelect>
 
@@ -50,6 +51,7 @@ const root = base.slice(0, base.length - entry.length - 1);
 <style>
   .release-select {
     --release-select-pad: 0.75rem;
+    --release-select-border: 1px;
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -58,7 +60,7 @@ const root = base.slice(0, base.length - entry.length - 1);
   .release-select select {
     appearance: none;
     background: var(--background);
-    border: 1px solid var(--input);
+    border: var(--release-select-border) solid var(--input);
     border-radius: var(--brand-radius);
     color: var(--foreground);
     font-family: var(--brand-font-mono);
@@ -72,8 +74,7 @@ const root = base.slice(0, base.length - entry.length - 1);
 
   .release-select :global(svg) {
     position: absolute;
-    /* The Caret Icon Carries 0.25rem of Empty Space on Its Right; Align the Visible Chevron With the Text Inset. */
-    inset-inline-end: calc(var(--release-select-pad) - 0.25rem);
+    inset-inline-end: calc(var(--release-select-pad) + var(--release-select-border));
     color: var(--foreground);
     pointer-events: none;
   }

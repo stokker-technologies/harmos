@@ -16,3 +16,5 @@
 
 - [x] 6.1 Move the site to `sites/docs/`, group guides by folder, preserve prose and migrate maintained references.
 - [x] 6.2 Port the reference visual language, typography, logos, controls and 56rem content column into one local stylesheet.
+- [x] 6.3 Port D2 fences, file directives, dependency reloads and deterministic tests with the pinned renderer.
+- [x] 6.4 Run focused site/tooling proof, repository checks and the Playwright visual review; report URL moves and remaining publication work.

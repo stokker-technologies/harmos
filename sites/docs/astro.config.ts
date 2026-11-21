@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import { remarkDiagrams } from "./src/diagrams";
 import { remarkGuides } from "./src/guides";
 
 // The Docs Task Selects the Entry and Source Revision; Direct Runs Preview the Development Entry.
@@ -17,7 +18,7 @@ export default defineConfig({
   base,
   outDir: `../../target/docs/${entry}`,
   markdown: {
-    processor: unified({ remarkPlugins: [remarkGuides({ root, base, source })] }),
+    processor: unified({ remarkPlugins: [remarkGuides({ root, base, source }), remarkDiagrams()] }),
   },
   integrations: [
     starlight({

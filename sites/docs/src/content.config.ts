@@ -3,8 +3,10 @@
 
 import { docsSchema } from "@astrojs/starlight/schema";
 import { defineCollection } from "astro:content";
+import { diagramLoader } from "./diagrams";
 import { guides } from "./guides";
 
 export const collections = {
-  docs: defineCollection({ loader: guides(), schema: docsSchema() }),
+  // Guides Re-Render When a D2 File They Reference Changes.
+  docs: defineCollection({ loader: diagramLoader(guides()), schema: docsSchema() }),
 };

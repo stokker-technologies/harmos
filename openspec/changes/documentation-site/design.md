@@ -43,6 +43,12 @@ and is listed last in Project. Operations Reference remains generated.
 styles, including a 56rem content column. Assets live under `sites/docs/assets/`.
 The release selector draws its caret with the same visible inset as its text.
 
+D2 fences and `::d2{src="..."}` directives render offline into accessible light/dark
+SVGs with unique references and selectable text. Both accept title, layout, theme,
+dark-theme, sketch and pad. File sources resolve relative to the guide and stay
+inside the repository; content watches re-render guides when referenced files change.
+The renderer is pinned to D2 0.9.0.
+
 ## Archives
 
 | Channel | Asset | Source | Site Entry |

@@ -29,6 +29,9 @@ sccache = "0.19.0"
 "go:github.com/rhysd/actionlint/cmd/actionlint" = "v1.7.13-0.20260417151945-fd33e9f582a0"
 taplo = "0.10.0"
 
+# Documentation
+"aqua:d2lang/d2" = "0.9.0"
+
 # Release and Signing
 git-cliff = "2.14.2"
 
@@ -93,6 +96,14 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.c
 [tasks."docs:build"]
 description = "Build the Documentation Site Entry"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.docs.site build"
+
+[tasks."docs:test"]
+description = "Test Documentation Authoring"
+run = "pnpm --dir sites/docs test"
+
+[tasks."docs:typecheck"]
+description = "Type Check Documentation Authoring"
+run = "pnpm --dir sites/docs typecheck"
 
 [tasks."docs:serve"]
 description = "Preview the Documentation Site"

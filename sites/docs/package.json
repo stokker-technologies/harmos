@@ -6,7 +6,9 @@
     "build": "astro build",
     "dev": "astro dev --host 127.0.0.1",
     "format": "biome format --write .",
-    "lint": "biome lint ."
+    "lint": "biome lint .",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "astro sync && tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "7.3.9",
@@ -16,6 +18,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
-    "@types/mdast": "4.0.4"
+    "@types/mdast": "4.0.4",
+    "typescript": "^7.0.2",
+    "@types/node": "^26.0.0"
   }
 }
