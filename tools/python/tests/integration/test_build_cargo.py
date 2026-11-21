@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 # Third Party Imports
 # Local Imports
 import harmos_tools.test.archive
+import harmos_tools.test.focused
 from harmos_tools.build import cargo
 from harmos_tools.ci import compiler, tasks
 from harmos_tools.release import review
@@ -230,11 +231,6 @@ class FocusedCargoTests(unittest.TestCase):
                 ["--locked", "--profile", "dev", "-p", "example", "--manifest-path", str(Path("nested/Cargo.toml"))],
             ),
             (
-                ["test", "--package", "example", "--manifest-path", "nested/Cargo.toml", "--target", "journey"],
-                "test",
-                ["--locked", "-p", "example", "--test", "journey", "--manifest-path", str(Path("nested/Cargo.toml"))],
-            ),
-            (
                 ["build", "--package", "example", "--features", "grpc,simulation", "--check"],
                 "check",
                 ["--locked", "--profile", "dev", "-p", "example", "--features", "grpc,simulation"],
@@ -245,33 +241,41 @@ class FocusedCargoTests(unittest.TestCase):
                 ["--locked", "--profile", "dev", "-p", "example", "--features", "grpc simulation"],
             ),
             (
-                ["test", "--package", "example", "--features", "simulation", "--target", "lib", "--exact", "case::name"],
-                "test",
-                ["--locked", "-p", "example", "--lib", "--features", "simulation", "case::name", "--", "--exact"],
-            ),
-            (
-                ["test", "--package", "example", "--features", "grpc,simulation", "--target", "messages"],
-                "test",
-                ["--locked", "-p", "example", "--test", "messages", "--features", "grpc,simulation"],
-            ),
-            (
                 ["build", "--package", "example", "--example", "fixture", "--features", "guest", "--check"],
                 "check",
                 ["--locked", "--profile", "dev", "-p", "example", "--features", "guest", "--example", "fixture"],
             ),
             (["build", "--package", "example", "--check"], "check", ["--locked", "--profile", "dev", "-p", "example"]),
             (["build", "--package", "example", "--profile", "release"], "build", ["--locked", "--profile", "release", "-p", "example"]),
-            (["test", "--package", "example", "--target", "lib"], "test", ["--locked", "-p", "example", "--lib"]),
-            (
-                ["test", "--package", "example", "--target", "messages", "--exact", "case::name"],
-                "test",
-                ["--locked", "-p", "example", "--test", "messages", "case::name", "--", "--exact"],
-            ),
         ]
         for arguments, operation, expected in selections:
             with self.subTest(arguments=arguments), patch.object(cargo, "focused", return_value=7) as focused:
                 self.assertEqual(tasks.main(arguments), 7)
                 focused.assert_called_once_with(Path.cwd(), operation, expected)
+
+    def test_entry_points_route_focused_tests_through_the_story_runner(self) -> None:
+        selections = [
+            (
+                ["test", "--package", "example", "--manifest-path", "nested/Cargo.toml", "--target", "journey"],
+                {"target": "journey", "features": None, "exact": None},
+            ),
+            (
+                ["test", "--package", "example", "--features", "simulation", "--target", "lib", "--exact", "case::name"],
+                {"target": "lib", "features": "simulation", "exact": "case::name"},
+            ),
+            (
+                ["test", "--package", "example", "--features", "grpc,simulation", "--target", "messages"],
+                {"target": "messages", "features": "grpc,simulation", "exact": None},
+            ),
+            (["test", "--package", "example", "--target", "lib"], {"target": "lib", "features": None, "exact": None}),
+        ]
+        for arguments, expected in selections:
+            with self.subTest(arguments=arguments), patch.object(harmos_tools.test.focused, "run", return_value=7) as runner:
+                self.assertEqual(tasks.main(arguments), 7)
+                runner.assert_called_once()
+                selected = runner.call_args.kwargs
+                self.assertEqual(selected["package"], "example")
+                self.assertEqual({key: selected[key] for key in expected}, expected)
 
     def test_invalid_focused_selections_do_not_start_cargo(self) -> None:
         selections = [
