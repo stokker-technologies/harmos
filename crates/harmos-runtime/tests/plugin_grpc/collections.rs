@@ -225,24 +225,25 @@ async fn collection_ticks_are_shared_sparse_ordered_and_host_stamped() {
     stored(&host, 16).await;
     assert_eq!(fixture.ticks.lock().unwrap().get(""), Some(&4));
     let values = host.values();
-    let rows = host.stored.lock().unwrap();
-    for (id, per_tick) in [("alpha", 1), ("beta", 3), ("silent", 0)] {
-        let actual = rows
+    {
+        let rows = host.stored.lock().unwrap();
+        for (id, per_tick) in [("alpha", 1), ("beta", 3), ("silent", 0)] {
+            let actual = rows
+                .iter()
+                .filter(|(definition, _)| definition.id() == id)
+                .map(|(_, row)| row.published_unix_micros.unwrap())
+                .collect::<Vec<_>>();
+            let expected = (1..=4).flat_map(|tick| iter::repeat_n(start_micros + tick * 1_000_000, per_tick)).collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
+        let beta = rows
             .iter()
-            .filter(|(definition, _)| definition.id() == id)
-            .map(|(_, row)| row.published_unix_micros.unwrap())
+            .zip(values)
+            .filter(|((definition, _), _)| definition.id() == "beta")
+            .map(|(_, value)| value["now"]["seconds"].as_i64().unwrap())
             .collect::<Vec<_>>();
-        let expected = (1..=4).flat_map(|tick| iter::repeat_n(start_micros + tick * 1_000_000, per_tick)).collect::<Vec<_>>();
-        assert_eq!(actual, expected);
+        assert_eq!(beta, (1..=4).flat_map(|tick| (0..3).map(move |index| tick * 10 + index)).collect::<Vec<_>>());
     }
-    let beta = rows
-        .iter()
-        .zip(values)
-        .filter(|((definition, _), _)| definition.id() == "beta")
-        .map(|(_, value)| value["now"]["seconds"].as_i64().unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(beta, (1..=4).flat_map(|tick| (0..3).map(move |index| tick * 10 + index)).collect::<Vec<_>>());
-    drop(rows);
     drop(watches);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.stop().await.unwrap();
@@ -348,33 +349,34 @@ async fn collection_rows_preserve_submicrosecond_tick_times() {
     host.clock.registered_at(origin + Duration::from_nanos(30)).await;
     host.clock.advance_by(Duration::from_nanos(30));
     stored(&host, 12).await;
-    let rows = host.stored.lock().unwrap();
-    for (id, per_tick) in [("alpha", 1), ("beta", 3)] {
-        let times = rows
-            .iter()
-            .filter(|(definition, _)| definition.id() == id)
-            .map(|(_, row)| {
-                let context = serde_json::from_str::<Value>(row.context.as_ref().unwrap()).unwrap();
-                Timestamp {
-                    seconds: context["source_time"]["seconds"].as_i64().unwrap(),
-                    nanos: context["source_time"]["nanos"].as_i64().unwrap() as i32,
-                }
-            })
-            .collect::<Vec<_>>();
-        let expected = (1..=3)
-            .flat_map(|tick| {
-                let start: Timestamp = reading.date.into();
-                let nanos = i128::from(start.seconds) * 1_000_000_000 + i128::from(start.nanos) + tick * 10;
-                let at = Timestamp {
-                    seconds: nanos.div_euclid(1_000_000_000) as i64,
-                    nanos: nanos.rem_euclid(1_000_000_000) as i32,
-                };
-                iter::repeat_n(at, per_tick)
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(times, expected);
+    {
+        let rows = host.stored.lock().unwrap();
+        for (id, per_tick) in [("alpha", 1), ("beta", 3)] {
+            let times = rows
+                .iter()
+                .filter(|(definition, _)| definition.id() == id)
+                .map(|(_, row)| {
+                    let context = serde_json::from_str::<Value>(row.context.as_ref().unwrap()).unwrap();
+                    Timestamp {
+                        seconds: context["source_time"]["seconds"].as_i64().unwrap(),
+                        nanos: context["source_time"]["nanos"].as_i64().unwrap() as i32,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let expected = (1..=3)
+                .flat_map(|tick| {
+                    let start: Timestamp = reading.date.into();
+                    let nanos = i128::from(start.seconds) * 1_000_000_000 + i128::from(start.nanos) + tick * 10;
+                    let at = Timestamp {
+                        seconds: nanos.div_euclid(1_000_000_000) as i64,
+                        nanos: nanos.rem_euclid(1_000_000_000) as i32,
+                    };
+                    iter::repeat_n(at, per_tick)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(times, expected);
+        }
     }
-    drop(rows);
     drop(watches);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.stop().await.unwrap();

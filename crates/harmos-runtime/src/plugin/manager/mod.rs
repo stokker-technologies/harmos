@@ -174,10 +174,8 @@ impl Manager {
             self.inner.storage.engine(),
             self.inner.settings.clone(),
             states,
-            attach,
+            actor::Lifecycle { attach, stage, activate },
             (sender.clone(), reading),
-            stage,
-            activate,
             runtime.stop_participant(),
         )
         .await?;

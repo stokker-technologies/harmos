@@ -13,8 +13,6 @@
 
 /* === Imports === */
 
-use super::plugin;
-
 // Standard Library Imports
 use std::collections::HashMap;
 use std::future::Future;
@@ -22,12 +20,13 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::time::Duration;
 // Third Party Imports
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot, watch};
 use tracing::Instrument;
 // Local Imports
 use super::entry::{CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 use super::envelope::Recorded;
 use super::history::{Focus, Reversals, Undos};
+use super::plugin;
 use super::record::{PreparationError, Prepared, PreparedCommit};
 use super::transaction::Inverting;
 use super::transaction::{Transaction, TransactionError};
@@ -65,9 +64,9 @@ pub(crate) enum Request<A: Application> {
         reply: oneshot::Sender<Result<Receipt, Admission<A>>>,
     },
     Record {
-        value: Recorded<A>,
+        value: Box<Recorded<A>>,
         prepared: Prepared,
-        preparation: tokio::sync::OwnedSemaphorePermit,
+        preparation: OwnedSemaphorePermit,
         context: Context,
         reply: oneshot::Sender<Result<Receipt, RecordRefusal>>,
         plugin: Option<(plugin::Mutation, Option<u64>)>,
@@ -466,7 +465,7 @@ async fn run_admissions<A: Application>(
                     if let Some((mutation, _)) = plugin {
                         mutation.apply(&mut *tracked.plugins.write().await);
                     }
-                    let receipt = publish(tracked, stored, position, draft, value, prepared, capture.zip(permit)).await;
+                    let receipt = publish(tracked, stored, position, draft, *value, prepared, capture.zip(permit)).await;
                     drop(state);
 
                     tracing::Span::current().record("outcome", "applied");

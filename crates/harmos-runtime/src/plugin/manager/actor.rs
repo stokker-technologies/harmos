@@ -93,6 +93,12 @@ pub(super) type Activate = Arc<dyn Fn(PreparedPlugin) -> Attachment + Send + Syn
 
 /* === Structs === */
 
+pub(super) struct Lifecycle {
+    pub(super) attach: Attach,
+    pub(super) stage: Stage,
+    pub(super) activate: Activate,
+}
+
 pub(super) struct Actor {
     pub(super) store: Store,
     pub(super) states: Arc<dyn Persistence>,
@@ -181,9 +187,10 @@ impl Command {
 
 impl Actor {
     pub async fn open(
-        storage: StorageManager, settings: PluginManagerSettings, states: Arc<dyn Persistence>, attach: Attach,
-        mailboxes: (mpsc::Sender<Command>, mpsc::Receiver<Command>), stage: Stage, activate: Activate, participant: StopParticipant,
+        storage: StorageManager, settings: PluginManagerSettings, states: Arc<dyn Persistence>, lifecycle: Lifecycle,
+        mailboxes: (mpsc::Sender<Command>, mpsc::Receiver<Command>), participant: StopParticipant,
     ) -> Result<Self, Error> {
+        let Lifecycle { attach, stage, activate } = lifecycle;
         let (commands, queries) = mailboxes;
         let (store, mut registry) = Store::open(storage, &settings).await?;
         if registry.entries.len() > settings.entries.get()
