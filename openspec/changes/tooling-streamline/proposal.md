@@ -77,7 +77,7 @@ Do not restore task families or edit generated bindings merely to satisfy obsole
 The owner locked a comment/layout-only protocol pass on 2026-11-13. Its inventory
 is `proto/harmos/**`, root `buf.yaml`, the Buf tool pin and its generated lock
 entry, format/repository-check mise entries, comment/layout-derived generated
-outputs, `docs/architecture.md` and this change. No SDK implementation, build
+outputs, `docs/project/architecture.md` and this change. No SDK implementation, build
 configuration, workflow, declaration identity or file boundary belongs to this pass.
 
 Contract evidence comes from `crates/harmos-operations/src/{storage,access,status,

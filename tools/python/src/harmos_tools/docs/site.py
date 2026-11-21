@@ -39,11 +39,11 @@ from . import operations
 
 # === Constants === #
 
-SITE = "site"
+SITE = "sites/docs"
 OUTPUT = "target/docs"
 ARCHIVE = "harmos-docs.zip"
 STAMP = "docs.json"
-FAVICON = "site/assets/logos/mark.svg"
+FAVICON = "sites/docs/assets/logos/mark.svg"
 DEVELOPMENT = "dev"
 # Fixed Member Time Keeps Archives Of The Same Pages Byte-Identical.
 EPOCH = (1980, 1, 1, 0, 0, 0)

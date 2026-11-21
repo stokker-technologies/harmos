@@ -79,7 +79,7 @@ Run targeted tasks locally. Hosted CI and Nightly provide full validation.
 Ready pull requests run impact-selected verification jobs. Release reviews and
 manual full validation run the complete release-profile graph, including rehearsal.
 Draft and closed reviews receive planned skips. Each matrix job names one
-project task; see [Workflow Task Interface](tooling.md#workflow-task-interface).
+project task; see [Workflow Task Interface](project/tooling.md#workflow-task-interface).
 Merges into dev remain ungated. Required hosted checks gate main and stable
 releases. Report and investigate local failures.
 
@@ -110,7 +110,7 @@ consume only the Bench build. Other entry points use
 `uv run --no-sync`. Focused selections invoke Cargo directly, without archives,
 compiler-output scans or locks. The compiler cache's background server persists
 across invocations; each worktree keeps its own `target/`. See
-[Workstation Builds](tooling.md#workstation-builds).
+[Workstation Builds](project/tooling.md#workstation-builds).
 
 `mise run test -- --language python` tests task selection, release evidence and atomic
 channel publication without compiling products or contacting publication APIs.

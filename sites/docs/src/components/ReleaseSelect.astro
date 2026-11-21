@@ -1,0 +1,90 @@
+---
+// Harmos — SPDX-License-Identifier: Apache-2.0
+// Offer the Site's Entries From Its Root versions.json; Without It, Show Only the Current Entry.
+import ThemeSelect from "@astrojs/starlight/components/ThemeSelect.astro";
+
+const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const entry = base.split("/").filter(Boolean).at(-1) ?? "dev";
+const root = base.slice(0, base.length - entry.length - 1);
+---
+
+<label class="release-select" data-entry={entry} data-root={root}>
+  <span class="sr-only">Release</span>
+  <select aria-label="Release">
+    <option value={entry} selected>{entry === "dev" ? "Development" : entry}</option>
+  </select>
+  <svg width="0.75rem" height="0.5rem" viewBox="0 0 12 8" fill="currentColor" aria-hidden="true">
+    <path d="m0 0 6 6 6-6v2l-6 6-6-6z" />
+  </svg>
+</label>
+<ThemeSelect><slot /></ThemeSelect>
+
+<script>
+  for (const label of document.querySelectorAll<HTMLElement>(".release-select")) {
+    const select = label.querySelector("select");
+    const entry = label.dataset.entry ?? "";
+    const root = label.dataset.root ?? "/";
+    if (!select) {
+      continue;
+    }
+    fetch(`${root}versions.json`)
+      .then((response) => (response.ok ? response.json() : []))
+      .then((entries: { entry: string; label: string }[]) => {
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return;
+        }
+        select.replaceChildren(
+          ...entries.map((item) => {
+            const option = new Option(item.label, item.entry, false, item.entry === entry);
+            return option;
+          }),
+        );
+      })
+      .catch(() => undefined);
+    select.addEventListener("change", () => {
+      const page = location.pathname.startsWith(`${root}${entry}/`) ? location.pathname.slice(`${root}${entry}/`.length) : "";
+      location.assign(`${root}${select.value}/${page}`);
+    });
+  }
+</script>
+
+<style>
+  .release-select {
+    --release-select-pad: 0.75rem;
+    --release-select-border: 1px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .release-select select {
+    appearance: none;
+    background: var(--background);
+    border: var(--release-select-border) solid var(--input);
+    border-radius: var(--brand-radius);
+    color: var(--foreground);
+    font-family: var(--brand-font-mono);
+    font-size: var(--sl-text-sm);
+    min-height: 2.5rem;
+    max-width: 100%;
+    padding-block: 0.5rem;
+    padding-inline: var(--release-select-pad) calc(var(--release-select-pad) + 1.5rem);
+    cursor: pointer;
+  }
+
+  .release-select :global(svg) {
+    position: absolute;
+    inset-inline-end: calc(var(--release-select-pad) + var(--release-select-border));
+    color: var(--foreground);
+    pointer-events: none;
+  }
+
+  .release-select select:hover {
+    background: var(--muted);
+  }
+
+  .release-select select:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+</style>

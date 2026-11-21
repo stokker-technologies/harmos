@@ -13,7 +13,7 @@ Current surface (landed, verified 2026-11-16):
   implement `Deref` (`src/storage/manager.rs`, `src/operations/manager/mod.rs`).
 - `harmos-operations/src/storage/native/requests.rs` re-exports the engine `QueryOutput` and
   returns `Vec<QueryOutput>` in a public response.
-- Storage native operations are already Private and in-process (docs/architecture.md, Native
+- Storage native operations are already Private and in-process (docs/project/architecture.md, Native
   Type Ownership). Host operations under `proto/harmos/host/v1` carry the `callers` method
   option and are served on the listener; `Builder::composition(&str)` narrows them.
 - The plugin SDK host context (`sdk/rust/src/plugin/host.rs`, and its Python, C# and C++

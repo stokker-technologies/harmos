@@ -120,6 +120,20 @@ class DocumentationSiteTests(unittest.TestCase):
         with mock.patch.object(site.policy, "policy", return_value={"value": "1.12.3-rc.1"}), self.assertRaises(policy.ToolError):
             site.entry(Path.cwd(), release=True)
 
+    def test_astro_runs_the_site_from_its_nested_project(self) -> None:
+        root = Path.cwd()
+        with (
+            mock.patch.object(site.shutil, "which", return_value="pnpm"),
+            mock.patch.object(site.policy, "policy", side_effect=[SETTINGS, {"value": "1.2.3"}]),
+            mock.patch.object(site, "_revision", return_value="a" * 40),
+            mock.patch.object(site.subprocess, "run", return_value=mock.Mock(returncode=0)) as run,
+        ):
+            site._astro(root, "dev", "build")
+        command = run.call_args.args[0]
+        self.assertEqual(command, ["pnpm", "--dir", "sites/docs", "exec", "astro", "build"])
+        self.assertEqual(run.call_args.kwargs["cwd"], root)
+        self.assertEqual(run.call_args.kwargs["env"]["DOCS_SOURCE"], f"https://github.com/example/harmos/blob/{'a' * 40}/")
+
     def test_links_report_missing_pages_and_headings_only(self) -> None:
         directory_directory = tempfile.TemporaryDirectory()
         directory = directory_directory.name

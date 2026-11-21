@@ -25,11 +25,29 @@ that file, as in a local preview, it shows only the current entry.
 
 ## Site Project
 
-The Starlight project lives in `site/` and reads the maintained guides in `docs/` in place, without
+The Starlight project lives in `sites/docs/` and reads the maintained guides in `docs/` in place, without
 copies. Its loader takes each page title from the guide's first heading and drops that heading
 from the body; relative links between guides become site routes and links to other repository
 files point to the repository browser at the built revision. The build fails on a broken page link
-or heading anchor. The organization logo and typefaces live in `site/assets/`.
+or heading anchor. The organization logo and typefaces live in `sites/docs/assets/`.
+
+## Authoring and Presentation
+
+The landing guide is `docs/index.md`; ordinary slug generation maps it to the entry root.
+Start lists the landing, schematic and examples explicitly. Guides, SDKs and Project
+autogenerate from `docs/guides/`, `docs/sdks/` and `docs/project/`; sidebar order
+frontmatter preserves their reading order. Contributing remains at the docs root
+and is listed last in Project. Operations Reference remains generated.
+
+`sites/docs/src/theme.css` owns the local company tokens, font faces and generator
+styles, including a 56rem content column. Assets live under `sites/docs/assets/`.
+The release selector draws its caret with the same visible inset as its text.
+
+D2 fences and `::d2{src="..."}` directives render offline into accessible light/dark
+SVGs with unique references and selectable text. Both accept title, layout, theme,
+dark-theme, sketch and pad. File sources resolve relative to the guide and stay
+inside the repository; content watches re-render guides when referenced files change.
+The renderer is pinned to D2 0.9.0.
 
 ## Archives
 

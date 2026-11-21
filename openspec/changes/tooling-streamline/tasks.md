@@ -25,9 +25,9 @@
 - [x] 4.4 Prove the Committed C++ Presets from Clean Output, the Installed Consumer and Integration Stories on Windows; Record Cold and Cached Build Durations in the Final Report.
 - [x] 4.5 Run Root Format and Repository Checks, Per-SDK C# and Python Build/Unit Tasks, and Verify Clean Git Status on the Committed Candidate.
 - [x] 4.6 After Ownership Authorization, Update the Two Tooling Dispatcher Expectations in `tools/python/tests/integration/test_build_cargo.py` and Rerun `mise run check -- --language python`.
-- [x] 5.1 Measure focused clean and incremental check/build/test selections and the Tests producer before tuning; own build configuration, Cargo profile/dependency sections, `mise.toml`, `tools/python` build/task tooling and its tests, and `docs/tooling.md`.
+- [x] 5.1 Measure focused clean and incremental check/build/test selections and the Tests producer before tuning; own build configuration, Cargo profile/dependency sections, `mise.toml`, `tools/python` build/task tooling and its tests, and `docs/project/tooling.md`.
 - [x] 5.2 Rank measured bottlenecks and improve configuration, dependency reuse and task orchestration without changing product behavior, release outputs or required checks.
-- [x] 5.3 Repeat the measurements, evaluate independent build concurrency and document the supported workstation layout and unmeasured platforms in `docs/tooling.md`.
+- [x] 5.3 Repeat the measurements, evaluate independent build concurrency and document the supported workstation layout and unmeasured platforms in `docs/project/tooling.md`.
 - [x] 5.4 Run formatting, Rust/Python/repository checks and the Tests producer; repair owned failures and report external blockers precisely.
 - [x] 6.1 Replace Fetched gRPC with Pinned vcpkg Config Packages, Packaged Generators and Native Binary Caching; Bootstrap vcpkg Outside the Repository.
 - [x] 6.2 Split Protocol Generation, Tests and Conformance Targets; Add Ninja Presets, Target-Owned Settings and Installed Harmos Package Exports.
@@ -36,7 +36,7 @@
 - [x] 7.1 Add C++, C# and Python Mise Tools, Tasks and Locks; Remove SDK Tools and Compiler-Cache Variables from Root Configuration and Delegate Root SDK Tasks.
 - [x] 7.2 Install Only Lane Tools in GitHub Jobs and Persist the C++ Binary Cache; Retain All Existing Checks and Tests.
 - [x] 7.3 Update Maintained Tooling Guidance and Commit the Per-SDK Configuration Step Locally.
-- [x] P.1 Own `proto/harmos/**` layout/comments, root Buf configuration and mise entries (including the generated Buf lock entry), comment/layout-derived generated outputs, `docs/architecture.md` and this change. Derive contract comments from handlers, SDK consumers, stories and design contracts; record unresolved semantics narrowly in proposal.md.
+- [x] P.1 Own `proto/harmos/**` layout/comments, root Buf configuration and mise entries (including the generated Buf lock entry), comment/layout-derived generated outputs, `docs/project/architecture.md` and this change. Derive contract comments from handlers, SDK consumers, stories and design contracts; record unresolved semantics narrowly in proposal.md.
 - [x] P.2 Add Buf formatting and lint with documented grammar exceptions, excluding application/third-party inputs; apply the complete symmetric skeleton to the 13 files requiring no message reordering and retain the locked proto2 settings grammar.
 - [x] P.3 Regenerate committed protocol outputs through `generate`, review README impact and document the maintained protocol authoring convention.
 - [x] P.4 On the committed candidate, prove descriptor equivalence against the baseline, run format, repository and Rust checks, the focused generated-code drift test and protocol Cargo check, and leave a clean local commit without pushing.

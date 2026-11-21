@@ -42,6 +42,10 @@ jobs:
       run: mise run format -- --language typescript --check
     - name: Lint the Site
       run: mise run lint -- --language typescript
+    - name: Test Documentation Authoring
+      run: mise run docs:test
+    - name: Type Check Documentation Authoring
+      run: mise run docs:typecheck
     - run: mise run docs:build -- --archive ${{ inputs.profile == 'release' && inputs.channel != 'nightly' && '--release' || '' }}
       name: Build Documentation and Check Local Links
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -71,4 +75,4 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:bufbuild/buf,node,pnpm,python,uv
+      MISE_ENABLE_TOOLS: aqua:bufbuild/buf,aqua:d2lang/d2,node,pnpm,python,uv

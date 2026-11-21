@@ -49,7 +49,7 @@ retired with its entry. Get and Put accept no selector: the trusted calling entr
 is their sole authority. Direct attachments without a persisted entry refuse.
 
 The architecture already permits covered-entry deletion after snapshot publication
-(`docs/architecture.md:912`), but StateBackend had no explicit retirement step or
+(`docs/project/architecture.md:912`), but StateBackend had no explicit retirement step or
 manager invocation. Recovery compaction is now an explicit backend contract: after publishing and flushing a
 complete snapshot, retain that newest complete snapshot and only journal entries
 after its covered recovery position. The storage manager invokes the explicit
@@ -113,7 +113,7 @@ connection. Binding opens no Samples demand: `start_samples(streams)` opens the 
 Samples selections for exactly the requested streams and `stop_samples()` settles them while calls stay bound; close
 settles calls, captured ingestion and producer cleanup. Shared admitted writers retain separate wire-sequence
 validation and scope-stamped rows. The runtime clock still owns policy deadlines.
-See `docs/architecture.md#scoped-plugin-bindings` for the complete usage contract.
+See `docs/project/architecture.md#scoped-plugin-bindings` for the complete usage contract.
 
 Source audit confirms the runtime clock replacement, attachment-time selection,
 Rust oneof/layout overestimate, transfer-ceiling admission and encoded-status
@@ -840,7 +840,7 @@ SDKs (a product's `sdk/<language>`) build on these and add their own concepts.
 ### Python Authoring
 
 Python uses generated protobuf message classes and decorated async instance methods.
-The [Python authoring example](../../../docs/tooling.md#python-plugin-sdk) shows
+The [Python authoring example](../../../docs/project/tooling.md#python-plugin-sdk) shows
 operation, observer and cleanup registration, typed child calls and remote serving.
 The instance owns author state; `Context` owns invocation resources and host clock calls.
 
