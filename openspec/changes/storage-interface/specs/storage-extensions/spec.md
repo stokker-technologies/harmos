@@ -1,5 +1,16 @@
 ## ADDED Requirements
 
+### Requirement: Mutation Window Lifetime
+Issuance windows SHALL rotate at half their configured lifetime and retain at most two live windows. New mutations SHALL use their own window's deadline; owned completion SHALL survive expiry. Receipt eviction SHALL preserve issuance windows and recover durable outcomes through keyed backend lookup. Expired or unknown identities without a durable receipt SHALL return a distinct, actionable, transient mutation-expiry kind requiring a fresh identity.
+
+#### Scenario: Rotation During Reservation
+- **WHEN** a mutation reserves just before half-life and admission continues after rotation but before its own deadline
+- **THEN** admission and completion succeed using the original window and expiry
+
+#### Scenario: Expired Identity and Bounded Windows
+- **WHEN** issuance continues for many lifetimes and an identity passes its own deadline
+- **THEN** at most two issuance windows remain live and the identity receives `BackendFailure::MutationExpired` through the existing error carrier, with native `storage.kind = STORAGE_FAILURE_MUTATION_EXPIRED` and instructions to obtain a current window and issue a fresh identity
+
 ### Requirement: Native Columnar Scans
 Storage SHALL expose bounded snapshot-bound Arrow scans with column projection, predicate/time pruning and continuation. Native scans SHALL avoid row-payload reconstruction; unsupported acceleration SHALL use an explicit equivalent bounded fallback or capability error.
 

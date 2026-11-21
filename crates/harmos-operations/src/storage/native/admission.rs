@@ -61,6 +61,7 @@ pub(super) fn failure(error: crate::Error) -> ServingError {
                 ..
             } => "STORAGE_FAILURE_EXPIRED",
             _ => match source.backend_failure() {
+                Some(harmos_storage::BackendFailure::MutationExpired) => "STORAGE_FAILURE_MUTATION_EXPIRED",
                 Some(harmos_storage::BackendFailure::Unsupported) => "STORAGE_FAILURE_UNSUPPORTED",
                 Some(harmos_storage::BackendFailure::Conflict) => "STORAGE_FAILURE_CONFLICT",
                 _ => "STORAGE_FAILURE_INVALID",
