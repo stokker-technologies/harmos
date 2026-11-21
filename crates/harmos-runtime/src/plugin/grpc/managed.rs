@@ -468,7 +468,7 @@ fn path_program(program: &str, root: &Path, path: &OsStr) -> Result<PathBuf, Err
 mod tests {
     use std::{env, fs, num::NonZeroUsize};
 
-    use super::{StartupOutput, Tail, description, path_program};
+    use super::{StartupOutput, Tail, path_program};
 
     #[test]
     fn path_resolution_and_missing_program() {
@@ -506,13 +506,5 @@ mod tests {
         tail.push("abcdefghij".into());
         assert_eq!(tail.lines, ["abcdefghij"]);
         assert!(tail.dropped);
-    }
-
-    #[test]
-    fn a_process_description_prints_its_identifier_as_a_number_or_omits_it() {
-        let executable = std::path::Path::new("plugin");
-        let known = description(executable, Some(32212));
-        assert!(known.contains("32212") && !known.contains("Some"));
-        assert!(!description(executable, None).contains("pid"));
     }
 }

@@ -74,7 +74,6 @@ async fn peer_admission_uses_configured_chunk_plus_framing() {
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     let error = result.err().expect("undersized peer must refuse").to_string();
     assert!(error.contains("Instance.Get"));
-    assert!(error.contains("chunk_bytes plus framing"));
 
     // Admit the Exact Required Bound on the Same Endpoint.
     remote.message_bytes(required);

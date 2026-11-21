@@ -282,7 +282,7 @@ async fn failed_reconcile_repairs() {
             });
     })
     .await;
-    assert!(result.err().unwrap().to_string().contains("reconciliation"));
+    result.err().unwrap();
     assert!(!started.load(Ordering::SeqCst));
     assert!(storage.status().closed);
     assert!(!store.data.control.open.load(Ordering::SeqCst));

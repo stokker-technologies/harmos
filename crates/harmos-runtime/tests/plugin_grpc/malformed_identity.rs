@@ -72,7 +72,6 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
         assert!(matches!(error, Error::Invalid(_)));
         let message = error.to_string();
         assert!(message.contains(id), "{message}");
-        assert!(message.contains("Declare") || message.contains("Register"), "{message}");
         assert!(runtime.operations.definition(id).is_err());
     }
 

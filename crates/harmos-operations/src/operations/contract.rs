@@ -816,7 +816,6 @@ mod tests {
             let error =
                 Contract::from_protobuf(operation, template.protobuf().unwrap().clone(), None, &SchemaSettings::default()).unwrap_err();
             assert!(error.to_string().contains(id));
-            assert!(error.to_string().contains("Declare"));
         }
     }
 

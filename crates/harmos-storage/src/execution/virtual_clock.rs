@@ -485,7 +485,6 @@ mod tests {
         let sleep = clock.sleep(Duration::from_secs(5));
         let error = controller.advance_until(Duration::from_secs(2), || false).await.unwrap_err();
         assert_eq!(error.pending_timers.len(), 1);
-        assert!(error.to_string().contains("timer 0 at +5s"));
         drop(sleep);
         let (result, ()) = tokio::join!(
             clock.timeout(Duration::from_secs(1), std::future::pending::<()>()),

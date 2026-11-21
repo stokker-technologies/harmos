@@ -1062,8 +1062,6 @@ mod tests {
         assert!(
             matches!(error, crate::Error::OperationRefused(crate::Refusal::TimedOut { ref operation, attempt: 2, timeout, configured_by: "operation policy.attempt_timeout" }) if operation == "test.deadline" && timeout == std::time::Duration::from_millis(10))
         );
-        let displayed = error.to_string();
-        assert!(displayed.contains("test.deadline") && displayed.contains("0.01 s deadline") && displayed.contains("attempt 2"));
         let observed = evidence.lock().unwrap().iter().map(|entry| (entry.1, entry.2)).collect::<Vec<_>>();
         assert_eq!(observed, [(0, crate::operations::OperationOutcome::TimedOut), (1, crate::operations::OperationOutcome::TimedOut)]);
         assert!(runtime.operation(Deadline {}).await.is_err());

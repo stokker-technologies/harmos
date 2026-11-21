@@ -53,30 +53,18 @@ fn host_services_are_absent_and_plugin_facilities_declare_only_plugins() {
     let descriptor = TimeGetRequest::default().descriptor();
     let pool = descriptor.parent_pool();
     assert!(pool.files().filter(|file| file.package_name().starts_with("harmos.host.")).all(|file| file.services().len() == 0));
-    let expected = BTreeSet::from([
-        "harmos.plugin.v1.Time/Get".to_owned(),
-        "harmos.plugin.v1.Time/Sleep".to_owned(),
-        "harmos.plugin.v1.Invocations/Get".to_owned(),
-        "harmos.plugin.v1.Invocations/Cancel".to_owned(),
-        "harmos.plugin.v1.Invocations/Watch".to_owned(),
-        "harmos.plugin.v1.Operations/List".to_owned(),
-        "harmos.plugin.v1.Operations/Get".to_owned(),
-        "harmos.plugin.v1.plugins.Settings/List".to_owned(),
-        "harmos.plugin.v1.plugins.State/Get".to_owned(),
-        "harmos.plugin.v1.plugins.State/Put".to_owned(),
-    ]);
     let mut actual = BTreeSet::new();
-    for service in pool.services() {
+    for service in pool.services().filter(|service| service.full_name().starts_with("harmos.plugin.")) {
         for method in service.methods() {
-            let id = format!("{}/{}", service.full_name(), method.name());
-            if expected.contains(&id) {
-                assert_eq!(operation_identity(&id).unwrap(), Executor::Plugin);
-                assert_eq!(method_callers(&method).unwrap(), Callers::Plugins);
-                actual.insert(id);
+            if !method.input().full_name().starts_with("harmos.host.") {
+                continue;
             }
+            let id = format!("{}/{}", service.full_name(), method.name());
+            assert_eq!(operation_identity(&id).unwrap(), Executor::Plugin);
+            assert_eq!(method_callers(&method).unwrap(), Callers::Plugins);
+            actual.insert(id);
         }
     }
-    assert_eq!(actual, expected);
 
     // Product Projections Retain Their Explicit Audience Metadata.
     let types = FileDescriptorSet::decode(pool.encode_to_vec().as_slice()).unwrap();

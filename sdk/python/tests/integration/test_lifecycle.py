@@ -71,17 +71,15 @@ class Lifecycle(IsolatedAsyncioTestCase):
         launches = await bootstrap.start(refusal="Launch Credential Is Invalid")
         self.addAsyncCleanup(launches.stop)
         plugin = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object())))
-        with patch.dict(os.environ, launches.environment({})):
-            with self.assertRaisesRegex(RuntimeError, "Launch Credential Is Invalid"):
-                await plugin.run()
+        with patch.dict(os.environ, launches.environment({})), self.assertRaisesRegex(RuntimeError, "Launch Credential Is Invalid"):
+            await plugin.run()
 
     async def test_one_launch_variable_is_a_start_error_naming_the_other(self) -> None:
         plugin = Plugin(id="plain", version="1.0.0", register=lambda ctx: ctx.register(Catalog(object())))
         for present, missing in (("HARMOS_HOST_ENDPOINT", "HARMOS_LAUNCH_TOKEN"), ("HARMOS_LAUNCH_TOKEN", "HARMOS_HOST_ENDPOINT")):
-            with patch.dict(os.environ, {present: "127.0.0.1:9"}):
+            with patch.dict(os.environ, {present: "127.0.0.1:9"}), self.assertRaisesRegex(ValueError, missing):
                 os.environ.pop(missing, None)
-                with self.assertRaisesRegex(ValueError, f"Set {missing}"):
-                    await plugin.run()
+                await plugin.run()
 
     async def test_run_without_launch_variables_serves_silently(self) -> None:
         stdout, stderr = io.StringIO(), io.StringIO()

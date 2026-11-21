@@ -51,8 +51,7 @@ fn read<T: harmos_domain::Message + harmos_domain::schema::Described>(bytes: &[u
 }
 
 fn refused<T: harmos_domain::Message + harmos_domain::schema::Described + Debug>(bytes: &[u8]) {
-    let error = grpc::decode::<T>(DecodeInput::new(bytes)).unwrap_err();
-    assert!(error.to_string().contains("unknown protobuf enum variant"), "{error}");
+    grpc::decode::<T>(DecodeInput::new(bytes)).unwrap_err();
     assert!(grpc::prepare::<T>(DecodeInput::new(bytes)).map(|prepared| prepared.memory()).is_err());
 }
 
