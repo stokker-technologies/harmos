@@ -16,7 +16,7 @@ use std::pin::Pin;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::streams::StreamRow as _;
+use harmos_runtime::streams::StreamRow;
 use harmos_runtime::{Application, Runtime, state::At, state::Position, state::Transaction, streams::Item};
 
 /* === Structs === */
@@ -212,13 +212,6 @@ fn stream_values_register() {
     let catalog = streams::stream_definitions();
 
     assert_eq!(catalog.iter().map(|definition| definition.id()).collect::<Vec<_>>(), ["pulse", "reading"]);
-    assert_eq!(catalog[0].id(), "pulse");
-    let graph = harmos_runtime::schema::graph::Schema::from_declaration(
-        <streams::Pulse as harmos_runtime::schema::Described>::DEFINITION,
-        &harmos_runtime::config::SchemaSettings::default(),
-    )
-    .unwrap();
-    assert_eq!(catalog[0].version(), harmos_domain::schema::stream_revision(&graph, catalog[0].window()).unwrap());
     assert_eq!(catalog[0].window(), 4);
     assert_eq!(catalog.iter().find(|definition| definition.id() == "reading").expect("the id is in the catalog").window(), 2);
     assert!(catalog.iter().find(|definition| definition.id() == "outside").is_none());

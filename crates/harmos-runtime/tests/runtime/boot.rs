@@ -164,7 +164,6 @@ async fn read_stamped_position() {
 
     assert_eq!(read.value, "draft");
     assert_eq!(read.position, receipt.position);
-    assert!(read.position >= receipt.position);
 }
 
 #[tokio::test]

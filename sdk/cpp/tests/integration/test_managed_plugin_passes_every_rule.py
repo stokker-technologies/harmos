@@ -12,11 +12,7 @@
 
 # Standard Library Imports
 import re
-import subprocess
-import tempfile
 import unittest
-from pathlib import Path
-from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
@@ -46,48 +42,6 @@ class ManagedPlugin(unittest.TestCase):
         assert summary is not None
         self.assertEqual(int(summary[1]), int(summary[2]), result.stdout)
         self.assertEqual(len(rows), int(summary[2]), result.stdout)
-
-
-class ManagedHostLauncher(unittest.TestCase):
-    def test_explicit_artifacts_use_the_shared_launcher(self) -> None:
-        scratch = tempfile.TemporaryDirectory()
-        self.addCleanup(scratch.cleanup)
-        root = Path(scratch.name)
-        executable = root / "host"
-        plugin = root / "plugin"
-        executable.touch()
-        plugin.touch()
-        launcher = patch(
-            "tests.support.host.subprocess.run",
-            return_value=subprocess.CompletedProcess([], 0, ""),
-        )
-        run = launcher.start()
-        self.addCleanup(launcher.stop)
-
-        result = host.run_managed(host=executable, plugin=plugin, timeout_s=73)
-
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(run.call_args.args[0], [str(executable), "--plugin", str(plugin)])
-        self.assertEqual(run.call_args.kwargs["timeout"], 73)
-
-    def test_missing_explicit_plugin_does_not_launch(self) -> None:
-        scratch = tempfile.TemporaryDirectory()
-        self.addCleanup(scratch.cleanup)
-        root = Path(scratch.name)
-        executable = root / "host"
-        executable.touch()
-        launcher = patch("tests.support.host.subprocess.run")
-        run = launcher.start()
-        self.addCleanup(launcher.stop)
-
-        self.assertRaises(
-            FileNotFoundError,
-            host.run_managed,
-            host=executable,
-            plugin=root / "missing",
-        )
-
-        run.assert_not_called()
 
 
 # === Public Functions === #

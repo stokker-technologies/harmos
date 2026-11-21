@@ -56,14 +56,14 @@ class FakeOpener:
 class ProviderRetryTests(unittest.TestCase):
     def test_transient_responses(self) -> None:
         cases = (
-            ("DELETE", [502, 404], None, 2),
-            ("GET", [503, 503, 200], b"{}", 3),
-            ("POST", [429, 200], b"{}", 2),
-            ("POST", [502], policy.ToolError, 1),
-            ("PATCH", [502, 502, 502, 502], policy.ToolError, registry.RETRY_ATTEMPTS),
-            ("PUT", [404], policy.ToolError, 1),
+            ("DELETE", [502, 404], None, 2, [2]),
+            ("GET", [503, 503, 200], b"{}", 3, [2, 4]),
+            ("POST", [429, 200], b"{}", 2, [2]),
+            ("POST", [502], policy.ToolError, 1, []),
+            ("PATCH", [502, 502, 502, 502], policy.ToolError, 4, [2, 4, 8]),
+            ("PUT", [404], policy.ToolError, 1, []),
         )
-        for method, codes, expected, calls in cases:
+        for method, codes, expected, calls, expected_pauses in cases:
             with self.subTest(method=method, codes=codes):
                 opener = FakeOpener(codes)
                 pauses: list[float] = []
@@ -79,7 +79,7 @@ class ProviderRetryTests(unittest.TestCase):
                     else:
                         self.assertEqual(registry.request(settings, "releases/1", method), expected)
                 self.assertEqual(opener.methods, [method] * calls)
-                self.assertEqual(pauses, [registry.RETRY_PAUSE_SECONDS * 2**index for index in range(calls - 1)])
+                self.assertEqual(pauses, expected_pauses)
 
 
 # === Public Functions === #
