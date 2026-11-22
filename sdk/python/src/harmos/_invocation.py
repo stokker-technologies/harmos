@@ -14,7 +14,7 @@
 import asyncio
 import copy
 from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine
 from typing import TYPE_CHECKING, Protocol
 
 # Third Party Imports
