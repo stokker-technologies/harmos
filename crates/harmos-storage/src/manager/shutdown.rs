@@ -43,6 +43,7 @@ impl StorageManager {
                 state.status.closing = true;
                 state.close_followers();
             }
+            self.inner.query_active.close();
             self.inner.notify();
 
             let mut lifecycle =

@@ -54,27 +54,26 @@ impl StorageManager {
     pub(crate) async fn open_production_follower(&self, file: &StagedFile, offset: u64) -> Result<ProductionFollower> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.follow_production", outcome = "cancelled"));
-        context.result(span, async {
-        self.inner.primary.get_history().check(&file.history)?;
+        context
+            .result(span, async {
+                self.inner.primary.get_history().check(&file.history)?;
 
-        let changed = self.inner.changed.subscribe();
-        let progress = self.production_progress(file).await?;
-        if offset > progress.length {
-            tracing::error!(file = %file.id, offset, available = progress.length, reason = "offset exceeds retained bytes", "file following rejected");
-            return Err(Error::InvalidInput { field: "file offset", reason: "offset exceeds retained bytes" });
-        }
-        Ok(ProductionFollower {
-            context: crate::execution::Context::current(),
-            manager: self.clone(),
-            file: file.clone(),
-            offset,
-            progress,
-            changed,
-
-
-        })
-
-        }).await
+                let changed = self.inner.changed.subscribe();
+                let progress = self.production_progress(file).await?;
+                if offset > progress.length {
+                    tracing::error!(file = %file.id, offset, available = progress.length, reason = "offset exceeds retained bytes", "file following rejected");
+                    return Err(Error::InvalidInput { field: "file offset", reason: "offset exceeds retained bytes" });
+                }
+                Ok(ProductionFollower {
+                    context: crate::execution::Context::current(),
+                    manager: self.clone(),
+                    file: file.clone(),
+                    offset,
+                    progress,
+                    changed,
+                })
+            })
+            .await
     }
 
     #[tracing::instrument(name = "storage.file_production.get_file_production", level = "debug", skip_all)]
@@ -86,7 +85,6 @@ impl StorageManager {
 
     pub(crate) async fn production_progress(&self, file: &StagedFile) -> Result<FileProgress> {
         self.inner.primary.get_history().check(&file.history)?;
-        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         {
             let state = self.inner.state.lock().unwrap();
             if state.status.closing || !state.ready {
@@ -97,7 +95,7 @@ impl StorageManager {
             }
         }
 
-        self.inner.bounded("primary.get_file_production", self.inner.primary.get_file_production(file)).await
+        self.inner.read("primary.get_file_production", self.inner.primary.get_file_production(file)).await
     }
 }
 
@@ -130,16 +128,13 @@ impl ProductionFollower {
                     let maximum = crate::file_batch::batch_limit(ceiling, self.offset, remaining, false)?;
                     let size = maximum.get();
 
-                    let _lifecycle =
-                        tracing::Instrument::instrument(self.manager.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait"))
-                            .await;
                     if self.manager.inner.state.lock().unwrap().status.closing {
                         return Err(Error::Closing { domain: "storage file reader" });
                     }
                     let bytes = self
                         .manager
                         .inner
-                        .bounded(
+                        .read(
                             "primary.get_file_production_bytes",
                             self.manager.inner.primary.get_file_production_bytes(&self.file, self.offset, maximum),
                         )
