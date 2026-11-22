@@ -201,9 +201,9 @@ pub enum Error {
     Deadline { action: &'static str },
 
     #[error(
-        "Grant Sample Window: stream `{stream}` fell {lag:?} behind its window end, past PlacementSettings::interval_lag ({limit:?}); lower the stream's declared rate, the number of streams or the window length"
+        "Grant Sample Window: stream `{stream}` fell {lag:?} behind its window end, past PlacementSettings::interval_lag ({limit:?}) for {consecutive_windows} consecutive windows; lower the stream's declared rate, the number of streams or the window length, then reattach the plugin or start the scope's samples again"
     )]
-    Lagging { stream: String, lag: Duration, limit: Duration },
+    Lagging { stream: String, lag: Duration, limit: Duration, consecutive_windows: u32 },
 
     #[error(
         "Publish Samples: stream `{stream}` found the shared plugin publication pool ({bytes} bytes, {rows} rows) full of rows storage has not taken in; lower the declared rates, the number of streams or the window length"
