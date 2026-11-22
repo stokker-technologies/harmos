@@ -85,6 +85,16 @@ harmos::model::Failure failure() {
 
 harmos::plugin::Plugin harmos::conformance::plugin() {
   harmos::plugin::Plugin result("conformance", "1.0.0");
+  result.failure_mapper([](std::exception_ptr error) -> std::optional<harmos::OperationError> {
+    try {
+      std::rethrow_exception(error);
+    } catch (const std::runtime_error &cause) {
+      if (string(cause.what()) == "Fixture Failure")
+        return harmos::OperationError(failure());
+    } catch (...) {
+    }
+    return std::nullopt;
+  });
   result.lane(harmos::plugin::Lane::serial("instrument"))
       .lane(harmos::plugin::Lane::concurrent("parallel", 2))
       .lane(harmos::plugin::Lane::unbounded("open"))
@@ -130,7 +140,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.failure", harmos::VISIBILITY_PUBLIC,
                                                      [](Context &, Value) -> Value {
-                                                       throw harmos::OperationError(failure());
+                                                       throw std::runtime_error("Fixture Failure");
                                                      })
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.child_failure", harmos::VISIBILITY_PUBLIC,

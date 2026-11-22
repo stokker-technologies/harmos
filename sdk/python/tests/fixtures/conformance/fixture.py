@@ -113,26 +113,7 @@ class Fixture:
 
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
-        raise OperationError(
-            model.Failure(
-                classification=CLASSIFICATION_PERMANENT,
-                code="fixture_failure",
-                message="Fixture Failed",
-                action="Use Another Input",
-                operation="conformance.failure",
-                plugin="conformance",
-                cause=model.Failure(
-                    classification=CLASSIFICATION_TRANSIENT,
-                    code="fixture_cause",
-                    message="Fixture Cause",
-                    action="Retry",
-                    operation="conformance.host.fail",
-                    plugin="host",
-                ),
-                details={"fixture": "value"},
-                diagnostics="Fixture Diagnostics",
-            )
-        )
+        raise ValueError("Fixture Failure")
 
     @operation("conformance.child_failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def child_failure(self, ctx: Context, request: Value) -> Value:
@@ -360,7 +341,9 @@ class ClockFixture:
 
 
 def plugin() -> Plugin:
-    return Plugin(id="conformance", version="1.0.0", register=register, lanes=[INSTRUMENT, PARALLEL, OPEN, OTHER])
+    return Plugin(
+        id="conformance", version="1.0.0", register=register, lanes=[INSTRUMENT, PARALLEL, OPEN, OTHER], failure_mapper=map_failure
+    )
 
 
 def register(ctx: Registrar) -> None:
@@ -408,3 +391,28 @@ def catalog() -> Catalog:
 def _settled(task: Task[Value]) -> None:
     if not task.cancelled():
         task.exception()
+
+
+def map_failure(error: Exception) -> OperationError | None:
+    if isinstance(error, ValueError) and str(error) == "Fixture Failure":
+        return OperationError(
+            model.Failure(
+                classification=CLASSIFICATION_PERMANENT,
+                code="fixture_failure",
+                message="Fixture Failed",
+                action="Use Another Input",
+                operation="conformance.failure",
+                plugin="conformance",
+                cause=model.Failure(
+                    classification=CLASSIFICATION_TRANSIENT,
+                    code="fixture_cause",
+                    message="Fixture Cause",
+                    action="Retry",
+                    operation="conformance.host.fail",
+                    plugin="host",
+                ),
+                details={"fixture": "value"},
+                diagnostics="Fixture Diagnostics",
+            )
+        )
+    return None

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#nullable enable
+
 using System.Buffers.Binary;
 using System.Text.Json.Nodes;
 using System.Collections.Generic;
@@ -36,7 +38,7 @@ public sealed class Fixture
   private static readonly Lane Other = Lane.Serial("other");
 
   public global::Harmos.Plugins.Plugin Build() => new global::Harmos.Plugins.Plugin("conformance", "1.0.0")
-      .Lane(Instrument).Lane(Parallel).Lane(Open).Lane(Other).Register(Register);
+      .Lane(Instrument).Lane(Parallel).Lane(Open).Lane(Other).FailureMapper(MapFailure).Register(Register);
 
   private void Register(Registrar ctx)
   {
@@ -281,26 +283,29 @@ public sealed class Fixture
 
   private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.Operation(hostFail, request);
 
-  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new OperationException(new Failure
-  {
-    Classification = Classification.Permanent,
-    Code = "fixture_failure",
-    Message = "Fixture Failed",
-    Action = "Use Another Input",
-    Operation = "conformance.failure",
-    Plugin = "conformance",
-    Diagnostics = "Fixture Diagnostics",
-    Details = { ["fixture"] = "value" },
-    Cause = new Failure
-    {
-      Classification = Classification.Transient,
-      Code = "fixture_cause",
-      Message = "Fixture Cause",
-      Action = "Retry",
-      Operation = "conformance.host.fail",
-      Plugin = "host"
-    }
-  });
+  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new InvalidOperationException("Fixture Failure");
+
+  private static OperationException? MapFailure(Exception error) =>
+      error is InvalidOperationException && error.Message == "Fixture Failure" ? new OperationException(new Failure
+      {
+        Classification = Classification.Permanent,
+        Code = "fixture_failure",
+        Message = "Fixture Failed",
+        Action = "Use Another Input",
+        Operation = "conformance.failure",
+        Plugin = "conformance",
+        Diagnostics = "Fixture Diagnostics",
+        Details = { ["fixture"] = "value" },
+        Cause = new Failure
+        {
+          Classification = Classification.Transient,
+          Code = "fixture_cause",
+          Message = "Fixture Cause",
+          Action = "Retry",
+          Operation = "conformance.host.fail",
+          Plugin = "host"
+        }
+      }) : null;
 
   private Task<Value> Sequence(global::Harmos.Plugins.Context context)
   {

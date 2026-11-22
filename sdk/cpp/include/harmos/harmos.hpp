@@ -87,7 +87,7 @@ struct OperationDefinition {
   OperationContract contract;
   bool watch = false;
   google::protobuf::FileDescriptorSet types;
-  std::function<std::string(Context &, const std::string &)> handler;
+  std::function<std::function<std::string(Context &)>(const std::string &)> prepare;
 };
 struct Sampling {
   std::mutex mutex;
@@ -448,8 +448,10 @@ public:
     definition.types = request;
     detail::merge(definition.types, response);
     if (handler)
-      definition.handler = [handler](Context &ctx, const std::string &bytes) {
-        return detail::encode(handler(ctx, decode<Q>(bytes)));
+      definition.prepare = [handler](const std::string &bytes) -> std::function<std::string(Context &)> {
+        return [handler, request = decode<Q>(bytes)](Context &ctx) {
+          return detail::encode(handler(ctx, request));
+        };
       };
   }
   Operation &lane(const Lane &lane) {

@@ -168,20 +168,34 @@ public:
       started_ = true;
       worker = thread([this, operation] {
         plugin::v1::InstanceInvokeResponse frame;
+        std::function<string(Context &)> handler;
+        try {
+          handler = operation->prepare(state_->request.payload());
+        } catch (const TransportError &error) {
+          end({static_cast<StatusCode>(error.code), error.what()});
+          return;
+        }
         try {
           Context context(state_);
-          frame.mutable_response()->set_payload(operation->handler(context, state_->request.payload()));
+          frame.mutable_response()->set_payload(handler(context));
         } catch (const OperationError &failure) {
           *frame.mutable_response()->mutable_failure() = failure.value;
-        } catch (const exception &error) {
-          auto mapped = failure_mapper_ ? failure_mapper_(std::current_exception()) : optional<OperationError>{};
+        } catch (...) {
+          auto error = std::current_exception();
+          auto mapped = failure_mapper_ ? failure_mapper_(error) : optional<OperationError>{};
           auto *failure = frame.mutable_response()->mutable_failure();
           if (mapped) {
             *failure = mapped->value;
           } else {
             failure->set_classification(model::v1::CLASSIFICATION_PERMANENT);
             failure->set_code("handler_failed");
-            failure->set_message(error.what());
+            try {
+              std::rethrow_exception(error);
+            } catch (const exception &cause) {
+              failure->set_message(cause.what());
+            } catch (...) {
+              failure->set_message("Handler Failed Without Exception Text");
+            }
             failure->set_action("Inspect Plugin Diagnostics");
           }
         }

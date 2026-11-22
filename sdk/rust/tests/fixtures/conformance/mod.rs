@@ -192,6 +192,10 @@ impl OperationRequest for HostFail {
 
 pub fn plugin() -> Plugin {
     Plugin::new("conformance", "1.0.0")
+        .failure_mapper(|error| match error.downcast_ref::<harmos::Error>() {
+            Some(harmos::Error::Io(error)) if error.to_string() == "Fixture Failure" => Some(fixture_failure().into()),
+            _ => None,
+        })
         .lane(Lane::serial("instrument"))
         .lane(Lane::concurrent("parallel", 2))
         .lane(Lane::unbounded("open"))
@@ -449,7 +453,11 @@ async fn child_failure(ctx: &Context, request: Value) -> Result<Value> {
 }
 
 async fn failure(_: &Context, _: Value) -> Result<Value> {
-    Err(Failure {
+    Err(std::io::Error::other("Fixture Failure").into())
+}
+
+fn fixture_failure() -> Failure {
+    Failure {
         classification: Classification::Permanent as i32,
         code: "fixture_failure".into(),
         message: "Fixture Failed".into(),
@@ -469,7 +477,6 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
         diagnostics: "Fixture Diagnostics".into(),
         retry: None,
     }
-    .into())
 }
 
 async fn sequence(ctx: &Context) -> Result<Value> {

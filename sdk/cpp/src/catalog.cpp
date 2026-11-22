@@ -249,7 +249,7 @@ model::v1::Declarations Plugin::declarations() const {
         throw invalid_argument("Declare Operation `" + contract.id() + "` Lane `" + contract.lane() + "`: Declare This Lane in the Plugin");
       }
     }
-    if (!operations.insert(operation.contract.id()).second || !operation.handler) {
+    if (!operations.insert(operation.contract.id()).second || !operation.prepare) {
       throw invalid_argument("Duplicate or Unhandled Operation");
     }
     const auto visibility = operation.contract.visibility();
