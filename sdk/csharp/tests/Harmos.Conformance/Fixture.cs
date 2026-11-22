@@ -247,6 +247,18 @@ public sealed class Fixture
 
   private async Task<Value> ClockCall(global::Harmos.Plugins.Context context, Value request)
   {
+    if (request.Value_ == ByteString.CopyFromUtf8("wind_down"))
+    {
+      if (context.WindDownRequested)
+        throw new InvalidOperationException("Wind Down Was Requested Before the Host Signal");
+      await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
+      if (!context.WindDownRequested)
+        throw new InvalidOperationException("Wind Down Signal Was Not Observed");
+      await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
+      if (!context.WindDownRequested)
+        throw new InvalidOperationException("Wind Down State Was Lost");
+      return new Value { Value_ = ByteString.CopyFromUtf8("wound down") };
+    }
     var before = await context.Host.Time.Get();
     await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
     var after = await context.Host.Time.Get();

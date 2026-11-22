@@ -396,6 +396,7 @@ class _SamplesScope:
         self.context: Context | None = None
         self.next = [0]
         self.retired: set[int] = set()
+        self.wind_down = asyncio.Event()
 
 
 class _Service:
@@ -606,6 +607,8 @@ async def _read_invoke(
                     await execution._reply(frame.child)
                 case "cancel":
                     await execution._cancel(frame.cancel.reason)
+                case "wind_down" if frame.wind_down:
+                    execution._wind_down.set()
                 case _:
                     raise ProtocolError("Expected Child Response or Cancel")
         if execution._pending or execution._watches:
@@ -624,6 +627,9 @@ async def _read_publish(
     try:
         async for frame in input:
             kind = frame.WhichOneof("frame")
+            if kind == "wind_down" and frame.wind_down:
+                scope.wind_down.set()
+                continue
             if kind == "child":
                 if scope.context is None:
                     raise ProtocolError("Reply to Samples Child: Unanswered Window Required")
@@ -638,6 +644,7 @@ async def _read_publish(
             window = _window(frame.window)
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires, _SamplesOutput(output))
             execution.sequence = window.sequence
+            execution._wind_down = scope.wind_down
             execution._next = scope.next
             execution._retired = scope.retired
             execution._local = scope.local
@@ -683,6 +690,7 @@ async def _produce(
     try:
         if not observing:
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
+            execution._wind_down = scope.wind_down
             execution._local = scope.local
             execution._instance = scope.instance
             scope.context = execution

@@ -25,6 +25,7 @@ use crate::operations::OperationInstanceId;
 use crate::operations::instances::{Instances, Reservation};
 use crate::state::Position;
 use crate::supervision::instance::{Instance, Phase, Status};
+use harmos_operations::clock::WindDown;
 
 /* === Constants === */
 
@@ -42,6 +43,7 @@ pub struct Scope<'a> {
 #[derive(Clone)]
 pub(crate) struct ScopeCore {
     clock: crate::clock::Clock,
+    wind_down: WindDown,
     cancellation: harmos_operations::execution::operations::Cancellation,
     instances: Arc<Instances>,
     parent: Weak<Instance>,
@@ -67,6 +69,10 @@ pub(crate) struct Child {
 /* === Implementations === */
 
 impl<'a> Scope<'a> {
+    pub fn wind_down(&self) -> &WindDown {
+        &self.core.wind_down
+    }
+
     pub fn cancellation(&self) -> &harmos_operations::execution::operations::Cancellation {
         &self.core.cancellation
     }
@@ -151,9 +157,18 @@ impl ScopeCore {
         &self.cancellation
     }
 
-    pub(crate) fn new(instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>) -> Self {
+    pub(crate) fn new(
+        instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>,
+        clock: Option<crate::clock::Clock>, wind_down: WindDown,
+    ) -> Self {
+        let waits = wind_down.clone();
+        let clock = clock.unwrap_or_else(|| instances.clock.clone()).with_wait_scope(move |sleep| {
+            let waits = waits.clone();
+            Box::pin(crate::clock::waiting(async move { waits.wait(sleep).await }))
+        });
         Self {
-            clock: instances.clock.clone().with_wait_scope(crate::clock::waiting_scope),
+            clock,
+            wind_down,
             cancellation: Default::default(),
             instances,
             parent,

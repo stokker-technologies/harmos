@@ -403,7 +403,15 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
     ctx.call_with(LocalInput { value: request.value }, policy).await
 }
 
-async fn clock(ctx: &Context, _: Value) -> Result<Value> {
+async fn clock(ctx: &Context, request: Value) -> Result<Value> {
+    if request.value == b"wind_down" {
+        assert!(!ctx.wind_down_requested());
+        ctx.sleep(Duration::from_secs(3600)).await?;
+        assert!(ctx.wind_down_requested());
+        ctx.sleep(Duration::from_secs(3600)).await?;
+        assert!(ctx.wind_down_requested());
+        return Ok(Value { value: b"wound down".to_vec() });
+    }
     let before = ctx.now().await?;
     ctx.sleep(Duration::from_secs(3600)).await?;
     let after = ctx.now().await?;

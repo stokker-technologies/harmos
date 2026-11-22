@@ -33,6 +33,7 @@ use crate::operations::{FailureKind, OperationPolicy, ReplaySafety};
 use crate::supervision::instance::{Instance, Outcome, Phase};
 use crate::supervision::{executor, interruptible};
 use crate::{Error, Refusal, Result, state::Position};
+use harmos_operations::clock::WindDown;
 
 /* === Constants === */
 
@@ -84,6 +85,14 @@ enum Stage<O> {
 /* === Traits === */
 
 pub(super) trait Body<O>: Send {
+    fn scope_clock(&self) -> Option<crate::clock::Clock> {
+        None
+    }
+
+    fn wind_down(&self) -> WindDown {
+        WindDown::default()
+    }
+
     /// Runs Once at Admission, Before Middleware Observes the Call.
     fn admit(&mut self) {}
 
@@ -300,7 +309,7 @@ async fn initialize<O: Send + 'static>(
     if !instance.initialize_attempt(0) {
         return Err(budget.cancelled(1).into());
     }
-    let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
+    let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance), body.scope_clock(), body.wind_down());
     let answer = bounded(budget.remaining(), body.initialize(Scope::over(&core)), cancelled).await;
     crate::clock::waiting(core.close().drain()).await;
     if *cancelled.borrow() {
@@ -330,7 +339,14 @@ async fn attempts<O: Send + 'static>(
         if !instance.attempt(attempt) {
             return Err(budget.cancelled(attempt + 1).into());
         }
-        let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
+        let core = ScopeCore::new(
+            instances.clone(),
+            admission.clone(),
+            cause,
+            Arc::downgrade(instance),
+            prepared.body.scope_clock(),
+            prepared.body.wind_down(),
+        );
         let started_at = prepared.middleware.as_ref().map(super::middleware::Session::now);
         let answer = cooperative(
             prepared.policy.attempt_timeout.min(remaining),

@@ -164,6 +164,7 @@ public:
   google::protobuf::Timestamp now();
   SettingsListResponse settings();
   std::string cancelled();
+  bool wind_down_requested() const;
   template <class T> void set(T value) {
     resources_[typeid(T)] = std::move(value);
   }

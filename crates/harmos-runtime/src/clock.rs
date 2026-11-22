@@ -11,6 +11,7 @@
 
 /* === Re-Exports === */
 
+pub use harmos_operations::clock::WindDown;
 pub use harmos_storage::execution::{
     Activity, AdvanceError, Clock as Source, Controller, Elapsed, Execution as Clock, Interval, Reading, Sleep,
 };
@@ -148,6 +149,9 @@ pub(crate) mod tests {
         _request: Wait, context: crate::operations::FunctionContext<Wait>,
     ) -> Result<crate::Response<()>, std::convert::Infallible> {
         let host = context.resource::<crate::operations::HostContext>().expect("declared resource is registered");
+        if let Some(started) = host.borrow().context().get::<Arc<tokio::sync::Notify>>() {
+            started.notify_one();
+        }
         host.borrow().scope().clock().sleep(Duration::from_secs(5)).await;
         Ok(().into())
     }
@@ -266,6 +270,36 @@ pub(crate) mod tests {
         assert_eq!(observed[0].started_at.timestamp, dates[0]);
         assert_eq!(observed[0].elapsed, Duration::from_secs(5));
         assert!(runtime.operations.clock().same_source(&clock));
+        runtime.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wind_down_releases_native_scope_waits_without_recording_failure() {
+        let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
+            setup.settings().clock(clock.clone()).operation_middleware(Arc::new(Evidence(observations.clone())));
+        })
+        .await
+        .unwrap();
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(wait_operation().unwrap());
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
+        let started = Arc::new(tokio::sync::Notify::new());
+        let wind_down = WindDown::default();
+        let mut context = crate::operations::CallContext::default();
+        context.insert(started.clone()).unwrap();
+        context.insert(wind_down.clone()).unwrap();
+        let operations = runtime.operations.with_context(context);
+        let before = clock.now();
+        let call = operations.submit::<Wait>(Wait {}).unwrap();
+        started.notified().await;
+        wind_down.request();
+        call.await.unwrap();
+        operations.operation::<Wait>(Wait {}).await.unwrap();
+        assert_eq!(clock.now(), before);
+        let observed = observations.lock().unwrap().clone();
+        assert_eq!(observed.len(), 2);
+        assert!(observed.iter().all(|attempt| attempt.outcome == crate::operations::OperationOutcome::Succeeded));
         runtime.stop().await.unwrap();
     }
 }

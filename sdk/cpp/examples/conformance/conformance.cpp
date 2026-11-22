@@ -219,7 +219,20 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     registrar.add(harmos::plugin::HostOperation::TimeSleep).add(harmos::plugin::HostOperation::TimeGet);
     registrar.add(harmos::plugin::HostOperation::PluginsSettingsList);
     registrar.add(harmos::plugin::HostOperation::OperationsList).add(harmos::plugin::HostOperation::OperationsGet);
-    registrar.add(harmos::plugin::Operation<Value, Value>("conformance.clock", harmos::VISIBILITY_PUBLIC, [](Context &ctx, Value) {
+    registrar.add(harmos::plugin::Operation<Value, Value>("conformance.clock", harmos::VISIBILITY_PUBLIC, [](Context &ctx, Value request) {
+                    if (request.value() == "wind_down") {
+                      if (ctx.wind_down_requested())
+                        throw std::runtime_error("Wind Down Was Requested Before the Host Signal");
+                      Duration duration;
+                      duration.set_seconds(3600);
+                      ctx.host().time.sleep(duration);
+                      if (!ctx.wind_down_requested())
+                        throw std::runtime_error("Wind Down Signal Was Not Observed");
+                      ctx.host().time.sleep(duration);
+                      if (!ctx.wind_down_requested())
+                        throw std::runtime_error("Wind Down State Was Lost");
+                      return value("wound down");
+                    }
                     const auto before = ctx.host().time.get();
                     Duration duration;
                     duration.set_seconds(3600);

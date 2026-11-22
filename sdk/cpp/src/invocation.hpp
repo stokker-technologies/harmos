@@ -50,6 +50,7 @@ struct Invocation {
   std::set<std::uint64_t> guards;
   std::vector<std::thread> workers;
   bool background = false;
+  std::atomic<bool> wind_down_requested = false;
   std::mutex mutex;
   std::condition_variable changed;
   std::map<std::uint64_t, std::promise<std::string>> pending;

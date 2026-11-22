@@ -514,6 +514,11 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
   return result;
 }
 
+bool Context::wind_down_requested() const {
+  auto root = state_->transport ? state_->transport : state_;
+  return root->wind_down_requested.load();
+}
+
 string Context::cancelled() {
   auto root = transport(state_);
   root->start_reading();

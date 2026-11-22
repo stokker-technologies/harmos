@@ -13,14 +13,12 @@ using Harmos.Internal.Plugin;
 using Harmos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
-using InstanceBase = Harmos.Internal.Plugin.Instance.InstanceBase;
-using Status = Grpc.Core.Status;
 
 namespace Harmos.Plugins;
 
 internal sealed class PluginService(InstanceGetResponse description, Dictionary<string, Handler> operations,
     Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime)
-    : InstanceBase
+    : Harmos.Internal.Plugin.Instance.InstanceBase
 {
   private readonly Dictionary<string, ByteString> requires = description.Declarations.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
   private readonly int limit = (int)Math.Min(description.MessageBytes, int.MaxValue);
@@ -40,7 +38,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     if (request.Invocation.Length == 0 || request.Attempt == 0)
       throw Invalid("Invocation and Attempt Are Required");
     if (!operations.TryGetValue(request.Operation, out var handler) || handler.Contract.Visibility == Visibility.Private)
-      throw new RpcException(new Status(StatusCode.NotFound, "Unknown Operation"));
+      throw new RpcException(new global::Grpc.Core.Status(StatusCode.NotFound, "Unknown Operation"));
 
     IMessage decoded;
     try
@@ -91,7 +89,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         if (!await reading)
         {
           if (context.HasPendingCalls)
-            throw new RpcException(new Status(StatusCode.Unavailable, "Host Closed Before Child Replies"));
+            throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Host Closed Before Child Replies"));
           inputClosed = true;
           reading = null;
           continue;
@@ -104,6 +102,9 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
             break;
           case InstanceInvokeRequest.FrameOneofCase.Cancel:
             await context.Cancel(frame.Cancel.Reason);
+            break;
+          case InstanceInvokeRequest.FrameOneofCase.WindDown when frame.WindDown:
+            context.RequestWindDown();
             break;
           default:
             throw Invalid("Expected Child Response or Cancel");
@@ -177,7 +178,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       throw Invalid("Open Must Be First");
     var open = input.Current.Open;
     if (!streams.TryGetValue(open.Stream, out var publication))
-      throw new RpcException(new Status(StatusCode.NotFound, "Unknown Stream"));
+      throw new RpcException(new global::Grpc.Core.Status(StatusCode.NotFound, "Unknown Stream"));
 
     // The Host Must Receive Headers Before It Can Grant the First Window.
     await call.WriteResponseHeadersAsync(new Metadata());
@@ -198,6 +199,12 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         reading = input.MoveNext(readingStopped.Token);
         while (await reading)
         {
+          if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.WindDown && input.Current.WindDown)
+          {
+            context.RequestWindDown();
+            reading = input.MoveNext(readingStopped.Token);
+            continue;
+          }
           var window = Grant(input.Current);
           windowStopped = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
           var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
@@ -208,6 +215,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
             At = window.Start.Clone(),
             LastCall = lastCall
           };
+          if (context.WindDownRequested)
+            windowContext.RequestWindDown();
           observing = publication.Observer(windowContext, window);
           reading = input.MoveNext(readingStopped.Token);
           Task<bool>? available = null;
@@ -217,6 +226,13 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
             {
               if (!await reading)
                 return;
+              if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.WindDown && input.Current.WindDown)
+              {
+                context.RequestWindDown();
+                windowContext.RequestWindDown();
+                reading = input.MoveNext(readingStopped.Token);
+                continue;
+              }
               if (input.Current.FrameCase != InstanceSamplesRequest.FrameOneofCase.Child)
                 throw Invalid("Read Samples: Send Only Child Replies Until the Unanswered Window's Last Part");
               await windowContext.Reply(input.Current.Child);
@@ -240,7 +256,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
           {
             var response = new InstanceSamplesResponse { Batch = part };
             if (response.CalculateSize() > limit)
-              throw new RpcException(new Status(StatusCode.Internal, $"Answer {open.Stream}: A Part Exceeds the {limit}-Byte Message Limit; Report This SDK Defect"));
+              throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal, $"Answer {open.Stream}: A Part Exceeds the {limit}-Byte Message Limit; Report This SDK Defect"));
             await output.WriteAsync(response, call.CancellationToken);
           }
           windowContext = null;
@@ -261,6 +277,12 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         {
           if (!await reading)
             break;
+          if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.WindDown && input.Current.WindDown)
+          {
+            context.RequestWindDown();
+            reading = input.MoveNext(readingStopped.Token);
+            continue;
+          }
           throw Invalid(input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.Window
               ? "Read Samples: Grant Windows Only to Interval Streams"
               : "Read Samples: Send No Frames After Open on Device Streams");
@@ -371,5 +393,5 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     return new InstanceStopResponse();
   }
 
-  private static RpcException Invalid(string message) => new(new Status(StatusCode.InvalidArgument, message));
+  private static RpcException Invalid(string message) => new(new global::Grpc.Core.Status(StatusCode.InvalidArgument, message));
 }

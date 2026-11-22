@@ -98,6 +98,7 @@ pub const CASES: &[&str] = &[
     "Oversized Sample Refusal",
     "Plugin Lane Description Facts",
     "Plugin Lane Admission and Cancellation",
+    "Scope Wind-Down Without Cancellation",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -530,6 +531,27 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
+        44 => {
+            // A Carrier Notification Precedes Normally Completed Host Waits.
+            let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(b"wind_down")).await?;
+            let sleep = TimeSleepRequest {
+                duration: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
+            }
+            .encode_to_vec();
+            child(&mut input, 1, "harmos.plugin.v1.Time/Sleep", &sleep).await?;
+            send.send(InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::WindDown(true)),
+            })
+            .await
+            .map_err(|_| Error::Invalid("Request Wind Down: carrier closed".into()))?;
+            send_child(&send, 1, child_response::Result::Payload(Vec::new())).await?;
+            child(&mut input, 2, "harmos.plugin.v1.Time/Sleep", &sleep).await?;
+            send_child(&send, 2, child_response::Result::Payload(Vec::new())).await?;
+            require(
+                terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"wound down")),
+                "Wind Down: Complete Normally With Sticky Context State",
+            )?;
+        }
         42 => {
             let declared = description.declarations.ok_or_else(|| Error::Invalid("Declare Lanes: Return Declarations".into()))?;
             let expected = fixture::declarations();

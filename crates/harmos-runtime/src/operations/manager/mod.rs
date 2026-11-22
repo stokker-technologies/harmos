@@ -50,6 +50,7 @@ use super::binding::Typed;
 use super::caller::{Origin, Source};
 use super::lane;
 use super::{OperationGeneration, OperationInstanceId, Running};
+use harmos_operations::clock::WindDown;
 
 use super::instances::Instances;
 #[cfg(feature = "plugin-guest")]
@@ -224,7 +225,15 @@ impl Manager {
         let clock = match self.call_context().get::<Arc<super::clock::Unit>>() {
             Some(unit) => {
                 let windows = self.call_context().get::<super::clock::WindowCall>().is_none().then(|| unit.windows.clone());
-                harmos_operations::clock::ClockAccess(Arc::new(super::clock::Registered::new(unit.clock.clone(), windows)))
+                harmos_operations::clock::ClockAccess(Arc::new(super::clock::Registered::new(
+                    unit.clock.clone(),
+                    windows,
+                    unit.wind_down.clone(),
+                )))
+            }
+            None if self.call_context().get::<WindDown>().is_some() => {
+                let wind_down = self.call_context().get::<WindDown>().expect("scope wind-down").clone();
+                harmos_operations::clock::ClockAccess(Arc::new(super::clock::Registered::new(self.clock().clone(), None, wind_down)))
             }
             None => self
                 .call_context()

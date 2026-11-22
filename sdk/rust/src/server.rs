@@ -388,6 +388,7 @@ async fn invoke(
             frame = input.message(), if !eof => match frame? {
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child).await?,
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
+                Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::WindDown(true)) }) => context.request_wind_down(),
                 None => { eof = true; if !context.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
                 _ => return Err(Status::invalid_argument("Repeated Request")),
             }
@@ -506,6 +507,7 @@ async fn samples(
                         let payload = Message::encode_to_vec(&window);
                         observing = Some((window.count, dispatch(&jobs, observer.handler.clone(), context.clone(), payload).await?));
                     }
+                    Some(instance_samples_request::Frame::WindDown(true)) => context.request_wind_down(),
                     Some(instance_samples_request::Frame::Child(child)) if observing.is_some() => context.reply(child).await?,
                     _ => return Err(Status::invalid_argument("Receive Samples: Expected a Window or an Active Child Reply")),
                 }

@@ -197,6 +197,8 @@ public:
         closed();
         return;
       }
+    } else if (input.has_wind_down() && input.wind_down()) {
+      state_->wind_down_requested = true;
     } else if (input.has_cancel()) {
       model::v1::Failure failure;
       failure.set_classification(model::v1::CLASSIFICATION_CANCELLED);

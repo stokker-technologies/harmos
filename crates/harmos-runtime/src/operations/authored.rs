@@ -31,6 +31,7 @@ use super::{Context, Manager, OperationInstanceId};
 use crate::operations::RequestShape;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Result, operations::Scope};
+use harmos_operations::clock::WindDown;
 
 /* === Constants === */
 
@@ -94,12 +95,15 @@ impl<D: RequestShape> Bound<D> {
         self.entry.available_to(&authority)?;
         let mut origin = self.source.originating().check()?;
         origin.grants = self.grants.clone();
+        let mut call = self.operations.call_context().clone();
+        call.remove::<WindDown>();
+        call.insert(scope.wind_down().clone())?;
         Ok(Context {
             id: self.id,
             attempt,
             generation: self.entry.generation,
             scope,
-            operations: self.operations.clone(),
+            operations: self.operations.with_context(call),
             admission: self.admission.clone(),
             request_claims: self.physical._request.clone(),
             source: self.source.for_attempt(&self.entry, scope, &authority),
@@ -110,6 +114,14 @@ impl<D: RequestShape> Bound<D> {
 }
 
 impl<D: RequestShape> Body<super::Response<Payload<D>>> for Bound<D> {
+    fn scope_clock(&self) -> Option<crate::clock::Clock> {
+        self.operations.call_context().get::<Arc<super::clock::Unit>>().map(|unit| unit.clock.clone())
+    }
+
+    fn wind_down(&self) -> WindDown {
+        self.operations.call_context().get::<WindDown>().cloned().unwrap_or_default()
+    }
+
     fn admit(&mut self) {
         self.physical.instance.admit();
     }

@@ -36,6 +36,7 @@ use super::{
 };
 use crate::{RetryPolicy, operations::HostContext, streams::StreamWriter, supervision::instance::Instance};
 use harmos_domain::{MemorySize, message};
+use harmos_operations::clock::WindDown;
 use harmos_operations::{
     OperationPolicy,
     execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError},
@@ -138,10 +139,13 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
     let mut staged_rows = 0_u64;
     let mut staged_bytes = 0_u128;
     let mut received = 0_u64;
+    let wind_down = host.borrow().context().get::<WindDown>().cloned().unwrap_or_default();
+    let mut winding_down = false;
     let result = loop {
         let has_children = !children.is_empty();
         enum Event {
             Cancel,
+            WindDown,
             Frame(Result<Option<InstanceSamplesResponse>, Status>),
             Child(u64, String, crate::Result<Vec<u8>>),
         }
@@ -150,12 +154,23 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
             tokio::select! {
                 biased;
                 () = context.cancellation.cancelled() => Event::Cancel,
+                () = wind_down.requested(), if !winding_down => Event::WindDown,
                 Some((call, operation, result)) = children.next(), if has_children => Event::Child(call, operation, result),
                 frame = input.message() => Event::Frame(frame),
             }
         };
         let event = if waiting { crate::clock::waiting(next).await } else { next.await };
         match event {
+            Event::WindDown => {
+                winding_down = true;
+                request
+                    .output
+                    .send(InstanceSamplesRequest {
+                        frame: Some(instance_samples_request::Frame::WindDown(true)),
+                    })
+                    .await
+                    .map_err(|_| invalid("Wind Down Sample Window: stream closed"))?;
+            }
             Event::Cancel => break Err(invalid("Answer Sample Window: window cancelled")),
             Event::Frame(frame) => {
                 // The Plugin's Status Fails This Stream's Window; Connection Loss Is Observed by the Connection Itself.

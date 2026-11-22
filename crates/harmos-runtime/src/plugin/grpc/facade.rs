@@ -197,6 +197,11 @@ impl Plugin {
 }
 
 impl Binding {
+    /// Release This Scope's Waits Normally While Its Handlers Finish.
+    pub fn request_wind_down(&self) {
+        self.state.scoped.request_wind_down();
+    }
+
     /// Bind Native Calls to This Scope's Clock and Cancellation Unit.
     pub fn for_call(&self) -> Call {
         Call::new(

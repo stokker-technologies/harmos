@@ -21,7 +21,7 @@ pub use virtual_clock::{Activity, AdvanceError, Controller, Interval};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
-use std::task::{Context as TaskContext, Poll};
+use std::task::Poll;
 use std::time::{Duration, SystemTime};
 
 // Third Party Imports
@@ -46,7 +46,7 @@ pub struct Elapsed;
 #[derive(Clone)]
 pub struct Execution {
     source: Arc<RwLock<Arc<dyn Clock>>>,
-    wait_scope: Option<fn(Sleep) -> Sleep>,
+    wait_scope: Option<Arc<dyn Fn(Sleep) -> Sleep + Send + Sync>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -137,8 +137,8 @@ impl Execution {
     }
 
     /// Decorate explicit waits while preserving the source and leaving deadlines active.
-    pub fn with_wait_scope(mut self, scope: fn(Sleep) -> Sleep) -> Self {
-        self.wait_scope = Some(scope);
+    pub fn with_wait_scope(mut self, scope: impl Fn(Sleep) -> Sleep + Send + Sync + 'static) -> Self {
+        self.wait_scope = Some(Arc::new(scope));
         self
     }
 
@@ -175,7 +175,7 @@ impl Execution {
 
     pub fn sleep_until(&self, deadline: Instant) -> Sleep {
         let timer = self.timer_until(deadline);
-        match self.wait_scope {
+        match &self.wait_scope {
             Some(scope) => scope(timer),
             None => timer,
         }
@@ -284,7 +284,7 @@ impl Drop for Context {
 impl<F: Future> Future for Scoped<F> {
     type Output = F::Output;
 
-    fn poll(self: Pin<&mut Self>, task: &mut TaskContext<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, task: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         let context = &this.context;
         let future = this.future.as_mut().expect("scoped future remains owned while polling");

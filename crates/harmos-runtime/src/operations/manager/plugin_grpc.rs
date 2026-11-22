@@ -25,6 +25,7 @@ use super::*;
 use crate::operations::lane;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
 use crate::plugin::grpc::{self, Activation, invoke::Binding};
+use harmos_operations::clock::WindDown;
 use harmos_protocol::host::InvocationsCreateRequest;
 use harmos_protocol::model;
 use harmos_protocol::plugin::ChildRequest;
@@ -402,6 +403,19 @@ impl crate::operations::Context<'_> {
                     reason: "host operation has no protobuf codec",
                 })?;
             let mut resources = self.operations.resources_for(&entry);
+            if child.background {
+                // Policy Deadlines Remain Active While Explicit Scope Waits Wind Down.
+                let clock = self
+                    .operations
+                    .call_context()
+                    .get::<Arc<crate::operations::clock::Unit>>()
+                    .map_or_else(|| self.operations.clock().clone(), |unit| unit.clock.clone());
+                resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(crate::operations::clock::Registered::new(
+                    clock,
+                    None,
+                    WindDown::default(),
+                )))));
+            }
             resources.replace(Arc::new(caller.clone()));
             resources.replace(Arc::new(harmos_operations::execution::operations::access::CallingPlugin { name: caller.name.clone() }));
             factory
