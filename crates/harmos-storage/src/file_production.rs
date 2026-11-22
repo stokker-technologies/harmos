@@ -95,7 +95,7 @@ impl StorageManager {
             }
         }
 
-        self.inner.read("primary.get_file_production", self.inner.primary.get_file_production(file)).await
+        self.inner.read("primary.get_file_production", || self.inner.primary.get_file_production(file)).await
     }
 }
 
@@ -134,10 +134,9 @@ impl ProductionFollower {
                     let bytes = self
                         .manager
                         .inner
-                        .read(
-                            "primary.get_file_production_bytes",
-                            self.manager.inner.primary.get_file_production_bytes(&self.file, self.offset, maximum),
-                        )
+                        .read("primary.get_file_production_bytes", || {
+                            self.manager.inner.primary.get_file_production_bytes(&self.file, self.offset, maximum)
+                        })
                         .await?;
                     if bytes.is_empty() || bytes.len() > size || bytes.capacity() > size {
                         return Err(Error::InvalidInput {

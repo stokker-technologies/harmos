@@ -103,7 +103,7 @@ impl State {
 }
 
 impl Inner {
-    pub(crate) async fn read<T>(&self, method: &'static str, future: StorageFuture<'_, T>) -> Result<T> {
+    pub(crate) async fn read<'a, T>(&'a self, method: &'static str, future: impl FnOnce() -> StorageFuture<'a, T>) -> Result<T> {
         let mut changed = self.changed.subscribe();
         let closing = async {
             loop {
@@ -117,7 +117,7 @@ impl Inner {
         };
         let reading = async {
             let _lifecycle = tracing::Instrument::instrument(self.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
-            self.bounded(method, future).await
+            self.bounded(method, future()).await
         };
         tokio::select! {
             biased;

@@ -208,7 +208,7 @@ impl Snapshot {
     pub async fn list_column_rows(&self, read: &ArrowScan, cancel: &Cancellation) -> Result<ArrowPage> {
         self.check()?;
         let future = crate::query::columnar::list_column_rows(self.inner.primary.as_ref(), &self.backend, read, cancel);
-        let page = self.inner.read("primary.list_column_rows", Box::pin(future)).await?;
+        let page = self.inner.read("primary.list_column_rows", || Box::pin(future)).await?;
         self.check()?;
         Ok(page)
     }
@@ -216,7 +216,7 @@ impl Snapshot {
     pub async fn list_index_entries(&self, read: &IndexRead, cancel: &Cancellation) -> Result<IndexPage> {
         self.check()?;
         let future = crate::query::index::list_index_entries(self.inner.primary.as_ref(), &self.backend, read, cancel);
-        let page = self.inner.read("primary.list_index_entries", Box::pin(future)).await?;
+        let page = self.inner.read("primary.list_index_entries", || Box::pin(future)).await?;
         self.check()?;
         Ok(page)
     }
@@ -237,7 +237,7 @@ impl Snapshot {
         self.check()?;
         let position = self
             .inner
-            .read("primary.get_record_position", self.inner.primary.get_record_position(&self.backend, selection, offset))
+            .read("primary.get_record_position", || self.inner.primary.get_record_position(&self.backend, selection, offset))
             .await?;
         self.check()?;
         if position.is_some_and(|position| position > self.backend.at.sequence) {
@@ -251,7 +251,7 @@ impl Snapshot {
     ) -> Result<Option<Vec<crate::RecordView>>> {
         self.check()?;
         let views =
-            self.inner.read("primary.list_record_views", self.inner.primary.list_record_views(&self.backend, selection, page)).await?;
+            self.inner.read("primary.list_record_views", || self.inner.primary.list_record_views(&self.backend, selection, page)).await?;
         self.check()?;
         let Some(views) = views else {
             return Ok(None);
@@ -276,7 +276,7 @@ impl Snapshot {
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
     pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         self.check()?;
-        let entries = self.inner.read("primary.scan", T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
+        let entries = self.inner.read("primary.scan", || T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
         self.check()?;
         let mut previous = page.after;
         let mut bytes = 0usize;
@@ -314,7 +314,7 @@ impl Snapshot {
     #[tracing::instrument(name = "storage.snapshot.get_object", level = "trace", skip_all)]
     pub async fn get_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         self.check()?;
-        let object = self.inner.read("primary.get_object", self.inner.primary.get_object(&self.backend, point)).await?;
+        let object = self.inner.read("primary.get_object", || self.inner.primary.get_object(&self.backend, point)).await?;
         self.check()?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
@@ -333,7 +333,7 @@ impl Snapshot {
     pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
         self.check()?;
         let bytes =
-            self.inner.read("primary.get_file_bytes", self.inner.primary.get_file_bytes(&self.backend, file, offset, max_bytes)).await?;
+            self.inner.read("primary.get_file_bytes", || self.inner.primary.get_file_bytes(&self.backend, file, offset, max_bytes)).await?;
         self.check()?;
         Ok(bytes)
     }

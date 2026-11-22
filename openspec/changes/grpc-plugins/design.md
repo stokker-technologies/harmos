@@ -22,7 +22,9 @@ ownership. Snapshot, file-production, query-definition and raw recovery reads us
 one manager-owned read boundary that races lifecycle acquisition and the existing
 bounded backend call against closing. Closing cancels the read and releases its
 shared lifecycle guard; idle reader handles and queued query admission do not hold
-shutdown open. Close also closes active query admission to wake queued queries.
+shutdown open. The read boundary constructs backend futures only after acquiring
+lifecycle ownership, including backends that do synchronous work at construction.
+Close also closes active query admission to wake queued queries.
 Persistence, deletion, checkpointing and backend teardown retain their existing
 ownership and deadlines. No second cancellation registry or shutdown budget exists.
 

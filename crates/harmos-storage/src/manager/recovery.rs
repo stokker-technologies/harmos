@@ -121,7 +121,7 @@ impl StorageManager {
             });
         }
         let page =
-            self.inner.read("recovery.list_recovery_entries", self.inner.recovery.list_recovery_entries(after, through, limits)).await?;
+            self.inner.read("recovery.list_recovery_entries", || self.inner.recovery.list_recovery_entries(after, through, limits)).await?;
         page.check(after, through, limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
         for entry in &page.entries {
             self.check_state_dependency(&entry.required_data)?;
@@ -131,7 +131,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.manager.recovery.get_recovery_snapshot", level = "debug", skip_all)]
     pub async fn get_recovery_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
-        let snapshot = self.inner.read("recovery.get_recovery_snapshot", self.inner.recovery.get_recovery_snapshot(max_bytes)).await?;
+        let snapshot = self.inner.read("recovery.get_recovery_snapshot", || self.inner.recovery.get_recovery_snapshot(max_bytes)).await?;
         if let Some(snapshot) = &snapshot
             && (!self.status().recovery_saved.covers(&snapshot.through)?
                 || !self.status().saved.covers(&snapshot.required_data)?
