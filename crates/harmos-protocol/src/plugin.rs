@@ -517,7 +517,7 @@ pub struct InstanceGetResponse {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceInvokeRequest {
     /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "instance_invoke_request::Frame", tags = "1, 2, 3")]
+    #[prost(oneof = "instance_invoke_request::Frame", tags = "1, 2, 3, 4")]
     pub frame: ::core::option::Option<instance_invoke_request::Frame>,
 }
 /// Nested message and enum types in `InstanceInvokeRequest`.
@@ -532,6 +532,9 @@ pub mod instance_invoke_request {
         Child(super::ChildResponse),
         #[prost(message, tag = "3")]
         Cancel(super::Cancel),
+        /// Sticky scope wind-down; release waits normally and let handlers finish.
+        #[prost(bool, tag = "4")]
+        WindDown(bool),
     }
 }
 /// Carries plugin-originated child traffic or the single terminal result for this attempt.
@@ -563,7 +566,7 @@ pub mod instance_invoke_response {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceSamplesRequest {
     /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 3, 4, 5")]
+    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 3, 4, 5, 6")]
     pub frame: ::core::option::Option<instance_samples_request::Frame>,
 }
 /// Nested message and enum types in `InstanceSamplesRequest`.
@@ -584,6 +587,9 @@ pub mod instance_samples_request {
         /// Collection listeners, changed only between windows; await acknowledgement.
         #[prost(message, tag = "5")]
         Demand(super::CollectionDemand),
+        /// Sticky scope wind-down for this demand and its current and later windows.
+        #[prost(bool, tag = "6")]
+        WindDown(bool),
     }
 }
 /// Carries device rows, window parts or child traffic for the unanswered window within the active demand call.

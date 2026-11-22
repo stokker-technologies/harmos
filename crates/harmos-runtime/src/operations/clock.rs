@@ -36,7 +36,7 @@ use crate::{
     clock::{self, Sleep},
     supervision::instance::Instance,
 };
-use harmos_operations::clock::Clock as OperationClock;
+use harmos_operations::clock::WindDown;
 
 /* === Constants === */
 
@@ -51,12 +51,14 @@ pub(crate) struct Clock(pub(crate) clock::Clock);
 /// One Call's Unit Clock; Admission Registers the Call's Declared Wait Before Middleware Runs.
 pub(crate) struct Registered {
     clock: clock::Clock,
+    wind_down: WindDown,
     windows: Option<Arc<Windows>>,
     timer: Mutex<Option<(Duration, Instant, Sleep)>>,
 }
 
 pub(crate) struct Unit {
     pub(crate) clock: clock::Clock,
+    pub(crate) wind_down: WindDown,
     pending: Mutex<Option<Vec<Weak<Instance>>>>,
     pub(crate) windows: Arc<Windows>,
 }
@@ -88,6 +90,7 @@ impl Unit {
     pub(crate) fn new(clock: clock::Clock) -> Self {
         Self {
             clock,
+            wind_down: WindDown::default(),
             pending: Mutex::new(Some(Vec::new())),
             windows: Arc::default(),
         }
@@ -155,12 +158,17 @@ impl Drop for Schedule {
 
 impl Registered {
     /// A Call Outside Its Unit's Windows Orders Its Sleeps After the Windows They Span.
-    pub(crate) fn new(clock: clock::Clock, windows: Option<Arc<Windows>>) -> Self {
-        Self { clock, windows, timer: Mutex::new(None) }
+    pub(crate) fn new(clock: clock::Clock, windows: Option<Arc<Windows>>, wind_down: WindDown) -> Self {
+        Self {
+            clock,
+            windows,
+            wind_down,
+            timer: Mutex::new(None),
+        }
     }
 }
 
-impl OperationClock for Registered {
+impl harmos_operations::clock::Clock for Registered {
     fn now(&self) -> Timestamp {
         self.clock.date().into()
     }
@@ -183,16 +191,16 @@ impl OperationClock for Registered {
         };
         // A Sleep Ending at `deadline` Settles After Every Unit Sample Due by Then Has Committed.
         let windows = self.windows.clone();
-        Box::pin(clock::waiting(async move {
+        Box::pin(clock::waiting(self.wind_down.wait(async move {
             timer.await;
             if let Some(windows) = windows {
                 windows.committed_through(deadline).await;
             }
-        }))
+        })))
     }
 }
 
-impl OperationClock for Clock {
+impl harmos_operations::clock::Clock for Clock {
     fn now(&self) -> Timestamp {
         self.0.date().into()
     }

@@ -28,6 +28,7 @@ use crate::{
     clock::Clock,
     operations::{CallContext, Manager, clock::Unit},
 };
+use harmos_operations::clock::WindDown;
 
 /* === Constants === */
 
@@ -100,6 +101,8 @@ impl ScopedBinding {
         let operations = operations.with_scope(scope.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let unit = Arc::new(Unit::new(clock.clone()));
         let mut context = operations.call_context().clone();
+        context.remove::<WindDown>();
+        context.insert(unit.wind_down.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         context.insert(unit.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let operations = operations.with_context(context);
         let (close, closing) = watch::channel(false);
@@ -286,6 +289,11 @@ impl Drop for StopUnit {
 impl ScopedBinding {
     pub fn operations(&self) -> &Manager {
         &self.operations
+    }
+
+    /// Release This Scope's Waits Normally While Its Handlers Finish.
+    pub fn request_wind_down(&self) {
+        self.operations.call_context().get::<WindDown>().expect("bound scope wind-down").request();
     }
 
     /// Open the Scope's Samples Demand for Exactly the Requested `streams`; the Host Grants Their Windows Only Until

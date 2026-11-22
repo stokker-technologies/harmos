@@ -1,5 +1,20 @@
 # gRPC Plugins Design
 
+## Scope Wind-Down
+
+`harmos_operations::clock::WindDown` owns one sticky, inherited scope signal.
+Consumers call `Binding::request_wind_down()` or `ScopedBinding::request_wind_down()`;
+native callers may insert a shared `WindDown` in their `CallContext` and call `request()`.
+Pending and later explicit clock waits return normally without advancing time,
+waiting for future sample cuts, cancelling handlers or recording failures.
+Cancellation, operation deadlines and SDK background policy timers retain their semantics.
+Invoke and active Samples windows carry a sticky wind-down notification before
+releasing child replies. SDK contexts share it with local descendants: Python
+`ctx.wind_down_requested`, Rust/C++ `ctx.wind_down_requested()`, C# `ctx.WindDownRequested`.
+Controlled-clock runtime tests and four-language conformance prove the distinction.
+Owner documentation impact: `docs/project/architecture.md:1241` and each
+`docs/sdks/{python,rust,csharp,cpp}.md` must describe these APIs; README remains accurate.
+
 ## Interval Lag Recovery
 
 `PlacementSettings::interval_lag` skips overdue samples instead of ending a demand.

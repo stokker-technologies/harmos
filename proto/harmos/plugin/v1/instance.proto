@@ -95,6 +95,8 @@ message InstanceInvokeRequest {
     harmos.plugin.v1.Request request = 1;
     harmos.plugin.v1.ChildResponse child = 2;
     harmos.plugin.v1.Cancel cancel = 3;
+    // Sticky scope wind-down; release waits normally and let handlers finish.
+    bool wind_down = 4;
   }
 }
 
@@ -125,6 +127,8 @@ message InstanceSamplesRequest {
     harmos.plugin.v1.Window window = 4;
     // Collection listeners, changed only between windows; await acknowledgement.
     harmos.plugin.v1.CollectionDemand demand = 5;
+    // Sticky scope wind-down for this demand and its current and later windows.
+    bool wind_down = 6;
   }
 }
 

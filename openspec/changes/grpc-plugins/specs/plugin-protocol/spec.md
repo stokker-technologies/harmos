@@ -249,3 +249,18 @@ Setting declarations MUST support optional typed minimum and maximum values. Bou
 #### Scenario: Invalid Bounds
 - **WHEN** bounds have incompatible or unordered types, invalid values or minimum greater than maximum
 - **THEN** declaration is refused with an action to correct the bounds
+
+### Requirement: Graceful Scope Wind-Down
+A scope owner MUST be able to request sticky wind-down independently from cancellation. Pending and later explicit scope-bound clock and Time.Sleep waits MUST return normally. Running handlers MUST remain active and observe the request through harmonized context accessors in Rust, Python, C# and C++. Cancellation and policy deadlines MUST retain their existing semantics.
+
+#### Scenario: Normal Handler Completion
+- **WHEN** the owner requests wind-down while a handler awaits hours on its controlled scope clock
+- **THEN** the wait returns normally without advancing time, the handler observes wind-down and its later sleeps return immediately before normal completion
+
+#### Scenario: Scope Isolation and Cancellation
+- **WHEN** one of two independently bound scopes winds down and the other is later cancelled
+- **THEN** only the first scope's waits return normally and the second remains asleep until cancellation aborts its work
+
+#### Scenario: SDK Context Notification
+- **WHEN** the host sends a scope wind-down notification to an active invocation or sample window
+- **THEN** each SDK exposes sticky wind-down state to that handler and its local descendants without setting cancellation state

@@ -256,3 +256,10 @@
 - [ ] 27.4 Owner Documentation: docs/project/architecture.md:1356 must describe skipped-tick counts/time spans, publication recovery and settings-owned persistence; intentional gaps appear in Batch::gaps(), while Batch::incomplete() reports eviction or source loss. README remains accurate.
 - [x] 27.5 Distinguish intentional interval gaps from loss in ingest batches. Own storage/consumer.rs, streams publication/window types and plugin/grpc/publish.rs: carry skipped tick counts and clock time spans on the authoritative publication; retain eviction and source-loss semantics without duplicate gap bookkeeping.
 - [x] 27.6 Prove recovered lag, eviction and their combination deterministically; compile affected runtime and workspace test targets, run focused runtime tests, format, repository checks, strict OpenSpec validation and a diff name scan. Update design.md; leave docs/ to the owner.
+
+## 28. Scope Wind-Down
+
+- [x] 28.1 Add one sticky scope signal and host request APIs; release explicit clock and Time.Sleep waits normally, inherit state in call contexts, preserve cancellation and policy deadlines. Own operations native/clock, storage execution clock and runtime execution/scope/clock/context propagation.
+- [x] 28.2 Carry wind-down state to invocation and window contexts in Rust, Python, C# and C++; regenerate tracked protocol outputs and extend SDK conformance. Own Instance carrier, runtime grpc invoke/samples and four SDK contexts/carriers/fixtures.
+- [ ] 28.3 Prove controlled-clock normal completion, immediate later waits, unaffected scopes and cancellation; compile all workspace test targets, run focused runtime/operations tests and four SDK conformance journeys, tooling, format, repository and strict OpenSpec checks. Run Python SDK build/package with supported package selectors.
+- [ ] 28.4 Owner Documentation: docs/project/architecture.md:1241 and docs/sdks/{python,rust,csharp,cpp}.md must describe scope request APIs, sticky context accessors and normal early waits; README remains accurate. Native Linux proof remains with the owner.

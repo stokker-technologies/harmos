@@ -37,52 +37,54 @@ namespace Harmos.Internal.Plugin;
             "ZWwudjEuRGVjbGFyYXRpb25zUgxkZWNsYXJhdGlvbnMSGgoIcmV2aXNpb24Y",
             "BSABKA1SCHJldmlzaW9uEhAKA3NkaxgGIAEoCVIDc2RrEh8KC3Nka192ZXJz",
             "aW9uGAcgASgJUgpzZGtWZXJzaW9uEiMKDW1lc3NhZ2VfYnl0ZXMYCCABKARS",
-            "DG1lc3NhZ2VCeXRlcyLEAQoVSW5zdGFuY2VJbnZva2VSZXF1ZXN0EjUKB3Jl",
+            "DG1lc3NhZ2VCeXRlcyLjAQoVSW5zdGFuY2VJbnZva2VSZXF1ZXN0EjUKB3Jl",
             "cXVlc3QYASABKAsyGS5oYXJtb3MucGx1Z2luLnYxLlJlcXVlc3RIAFIHcmVx",
             "dWVzdBI3CgVjaGlsZBgCIAEoCzIfLmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRS",
             "ZXNwb25zZUgAUgVjaGlsZBIyCgZjYW5jZWwYAyABKAsyGC5oYXJtb3MucGx1",
-            "Z2luLnYxLkNhbmNlbEgAUgZjYW5jZWxCBwoFZnJhbWUimwIKFkluc3RhbmNl",
-            "SW52b2tlUmVzcG9uc2USNgoFY2hpbGQYASABKAsyHi5oYXJtb3MucGx1Z2lu",
-            "LnYxLkNoaWxkUmVxdWVzdEgAUgVjaGlsZBJCCgxjaGlsZF9jYW5jZWwYAiAB",
-            "KAsyHS5oYXJtb3MucGx1Z2luLnYxLkNoaWxkQ2FuY2VsSABSC2NoaWxkQ2Fu",
-            "Y2VsEjgKCHJlc3BvbnNlGAMgASgLMhouaGFybW9zLnBsdWdpbi52MS5SZXNw",
-            "b25zZUgAUghyZXNwb25zZRJCCgxjaGlsZF9kZW1hbmQYBCABKAsyHS5oYXJt",
-            "b3MucGx1Z2luLnYxLkNoaWxkRGVtYW5kSABSC2NoaWxkRGVtYW5kQgcKBWZy",
-            "YW1lIpICChZJbnN0YW5jZVNhbXBsZXNSZXF1ZXN0EjgKBG9wZW4YASABKAsy",
-            "Ii5oYXJtb3MucGx1Z2luLnYxLlNhbXBsZXNTZWxlY3Rpb25IAFIEb3BlbhI3",
-            "CgVjaGlsZBgDIAEoCzIfLmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRSZXNwb25z",
-            "ZUgAUgVjaGlsZBIyCgZ3aW5kb3cYBCABKAsyGC5oYXJtb3MucGx1Z2luLnYx",
-            "LldpbmRvd0gAUgZ3aW5kb3cSPAoGZGVtYW5kGAUgASgLMiIuaGFybW9zLnBs",
-            "dWdpbi52MS5Db2xsZWN0aW9uRGVtYW5kSABSBmRlbWFuZEIHCgVmcmFtZUoE",
-            "CAIQA1IEdGljayLYAwoXSW5zdGFuY2VTYW1wbGVzUmVzcG9uc2USMgoHc2Ft",
-            "cGxlcxgBIAMoCzIYLmhhcm1vcy5wbHVnaW4udjEuU2FtcGxlUgdzYW1wbGVz",
-            "EjYKBWNoaWxkGAIgASgLMh4uaGFybW9zLnBsdWdpbi52MS5DaGlsZFJlcXVl",
-            "c3RIAFIFY2hpbGQSQgoMY2hpbGRfY2FuY2VsGAMgASgLMh0uaGFybW9zLnBs",
-            "dWdpbi52MS5DaGlsZENhbmNlbEgAUgtjaGlsZENhbmNlbBJCCgxjaGlsZF9k",
-            "ZW1hbmQYBCABKAsyHS5oYXJtb3MucGx1Z2luLnYxLkNoaWxkRGVtYW5kSABS",
-            "C2NoaWxkRGVtYW5kEjUKBWJhdGNoGAUgASgLMh0uaGFybW9zLnBsdWdpbi52",
-            "MS5TYW1wbGVCYXRjaEgAUgViYXRjaBJDCgpjb2xsZWN0aW9uGAYgASgLMiEu",
-            "aGFybW9zLnBsdWdpbi52MS5Db2xsZWN0aW9uQmF0Y2hIAFIKY29sbGVjdGlv",
-            "bhJECgZkZW1hbmQYByABKAsyKi5oYXJtb3MucGx1Z2luLnYxLkNvbGxlY3Rp",
-            "b25EZW1hbmRSZXNwb25zZUgAUgZkZW1hbmRCBwoFZnJhbWUiLQoTSW5zdGFu",
-            "Y2VTdG9wUmVxdWVzdBIWCgZyZWFzb24YASABKAlSBnJlYXNvbiIWChRJbnN0",
-            "YW5jZVN0b3BSZXNwb25zZTL6AgoISW5zdGFuY2USUgoDR2V0EiQuaGFybW9z",
-            "LnBsdWdpbi52MS5JbnN0YW5jZUdldFJlcXVlc3QaJS5oYXJtb3MucGx1Z2lu",
-            "LnYxLkluc3RhbmNlR2V0UmVzcG9uc2USXwoGSW52b2tlEicuaGFybW9zLnBs",
-            "dWdpbi52MS5JbnN0YW5jZUludm9rZVJlcXVlc3QaKC5oYXJtb3MucGx1Z2lu",
-            "LnYxLkluc3RhbmNlSW52b2tlUmVzcG9uc2UoATABEmIKB1NhbXBsZXMSKC5o",
-            "YXJtb3MucGx1Z2luLnYxLkluc3RhbmNlU2FtcGxlc1JlcXVlc3QaKS5oYXJt",
-            "b3MucGx1Z2luLnYxLkluc3RhbmNlU2FtcGxlc1Jlc3BvbnNlKAEwARJVCgRT",
-            "dG9wEiUuaGFybW9zLnBsdWdpbi52MS5JbnN0YW5jZVN0b3BSZXF1ZXN0GiYu",
-            "aGFybW9zLnBsdWdpbi52MS5JbnN0YW5jZVN0b3BSZXNwb25zZWIGcHJvdG8z"));
+            "Z2luLnYxLkNhbmNlbEgAUgZjYW5jZWwSHQoJd2luZF9kb3duGAQgASgISABS",
+            "CHdpbmREb3duQgcKBWZyYW1lIpsCChZJbnN0YW5jZUludm9rZVJlc3BvbnNl",
+            "EjYKBWNoaWxkGAEgASgLMh4uaGFybW9zLnBsdWdpbi52MS5DaGlsZFJlcXVl",
+            "c3RIAFIFY2hpbGQSQgoMY2hpbGRfY2FuY2VsGAIgASgLMh0uaGFybW9zLnBs",
+            "dWdpbi52MS5DaGlsZENhbmNlbEgAUgtjaGlsZENhbmNlbBI4CghyZXNwb25z",
+            "ZRgDIAEoCzIaLmhhcm1vcy5wbHVnaW4udjEuUmVzcG9uc2VIAFIIcmVzcG9u",
+            "c2USQgoMY2hpbGRfZGVtYW5kGAQgASgLMh0uaGFybW9zLnBsdWdpbi52MS5D",
+            "aGlsZERlbWFuZEgAUgtjaGlsZERlbWFuZEIHCgVmcmFtZSKxAgoWSW5zdGFu",
+            "Y2VTYW1wbGVzUmVxdWVzdBI4CgRvcGVuGAEgASgLMiIuaGFybW9zLnBsdWdp",
+            "bi52MS5TYW1wbGVzU2VsZWN0aW9uSABSBG9wZW4SNwoFY2hpbGQYAyABKAsy",
+            "Hy5oYXJtb3MucGx1Z2luLnYxLkNoaWxkUmVzcG9uc2VIAFIFY2hpbGQSMgoG",
+            "d2luZG93GAQgASgLMhguaGFybW9zLnBsdWdpbi52MS5XaW5kb3dIAFIGd2lu",
+            "ZG93EjwKBmRlbWFuZBgFIAEoCzIiLmhhcm1vcy5wbHVnaW4udjEuQ29sbGVj",
+            "dGlvbkRlbWFuZEgAUgZkZW1hbmQSHQoJd2luZF9kb3duGAYgASgISABSCHdp",
+            "bmREb3duQgcKBWZyYW1lSgQIAhADUgR0aWNrItgDChdJbnN0YW5jZVNhbXBs",
+            "ZXNSZXNwb25zZRIyCgdzYW1wbGVzGAEgAygLMhguaGFybW9zLnBsdWdpbi52",
+            "MS5TYW1wbGVSB3NhbXBsZXMSNgoFY2hpbGQYAiABKAsyHi5oYXJtb3MucGx1",
+            "Z2luLnYxLkNoaWxkUmVxdWVzdEgAUgVjaGlsZBJCCgxjaGlsZF9jYW5jZWwY",
+            "AyABKAsyHS5oYXJtb3MucGx1Z2luLnYxLkNoaWxkQ2FuY2VsSABSC2NoaWxk",
+            "Q2FuY2VsEkIKDGNoaWxkX2RlbWFuZBgEIAEoCzIdLmhhcm1vcy5wbHVnaW4u",
+            "djEuQ2hpbGREZW1hbmRIAFILY2hpbGREZW1hbmQSNQoFYmF0Y2gYBSABKAsy",
+            "HS5oYXJtb3MucGx1Z2luLnYxLlNhbXBsZUJhdGNoSABSBWJhdGNoEkMKCmNv",
+            "bGxlY3Rpb24YBiABKAsyIS5oYXJtb3MucGx1Z2luLnYxLkNvbGxlY3Rpb25C",
+            "YXRjaEgAUgpjb2xsZWN0aW9uEkQKBmRlbWFuZBgHIAEoCzIqLmhhcm1vcy5w",
+            "bHVnaW4udjEuQ29sbGVjdGlvbkRlbWFuZFJlc3BvbnNlSABSBmRlbWFuZEIH",
+            "CgVmcmFtZSItChNJbnN0YW5jZVN0b3BSZXF1ZXN0EhYKBnJlYXNvbhgBIAEo",
+            "CVIGcmVhc29uIhYKFEluc3RhbmNlU3RvcFJlc3BvbnNlMvoCCghJbnN0YW5j",
+            "ZRJSCgNHZXQSJC5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlR2V0UmVxdWVz",
+            "dBolLmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VHZXRSZXNwb25zZRJfCgZJ",
+            "bnZva2USJy5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlSW52b2tlUmVxdWVz",
+            "dBooLmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VJbnZva2VSZXNwb25zZSgB",
+            "MAESYgoHU2FtcGxlcxIoLmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VTYW1w",
+            "bGVzUmVxdWVzdBopLmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VTYW1wbGVz",
+            "UmVzcG9uc2UoATABElUKBFN0b3ASJS5oYXJtb3MucGx1Z2luLnYxLkluc3Rh",
+            "bmNlU3RvcFJlcXVlc3QaJi5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlU3Rv",
+            "cFJlc3BvbnNlYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Harmos.DescriptionReflection.Descriptor, global::Harmos.Internal.Plugin.InvocationReflection.Descriptor, global::Harmos.Internal.Plugin.StreamReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceGetRequest), global::Harmos.Internal.Plugin.InstanceGetRequest.Parser, new[]{ "Revision", "Host", "HostVersion" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceGetResponse), global::Harmos.Internal.Plugin.InstanceGetResponse.Parser, new[]{ "Id", "Version", "StartedAt", "Declarations", "Revision", "Sdk", "SdkVersion", "MessageBytes" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceInvokeRequest), global::Harmos.Internal.Plugin.InstanceInvokeRequest.Parser, new[]{ "Request", "Child", "Cancel" }, new[]{ "Frame" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceInvokeRequest), global::Harmos.Internal.Plugin.InstanceInvokeRequest.Parser, new[]{ "Request", "Child", "Cancel", "WindDown" }, new[]{ "Frame" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceInvokeResponse), global::Harmos.Internal.Plugin.InstanceInvokeResponse.Parser, new[]{ "Child", "ChildCancel", "Response", "ChildDemand" }, new[]{ "Frame" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesRequest), global::Harmos.Internal.Plugin.InstanceSamplesRequest.Parser, new[]{ "Open", "Child", "Window", "Demand" }, new[]{ "Frame" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesRequest), global::Harmos.Internal.Plugin.InstanceSamplesRequest.Parser, new[]{ "Open", "Child", "Window", "Demand", "WindDown" }, new[]{ "Frame" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesResponse), global::Harmos.Internal.Plugin.InstanceSamplesResponse.Parser, new[]{ "Samples", "Child", "ChildCancel", "ChildDemand", "Batch", "Collection", "Demand" }, new[]{ "Frame" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceStopRequest), global::Harmos.Internal.Plugin.InstanceStopRequest.Parser, new[]{ "Reason" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceStopResponse), global::Harmos.Internal.Plugin.InstanceStopResponse.Parser, null, null, null, null, null)
@@ -884,6 +886,9 @@ namespace Harmos.Internal.Plugin;
         case FrameOneofCase.Cancel:
           Cancel = other.Cancel.Clone();
           break;
+        case FrameOneofCase.WindDown:
+          WindDown = other.WindDown;
+          break;
       }
 
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
@@ -931,6 +936,32 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "wind_down" field.</summary>
+    public const int WindDownFieldNumber = 4;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool WindDown {
+      get { return HasWindDown ? (bool) frame_ : false; }
+      set {
+        frame_ = value;
+        frameCase_ = FrameOneofCase.WindDown;
+      }
+    }
+    /// <summary>Gets whether the "wind_down" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasWindDown {
+      get { return frameCase_ == FrameOneofCase.WindDown; }
+    }
+    /// <summary> Clears the value of the oneof if it's currently set to "wind_down" </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearWindDown() {
+      if (HasWindDown) {
+        ClearFrame();
+      }
+    }
+
     private object frame_;
     /// <summary>Enum of possible cases for the "frame" oneof.</summary>
     public enum FrameOneofCase {
@@ -938,6 +969,7 @@ namespace Harmos.Internal.Plugin;
       Request = 1,
       Child = 2,
       Cancel = 3,
+      WindDown = 4,
     }
     private FrameOneofCase frameCase_ = FrameOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -971,6 +1003,7 @@ namespace Harmos.Internal.Plugin;
       if (!object.Equals(Request, other.Request)) return false;
       if (!object.Equals(Child, other.Child)) return false;
       if (!object.Equals(Cancel, other.Cancel)) return false;
+      if (WindDown != other.WindDown) return false;
       if (FrameCase != other.FrameCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -982,6 +1015,7 @@ namespace Harmos.Internal.Plugin;
       if (frameCase_ == FrameOneofCase.Request) hash ^= Request.GetHashCode();
       if (frameCase_ == FrameOneofCase.Child) hash ^= Child.GetHashCode();
       if (frameCase_ == FrameOneofCase.Cancel) hash ^= Cancel.GetHashCode();
+      if (HasWindDown) hash ^= WindDown.GetHashCode();
       hash ^= (int) frameCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1013,6 +1047,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(26);
         output.WriteMessage(Cancel);
       }
+      if (HasWindDown) {
+        output.WriteRawTag(32);
+        output.WriteBool(WindDown);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1035,6 +1073,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(26);
         output.WriteMessage(Cancel);
       }
+      if (HasWindDown) {
+        output.WriteRawTag(32);
+        output.WriteBool(WindDown);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1053,6 +1095,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (frameCase_ == FrameOneofCase.Cancel) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Cancel);
+      }
+      if (HasWindDown) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1084,6 +1129,9 @@ namespace Harmos.Internal.Plugin;
             Cancel = new global::Harmos.Internal.Plugin.Cancel();
           }
           Cancel.MergeFrom(other.Cancel);
+          break;
+        case FrameOneofCase.WindDown:
+          WindDown = other.WindDown;
           break;
       }
 
@@ -1133,6 +1181,10 @@ namespace Harmos.Internal.Plugin;
             Cancel = subBuilder;
             break;
           }
+          case 32: {
+            WindDown = input.ReadBool();
+            break;
+          }
         }
       }
     #endif
@@ -1177,6 +1229,10 @@ namespace Harmos.Internal.Plugin;
             }
             input.ReadMessage(subBuilder);
             Cancel = subBuilder;
+            break;
+          }
+          case 32: {
+            WindDown = input.ReadBool();
             break;
           }
         }
@@ -1634,6 +1690,9 @@ namespace Harmos.Internal.Plugin;
         case FrameOneofCase.Demand:
           Demand = other.Demand.Clone();
           break;
+        case FrameOneofCase.WindDown:
+          WindDown = other.WindDown;
+          break;
       }
 
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
@@ -1693,6 +1752,32 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "wind_down" field.</summary>
+    public const int WindDownFieldNumber = 6;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool WindDown {
+      get { return HasWindDown ? (bool) frame_ : false; }
+      set {
+        frame_ = value;
+        frameCase_ = FrameOneofCase.WindDown;
+      }
+    }
+    /// <summary>Gets whether the "wind_down" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasWindDown {
+      get { return frameCase_ == FrameOneofCase.WindDown; }
+    }
+    /// <summary> Clears the value of the oneof if it's currently set to "wind_down" </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearWindDown() {
+      if (HasWindDown) {
+        ClearFrame();
+      }
+    }
+
     private object frame_;
     /// <summary>Enum of possible cases for the "frame" oneof.</summary>
     public enum FrameOneofCase {
@@ -1701,6 +1786,7 @@ namespace Harmos.Internal.Plugin;
       Child = 3,
       Window = 4,
       Demand = 5,
+      WindDown = 6,
     }
     private FrameOneofCase frameCase_ = FrameOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1735,6 +1821,7 @@ namespace Harmos.Internal.Plugin;
       if (!object.Equals(Child, other.Child)) return false;
       if (!object.Equals(Window, other.Window)) return false;
       if (!object.Equals(Demand, other.Demand)) return false;
+      if (WindDown != other.WindDown) return false;
       if (FrameCase != other.FrameCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -1747,6 +1834,7 @@ namespace Harmos.Internal.Plugin;
       if (frameCase_ == FrameOneofCase.Child) hash ^= Child.GetHashCode();
       if (frameCase_ == FrameOneofCase.Window) hash ^= Window.GetHashCode();
       if (frameCase_ == FrameOneofCase.Demand) hash ^= Demand.GetHashCode();
+      if (HasWindDown) hash ^= WindDown.GetHashCode();
       hash ^= (int) frameCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1782,6 +1870,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(42);
         output.WriteMessage(Demand);
       }
+      if (HasWindDown) {
+        output.WriteRawTag(48);
+        output.WriteBool(WindDown);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1808,6 +1900,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(42);
         output.WriteMessage(Demand);
       }
+      if (HasWindDown) {
+        output.WriteRawTag(48);
+        output.WriteBool(WindDown);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1829,6 +1925,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (frameCase_ == FrameOneofCase.Demand) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Demand);
+      }
+      if (HasWindDown) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1866,6 +1965,9 @@ namespace Harmos.Internal.Plugin;
             Demand = new global::Harmos.Internal.Plugin.CollectionDemand();
           }
           Demand.MergeFrom(other.Demand);
+          break;
+        case FrameOneofCase.WindDown:
+          WindDown = other.WindDown;
           break;
       }
 
@@ -1924,6 +2026,10 @@ namespace Harmos.Internal.Plugin;
             Demand = subBuilder;
             break;
           }
+          case 48: {
+            WindDown = input.ReadBool();
+            break;
+          }
         }
       }
     #endif
@@ -1977,6 +2083,10 @@ namespace Harmos.Internal.Plugin;
             }
             input.ReadMessage(subBuilder);
             Demand = subBuilder;
+            break;
+          }
+          case 48: {
+            WindDown = input.ReadBool();
             break;
           }
         }

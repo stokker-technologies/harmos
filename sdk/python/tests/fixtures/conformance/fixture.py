@@ -183,6 +183,13 @@ class Fixture:
 
     @operation("conformance.clock", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def clock(self, ctx: Context, request: Value) -> Value:
+        if request.value == b"wind_down":
+            assert not ctx.wind_down_requested
+            await ctx.host.time.sleep(Duration(seconds=3600))
+            assert ctx.wind_down_requested
+            await ctx.host.time.sleep(Duration(seconds=3600))
+            assert ctx.wind_down_requested
+            return Value(value=b"wound down")
         before = await ctx.host.time.get()
         await ctx.host.time.sleep(Duration(seconds=3600))
         after = await ctx.host.time.get()

@@ -116,6 +116,11 @@ public:
       read_next();
       return;
     }
+    if (input.has_wind_down() && input.wind_down()) {
+      state_->wind_down_requested = true;
+      read_next();
+      return;
+    }
     if (input.has_child()) {
       // Retired IDs Belong Only to the Current Window's Cancelled Children.
       if (!state_->receive(input.child())) {

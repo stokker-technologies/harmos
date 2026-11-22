@@ -440,6 +440,31 @@ async fn invoke(
                 response::Result::Payload(request.payload.clone())
             }
         }
+        "conformance.clock" if fixture::Value::decode(request.payload.as_slice()).is_ok_and(|value| value.value == b"wind_down") => {
+            for call in 1..=2 {
+                let sleep = TimeSleepRequest {
+                    duration: Some(Duration { seconds: 3600, nanos: 0 }),
+                }
+                .encode_to_vec();
+                send_child(output, call, "harmos.plugin.v1.Time/Sleep", sleep).await?;
+                if call == 1
+                    && !matches!(input.message().await?.and_then(|frame| frame.frame), Some(instance_invoke_request::Frame::WindDown(true)))
+                {
+                    return Err(Status::invalid_argument("Wind Down: Send the Scope Notification Before the Sleep Reply"));
+                }
+                let Some(instance_invoke_request::Frame::Child(ChildResponse {
+                    call: received,
+                    result: Some(child_response::Result::Payload(_)),
+                })) = input.message().await?.and_then(|frame| frame.frame)
+                else {
+                    return Err(Status::invalid_argument("Wind Down: Complete the Sleep Normally"));
+                };
+                if received != call {
+                    return Err(Status::invalid_argument("Wind Down: Reply to the Pending Sleep"));
+                }
+            }
+            response::Result::Payload(fixture::payload(b"wound down"))
+        }
         "conformance.clock" => {
             let mut readings = Vec::new();
             for (call, operation, payload) in [

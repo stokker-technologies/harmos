@@ -141,6 +141,7 @@ class Context:
         self.invocation = request.invocation
         self.attempt = request.attempt
         self._scope = request.scope
+        self._wind_down = Event()
         self.sequence = 0
         self._operation = request.operation
         self._plugin = plugin
@@ -164,6 +165,11 @@ class Context:
         if self._instance is None:
             raise ValueError("Read Plugin State: Use a Context Created by the Plugin Server")
         return self._instance
+
+    @property
+    def wind_down_requested(self) -> bool:
+        """The Host Requested Normal Completion of This Scope's Work."""
+        return self._wind_down.is_set()
 
     def scope(self) -> str:
         """Require a Caller-Bound Scope for This Invocation."""

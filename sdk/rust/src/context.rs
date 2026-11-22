@@ -34,8 +34,19 @@ pub(crate) use wasm_output::ChildOutput;
 
 // Standard Library Imports
 use {
-    std::any::Any, std::any::TypeId, std::any::type_name, std::collections::BTreeMap, std::collections::BTreeSet,
-    std::collections::HashMap, std::marker::PhantomData, std::mem, std::num::NonZeroUsize, std::result, std::sync::Arc, std::sync::Mutex,
+    std::any::Any,
+    std::any::TypeId,
+    std::any::type_name,
+    std::collections::BTreeMap,
+    std::collections::BTreeSet,
+    std::collections::HashMap,
+    std::marker::PhantomData,
+    std::mem,
+    std::num::NonZeroUsize,
+    std::result,
+    std::sync::Arc,
+    std::sync::Mutex,
+    std::sync::atomic::{AtomicBool, Ordering},
     std::time::Duration,
 };
 
@@ -110,6 +121,7 @@ pub struct Context {
     pub invocation: String,
     pub attempt: u32,
     pub(crate) scope: String,
+    pub(crate) wind_down: Arc<AtomicBool>,
     pub(crate) operation: String,
     pub(crate) plugin: String,
     resources: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
@@ -151,6 +163,7 @@ impl Context {
             invocation: request.invocation,
             attempt: request.attempt,
             scope: request.scope,
+            wind_down: Arc::new(AtomicBool::new(false)),
             operation: request.operation,
             plugin,
             resources: Arc::new(Mutex::new(HashMap::new())),
@@ -187,6 +200,15 @@ impl Context {
             .into());
         }
         Ok(&self.scope)
+    }
+
+    /// The Host Requested Normal Completion of This Scope's Work.
+    pub fn wind_down_requested(&self) -> bool {
+        self.wind_down.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn request_wind_down(&self) {
+        self.wind_down.store(true, Ordering::Release);
     }
 
     pub fn set<T: Send + Sync + 'static>(&self, value: T) {

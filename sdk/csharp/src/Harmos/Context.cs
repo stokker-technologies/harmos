@@ -27,6 +27,7 @@ public sealed class Context
   private readonly Dictionary<System.Type, object> resources = [];
   private readonly IReadOnlyDictionary<string, Handler> local;
   private Context root;
+  private volatile bool windDownRequested;
   private readonly HashSet<ulong> owned = [];
   private readonly List<Context> children = [];
   private ulong nextCall;
@@ -102,6 +103,10 @@ public sealed class Context
   public CancellationToken CancellationToken => cancellation.Token;
 
   public Task<string> CancelledAsync() => cancelled.Task;
+
+  public bool WindDownRequested => root.windDownRequested;
+
+  internal void RequestWindDown() => root.windDownRequested = true;
 
   public void Set<T>(T value) where T : notnull
   {

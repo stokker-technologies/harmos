@@ -48,6 +48,7 @@ use crate::{
     operations::{EncodedInvocation, ErasedResponse, FailureKind, HostContext, NativeInstance, Response, ServiceFuture},
     supervision::instance::Instance,
 };
+use harmos_operations::clock::WindDown;
 
 /* === Constants === */
 
@@ -222,9 +223,12 @@ async fn invoke(binding: &Binding, payload: Vec<u8>, context: &ExecutionContext,
         let mut seen = BTreeSet::new();
         let mut ended = BTreeSet::new();
         let mut cancelled = false;
+        let wind_down = host.borrow().context().get::<WindDown>().cloned().unwrap_or_default();
+        let mut winding_down = false;
         let mut cancelled_children = BTreeSet::new();
         enum Event {
             Cancel,
+            WindDown,
             Child(u64, String, crate::Result<Vec<u8>>),
             Frame(Result<Option<InstanceInvokeResponse>, tonic::Status>),
         }
@@ -235,12 +239,21 @@ async fn invoke(binding: &Binding, payload: Vec<u8>, context: &ExecutionContext,
                 tokio::select! {
                     biased;
                     () = context.cancellation.cancelled(), if !cancelled => Event::Cancel,
+                    () = wind_down.requested(), if !winding_down => Event::WindDown,
                     Some((call, operation, result)) = children.next(), if has_children => Event::Child(call, operation, result),
                     frame = input.message() => Event::Frame(frame),
                 }
             };
             let event = if waiting { clock::waiting(next).await } else { next.await };
             match event {
+                Event::WindDown => {
+                    winding_down = true;
+                    let _ = output
+                        .send(InstanceInvokeRequest {
+                            frame: Some(instance_invoke_request::Frame::WindDown(true)),
+                        })
+                        .await;
+                }
                 Event::Cancel => {
                     cancelled = true;
                     let cancel = plugin::Cancel {

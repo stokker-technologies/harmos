@@ -342,6 +342,62 @@ async fn count_after_sleep(requested: u64) {
 /* === Tests === */
 
 #[tokio::test]
+async fn wind_down_releases_a_plugin_and_later_sleeps_without_advancing_the_scope_clock() {
+    let host = HostFixture::new().await;
+    let sdk = Python::start(&["--clock-only"]).await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host
+        .runtime
+        .bind_grpc(&attached.activation().unwrap(), "unit/wind-down", Clock::with_clock(source.clone()), &CallContext::default())
+        .await
+        .unwrap();
+    let started = source.read();
+    let call = unit.operations().submit_encoded("conformance.clock", payload(b"wind_down")).unwrap();
+    source.wait_registered().await;
+    unit.request_wind_down();
+    assert_eq!(call.await.unwrap(), payload(b"wound down"));
+    assert_eq!(source.read().instant, started.instant);
+    assert_eq!(source.pending(), 0);
+    unit.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+    assert!(sdk.close().await.success());
+}
+
+#[tokio::test]
+async fn wind_down_keeps_other_scopes_asleep_and_preserves_cancellation() {
+    let host = HostFixture::new().await;
+    let registration = operations::Registration::new(Lane::default())
+        .operation(OperationFactory::native::<NativeSleep>().unwrap(), NativeSleep::ID)
+        .unwrap();
+    host.runtime.register_batch(registration).await.unwrap();
+    let sdk = host.sdk("caller").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let activation = attached.activation().unwrap();
+    let source = Controlled::new();
+    let left = host.runtime.bind_grpc(&activation, "unit/left", Clock::with_clock(source.clone()), &CallContext::default()).await.unwrap();
+    let right =
+        host.runtime.bind_grpc(&activation, "unit/right", Clock::with_clock(source.clone()), &CallContext::default()).await.unwrap();
+    let left_call = left.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(7200)), ()).unwrap();
+    let right_call = right.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(7200)), ()).unwrap();
+    assert_eq!(source.pending(), 2);
+    left.request_wind_down();
+    left_call.await.unwrap();
+    assert_eq!(source.pending(), 1);
+    let later = left.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(7200)), ()).unwrap();
+    later.await.unwrap();
+    assert_eq!(source.pending(), 1);
+    right_call.request_cancel();
+    assert!(matches!(right_call.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
+    assert_eq!(source.pending(), 0);
+    left.close().await.unwrap();
+    right.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn observer_children_inherit_the_bindings_call_resources() {
     let resource = Arc::new(Notify::new());
     let host = HostFixture::with_middleware(Arc::new(Inherited(resource.clone()))).await;
