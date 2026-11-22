@@ -19,17 +19,17 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::Failure as WireFailure;
-
 // Standard Library Imports
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::collections::BTreeMap;
-use std::fmt;
 use std::sync::Arc;
+use std::{error, fmt, io, iter};
 // Third Party Imports
+use prost::Message;
 use serde::{Deserialize, Serialize};
 // Local Imports
-use crate::operations;
+use crate::operations::FailureKind;
+use harmos_protocol::model::{self, Classification};
 
 /* === Constants === */
 
@@ -55,7 +55,7 @@ pub struct Failure(Box<Record>);
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
-    code: operations::FailureKind,
+    code: FailureKind,
     refusal_code: Option<i64>,
     details: BTreeMap<String, String>,
     cause: String,
@@ -77,7 +77,7 @@ pub struct Context {
 // Renders an error chain on one line for logs and text sinks. Each link prints
 // its own line once; a link whose text an outer link already embeds is
 // skipped, so a cause is never repeated.
-pub struct Report<'a>(pub &'a (dyn std::error::Error + 'static));
+pub struct Report<'a>(pub &'a (dyn error::Error + 'static));
 
 // What the originating process observed: its source chain and, when that
 // process enabled capture, the backtrace where its carrier received the error.
@@ -116,8 +116,8 @@ pub enum CodecError {
 impl Failure {
     /// One Wrong-Caller Failure for Every Carrier.
     pub fn wrong_caller(operation: &str) -> Self {
-        Self::from(WireFailure {
-            classification: harmos_protocol::model::Classification::Refused as i32,
+        Self::from(model::Failure {
+            classification: Classification::Refused as i32,
             code: crate::refusal::WRONG_CALLER.to_string(),
             action: "Call".into(),
             operation: operation.into(),
@@ -126,7 +126,7 @@ impl Failure {
         })
     }
 
-    pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
+    pub fn new(code: FailureKind, cause: impl Into<String>) -> Self {
         Self(Box::new(Record {
             code,
             refusal_code: None,
@@ -142,7 +142,7 @@ impl Failure {
     // the chain keeps its classification, cause, frames and diagnostics; otherwise the deepest
     // meaningful message becomes the cause and the whole chain moves into
     // diagnostics.
-    pub fn originate(code: operations::FailureKind, error: &(dyn std::error::Error + 'static), origin: Origin) -> Self {
+    pub fn originate(code: FailureKind, error: &(dyn error::Error + 'static), origin: Origin) -> Self {
         if let Some(carried) = carried(error) {
             return carried.clone();
         }
@@ -166,11 +166,11 @@ impl Failure {
     }
 
     // The failure an error chain carries, if any link is or holds one.
-    pub fn find<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Self> {
+    pub fn find<'a>(error: &'a (dyn error::Error + 'static)) -> Option<&'a Self> {
         carried(error)
     }
 
-    pub fn code(&self) -> operations::FailureKind {
+    pub fn code(&self) -> FailureKind {
         self.0.code
     }
 
@@ -212,10 +212,9 @@ impl Failure {
     }
 
     pub fn without_diagnostics(mut self) -> Self {
-        use prost::Message as _;
         self.0.diagnostics = None;
         if let Some(bytes) = &mut self.0.wire {
-            let mut wire = WireFailure::decode(bytes.as_slice()).expect("retained protobuf failure was decoded");
+            let mut wire = model::Failure::decode(bytes.as_slice()).expect("retained protobuf failure was decoded");
             let mut current = &mut wire;
             loop {
                 current.diagnostics.clear();
@@ -247,7 +246,7 @@ impl fmt::Display for Failure {
     }
 }
 
-impl std::error::Error for Failure {}
+impl error::Error for Failure {}
 
 impl fmt::Display for Report<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -290,11 +289,8 @@ impl Diagnostics {
     }
 }
 
-impl From<&Failure> for WireFailure {
+impl From<&Failure> for model::Failure {
     fn from(failure: &Failure) -> Self {
-        use harmos_protocol::model::Classification;
-        use operations::FailureKind;
-        use prost::Message as _;
         if let Some(bytes) = &failure.0.wire {
             let mut wire = Self::decode(bytes.as_slice()).expect("retained protobuf failure");
             wire.details.extend(failure.0.details.clone());
@@ -342,12 +338,9 @@ impl From<&Failure> for WireFailure {
         }
     }
 }
-impl From<WireFailure> for Failure {
-    fn from(mut wire: WireFailure) -> Self {
-        use prost::Message as _;
+impl From<model::Failure> for Failure {
+    fn from(mut wire: model::Failure) -> Self {
         let original = wire.encode_to_vec();
-        use harmos_protocol::model::Classification;
-        use operations::FailureKind;
         let code = match wire.details.remove("harmos.failure_kind").as_deref() {
             Some("ambiguous") => FailureKind::Ambiguous,
             Some("unauthorized") => FailureKind::Unauthorized,
@@ -356,6 +349,7 @@ impl From<WireFailure> for Failure {
                 Classification::Transient => FailureKind::Transient,
                 Classification::Cancelled => FailureKind::Cancelled,
                 Classification::Refused => FailureKind::Unauthorized,
+                Classification::Invalid => FailureKind::Invalid,
                 _ => FailureKind::Permanent,
             },
         };
@@ -377,26 +371,26 @@ impl From<WireFailure> for Failure {
 
 /* === Private Functions === */
 
-fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<Item = &'a (dyn std::error::Error + 'static)> {
-    std::iter::successors(Some(error), |error| {
-        let shared: Option<&(dyn std::error::Error + 'static)> = error
+fn sources<'a>(error: &'a (dyn error::Error + 'static)) -> impl Iterator<Item = &'a (dyn error::Error + 'static)> {
+    iter::successors(Some(error), |error| {
+        let shared: Option<&(dyn error::Error + 'static)> = error
             .downcast_ref::<Arc<crate::Refusal>>()
             .map(|inner| inner.as_ref() as _)
             .or_else(|| error.downcast_ref::<Arc<Failure>>().map(|inner| inner.as_ref() as _))
             .or_else(|| error.downcast_ref::<Box<Failure>>().map(|inner| inner.as_ref() as _))
-            .or_else(|| error.downcast_ref::<Arc<std::io::Error>>().map(|inner| inner.as_ref() as _))
-            .or_else(|| error.downcast_ref::<Arc<dyn std::error::Error + Send + Sync>>().map(|inner| inner.as_ref() as _));
+            .or_else(|| error.downcast_ref::<Arc<io::Error>>().map(|inner| inner.as_ref() as _))
+            .or_else(|| error.downcast_ref::<Arc<dyn error::Error + Send + Sync>>().map(|inner| inner.as_ref() as _));
         shared.or_else(|| {
             error
-                .downcast_ref::<std::io::Error>()
-                .and_then(std::io::Error::get_ref)
-                .map(|inner| inner as &(dyn std::error::Error + 'static))
+                .downcast_ref::<io::Error>()
+                .and_then(io::Error::get_ref)
+                .map(|inner| inner as &(dyn error::Error + 'static))
                 .or_else(|| error.source())
         })
     })
 }
 
-fn carried<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Failure> {
+fn carried<'a>(error: &'a (dyn error::Error + 'static)) -> Option<&'a Failure> {
     sources(error).find_map(|error| {
         error.downcast_ref::<Failure>().or_else(|| error.downcast_ref::<crate::Refusal>().map(crate::Refusal::failure)).or_else(|| {
             match error.downcast_ref::<crate::execution::ServingError>() {
@@ -425,20 +419,35 @@ fn bounded(mut text: String, limit: usize) -> String {
 mod tests {
     use super::{Failure, Origin};
     use crate::{Refusal, operations::FailureKind};
-    use harmos_protocol::model::{Classification as WireClassification, Failure as WireFailure};
+    use harmos_protocol::model::{self, Classification};
+    use std::{io, sync::Arc};
 
     #[derive(Debug, thiserror::Error)]
     #[error("{0}")]
     struct Remote(#[source] Box<Failure>);
 
     #[test]
+    fn invalid_wire_payload_preserves_its_classification_and_action() {
+        let wire = model::Failure {
+            classification: Classification::Invalid as i32,
+            operation: "fixture.echo".into(),
+            message: "Call fixture.echo: Field \"radio\" Must Be String".into(),
+            action: "Supply a String".into(),
+            ..Default::default()
+        };
+        let received = Failure::from(wire.clone());
+        assert_eq!(received.code(), FailureKind::Invalid);
+        assert_eq!(model::Failure::from(&received), wire);
+    }
+
+    #[test]
     fn application_failure_survives_origin_and_carrier_roundtrip() {
-        let source = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let source = io::Error::from(io::ErrorKind::NotFound);
         let original = Failure::originate(FailureKind::Transient, &source, Origin::Plugin)
             .with_detail("plugin", "fixture")
             .with_detail("secret", "api_token");
         let refusal = Refusal::failed(-32_100, original);
-        let wrapped = std::sync::Arc::new(std::io::Error::other(refusal));
+        let wrapped = Arc::new(io::Error::other(refusal));
         let forwarded = Failure::originate(FailureKind::Permanent, &wrapped, Origin::Host).in_operation("harmos.initialize");
         let received = Failure::decode(&forwarded.encode()).unwrap();
         assert_eq!(received, forwarded);
@@ -449,14 +458,14 @@ mod tests {
         assert_eq!(received.context().operation(), Some("harmos.initialize"));
         assert_eq!(received.diagnostics().unwrap().origin(), Origin::Plugin);
         assert_eq!(received.diagnostics().unwrap().chain().len(), 1);
-        let wire = WireFailure {
-            classification: WireClassification::Transient as i32,
+        let wire = model::Failure {
+            classification: Classification::Transient as i32,
             code: "sensor_unavailable".into(),
             message: "sensor unavailable".into(),
             action: "Reconnect Sensor".into(),
             plugin: "sensor".into(),
             diagnostics: "plugin diagnostic".into(),
-            cause: Some(Box::new(WireFailure {
+            cause: Some(Box::new(model::Failure {
                 message: "link closed".into(),
                 diagnostics: "cause diagnostic".into(),
                 ..Default::default()
@@ -467,7 +476,7 @@ mod tests {
         let remote = Remote(Box::new(received.clone()));
         assert_eq!(Failure::find(&remote), Some(&received));
         let retained = Failure::decode(&received.encode()).unwrap();
-        let encoded = WireFailure::from(&retained);
+        let encoded = model::Failure::from(&retained);
         assert_eq!(encoded.code, wire.code);
         assert_eq!(encoded.action, wire.action);
         assert_eq!(encoded.cause, wire.cause);
@@ -478,7 +487,7 @@ mod tests {
         let redacted = retained.without_diagnostics();
         let redacted = Failure::decode(&redacted.encode()).unwrap();
         assert!(redacted.diagnostics().is_none());
-        let redacted = WireFailure::from(&redacted);
+        let redacted = model::Failure::from(&redacted);
         assert!(redacted.diagnostics.is_empty());
         assert!(redacted.cause.unwrap().diagnostics.is_empty());
     }

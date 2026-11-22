@@ -65,6 +65,9 @@ message ChildRequest {
   uint64 max_response_bytes = 7;
   // Policy guard timers do not make the executing handler idle.
   bool background = 8;
+  // Standard Protobuf JSON request. When present, payload and fingerprint must be empty;
+  // the host resolves the served contract and returns UTF-8 JSON in ChildResponse.payload.
+  optional string json = 9;
 }
 // Permits one further item from a streaming child; demand is not a second child invocation.
 message ChildDemand {

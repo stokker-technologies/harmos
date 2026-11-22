@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -40,7 +42,7 @@ public sealed class Context
   internal Context(Request request, string plugin, IReadOnlyDictionary<string, ByteString> requires,
       CancellationTokenSource cancellation, ChannelWriter<InstanceInvokeResponse>? output = null, IReadOnlyDictionary<string, Handler>? local = null)
   {
-    Operation = request.Operation;
+    OperationId = request.Operation;
     Invocation = request.Invocation;
     Attempt = request.Attempt;
     scope = request.Scope;
@@ -63,7 +65,7 @@ public sealed class Context
     return subscription;
   }
 
-  public string Operation
+  public string OperationId
   {
     get;
   }
@@ -135,11 +137,35 @@ public sealed class Context
     {
       if (handler.Contract.Fingerprint != contract.Fingerprint)
         throw new InvalidOperationException($"Invoke {contract.Id}: Local Contract Differs");
-      return Operation<TRequest, TResponse>.DecodeResponse(await InvokeLocal(handler, request, policy));
+      return global::Harmos.Plugins.Operation<TRequest, TResponse>.DecodeResponse(await InvokeLocal(handler, request, policy));
     }
     if (!requires.TryGetValue(contract.Id, out var fingerprint) || fingerprint != contract.Fingerprint)
       throw new InvalidOperationException($"Undeclared Requirement: {contract.Id}");
 
+    var child = new ChildRequest { Operation = contract.Id, Payload = request.ToByteString(), Fingerprint = fingerprint, Policy = policy?.Clone() };
+    var payload = await SendAsync(child, cancellationToken);
+    try
+    {
+      return global::Harmos.Plugins.Operation<TRequest, TResponse>.DecodeResponse(payload);
+    }
+    catch (InvalidProtocolBufferException error)
+    {
+      throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, error.Message));
+    }
+  }
+
+  /// <summary>Call any visible served operation using JSON; the host owns Protobuf conversion.</summary>
+  public async Task<JsonNode?> Operation(string operation, object? payload = null, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  {
+    var child = new ChildRequest { Operation = operation, Json = JsonSerializer.Serialize(payload ?? new { }), Policy = policy?.Clone() };
+    var reply = await SendAsync(child, cancellationToken);
+    return JsonNode.Parse(reply.ToStringUtf8());
+  }
+
+  private async Task<ByteString> SendAsync(ChildRequest child, CancellationToken cancellationToken)
+  {
+    if (output is null)
+      throw new InvalidOperationException($"Call {child.Operation}: Call Only While a Window or Invocation Is Unanswered");
     TaskCompletionSource<ByteString> completion;
     ulong call;
     lock (pending)
@@ -150,18 +176,9 @@ public sealed class Context
       owned.Add(call);
       completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
       pending.Add(call, completion);
-      if (!output.TryWrite(new InstanceInvokeResponse
-      {
-        Child = new ChildRequest
-        {
-          Call = call,
-          Operation = contract.Id,
-          Payload = request.ToByteString(),
-          Fingerprint = fingerprint,
-          Policy = policy?.Clone(),
-          Background = background
-        }
-      }))
+      child.Call = call;
+      child.Background = background;
+      if (!output.TryWrite(new InstanceInvokeResponse { Child = child }))
         throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Host Closed"));
     }
     using var registration = cancellationToken.Register(() =>
@@ -182,14 +199,7 @@ public sealed class Context
       payload = await completion.Task;
     }
     finally { lock (pending) owned.Remove(call); }
-    try
-    {
-      return Operation<TRequest, TResponse>.DecodeResponse(payload);
-    }
-    catch (InvalidProtocolBufferException error)
-    {
-      throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, error.Message));
-    }
+    return payload;
   }
 
   public async IAsyncEnumerable<TResponse> WatchAsync<TRequest, TResponse>(Operation<TRequest, TResponse> operation,
@@ -242,7 +252,7 @@ public sealed class Context
           throw new PluginFailureException(reply.Failure);
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Payload)
           yield break;
-        yield return Operation<TRequest, TResponse>.DecodeResponse(reply.Item);
+        yield return global::Harmos.Plugins.Operation<TRequest, TResponse>.DecodeResponse(reply.Item);
       }
     }
     finally
@@ -278,7 +288,7 @@ public sealed class Context
       if (initial <= 0 || maximum < initial)
         throw new InvalidOperationException($"Invoke {contract.Id}: Invalid Retry Delay");
     }
-    var guard = new Context(new Request { Operation = Operation, Invocation = Invocation, Scope = scope, Attempt = Attempt },
+    var guard = new Context(new Request { Operation = OperationId, Invocation = Invocation, Scope = scope, Attempt = Attempt },
         Plugin, requires, cancellation, output, local)
     {
       pending = pending,
@@ -480,7 +490,7 @@ public sealed class Context
   /// <summary>One sample of the unanswered window; its children share the window's call IDs and lifetime.</summary>
   internal Context Sample(ulong sequence, Timestamp at)
   {
-    var context = new Context(new Request { Operation = Operation, Invocation = Invocation, Scope = scope, Attempt = Attempt },
+    var context = new Context(new Request { Operation = OperationId, Invocation = Invocation, Scope = scope, Attempt = Attempt },
         Plugin, requires, cancellation, output, local)
     {
       pending = pending,
@@ -552,7 +562,7 @@ public sealed class Context
     Code = "cancelled",
     Message = reason,
     Action = "Retry If Needed",
-    Operation = Operation,
+    Operation = OperationId,
     Plugin = Plugin
   });
 

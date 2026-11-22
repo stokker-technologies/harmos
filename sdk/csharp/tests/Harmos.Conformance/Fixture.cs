@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Buffers.Binary;
+using System.Text.Json.Nodes;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -53,6 +54,7 @@ public sealed class Fixture
     ctx.Register(new Operation<Value, Value>("conformance.failure", Visibility.Public), Failure);
     ctx.Register(new Operation<Value, Value>("conformance.child_failure", Visibility.Public), ChildFailure);
     ctx.Register(new Operation<Value, Value>("conformance.policy", Visibility.Public), Policy);
+    ctx.Register(new Operation<Value, Value>("conformance.untyped", Visibility.Public), UntypedCall);
     ctx.Register(new Operation<Graph, Graph.Types.Nested>("conformance.schema", Visibility.Public),
           (context, request) => Task.FromResult(new Graph.Types.Nested { Count = request.Items.Count, Next = request }));
     ctx.Register(new Operation<Graph.Types.Nested, Graph>("conformance.nested", Visibility.Public),
@@ -106,6 +108,20 @@ public sealed class Fixture
     ctx.Register("interval", new SettingValue { Duration = new Duration { Seconds = 2 } }, "interval", "Conformance interval");
     ctx.Register("label", new SettingValue { Text = "default" }, "label", "Conformance label");
   };
+
+  private async Task<Value> UntypedCall(global::Harmos.Plugins.Context context, Value request)
+  {
+    var value = JsonNode.Parse(request.Value_.ToStringUtf8())!;
+    try
+    {
+      var reply = await context.Operation(value["operation"]!.GetValue<string>(), value["payload"]);
+      return new Value { Value_ = ByteString.CopyFromUtf8(reply!.ToJsonString()) };
+    }
+    catch (PluginFailureException error)
+    {
+      return new Value { Value_ = error.Failure.ToByteString() };
+    }
+  }
 
   private async Task<Value> CallerRefusal(global::Harmos.Plugins.Context context, Value request)
   {

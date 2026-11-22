@@ -31,6 +31,7 @@
 // Third Party Imports
 #include <google/protobuf/duration.pb.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/struct.pb.h>
 #include <google/protobuf/timestamp.pb.h>
 
 // Local Imports
@@ -44,6 +45,10 @@
 
 /* === Types === */
 
+namespace harmos {
+// Parse a JSON Object for an Untyped Operation Call.
+google::protobuf::Struct json(const std::string &text);
+} // namespace harmos
 namespace harmos::plugin {
 enum class HostOperation;
 struct HostRoot;
@@ -158,6 +163,8 @@ public:
 
   explicit Context(std::shared_ptr<detail::Invocation> state);
   template <class Q, class R> Call<R> call(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
+  google::protobuf::Struct operation(const std::string &operation, const google::protobuf::Struct &payload = {},
+                                     std::optional<OperationPolicy> policy = {});
   template <class Q, class R> Watching<R> watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes);
   template <class R> Subscription<R> subscribe(const std::string &stream, std::size_t max_item_bytes);
   void sleep(const google::protobuf::Duration &duration);
@@ -178,7 +185,8 @@ private:
   std::shared_ptr<detail::Invocation> state_;
   std::unordered_map<std::type_index, std::any> resources_;
   std::shared_future<std::string> send(const detail::OperationDefinition &operation, const std::string &payload,
-                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel = nullptr);
+                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel = nullptr,
+                                       std::optional<std::string> json = {});
   std::shared_ptr<detail::Watch> open_watch(const detail::OperationDefinition &operation, const std::string &payload,
                                             std::size_t max_item_bytes);
   std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition &operation, const std::string &payload,

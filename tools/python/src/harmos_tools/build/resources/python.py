@@ -563,7 +563,7 @@ def host(
                 ]
                 indent = "                "
             else:
-                lines += [f"        response = await self._context.call(_{name}, request, policy=policy)"]
+                lines += [f"        response = await self._context._call(_{name}, request, policy=policy)"]
             if payload and payload["kind"] == 11 and not payload["repeated"]:
                 lines += [
                     f'{indent}if not response.HasField("{payload["name"]}"):',

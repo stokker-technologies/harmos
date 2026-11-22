@@ -89,8 +89,8 @@ bench = false
 [dependencies]
 # Local
 harmos = { workspace = true }
-harmos-protocol = { workspace = true }
 harmos-operations = { workspace = true, features = ["grpc", "streaming"] }
+harmos-protocol = { workspace = true }
 harmos-runtime = { workspace = true, features = ["grpc"] }
 
 # Git
@@ -103,9 +103,10 @@ thiserror = { workspace = true }
 # Utilities
 
 # Serialization
-prost-reflect = { workspace = true }
 prost = { workspace = true, features = ["derive", "std"] }
+prost-reflect = { workspace = true }
 prost-types = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
 
 # Configuration
 
@@ -133,8 +134,11 @@ tonic-prost = { workspace = true }
 # === Build Dependencies === #
 
 [build-dependencies]
-prost-build = { workspace = true }
+# Utilities
 protoc-bin-vendored = { workspace = true }
+
+# Serialization
+prost-build = { workspace = true }
 
 # === Dev Dependencies === #
 

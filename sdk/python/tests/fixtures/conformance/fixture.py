@@ -12,6 +12,7 @@
 
 # Standard Library Imports
 import asyncio
+import json
 from asyncio import Event, Task
 
 # Third Party Imports
@@ -92,7 +93,7 @@ class Fixture:
             await context.host.time.sleep(Duration(seconds=3600))
             return request
         if request.value == b"cancel":
-            await context.call(HOST_ECHO, request)
+            await context._call(HOST_ECHO, request)
             return Value(value=(await context.cancelled()).encode())
         if request.value in (b"retry", b"retry-bound"):
             if context.attempt == 1:
@@ -113,7 +114,7 @@ class Fixture:
                 timeout=Duration(seconds=1), retries=RetryPolicy(total_attempts=2, initial=Duration(seconds=3600))
             ),
         }.get(request.value)
-        return await context.call(LOCAL, request, policy=policy)
+        return await context._call(LOCAL, request, policy=policy)
 
     @operation("conformance.step.0", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def echo(self, ctx: Context, request: Value) -> Value:
@@ -124,12 +125,12 @@ class Fixture:
 
     @operation("conformance.children", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def children(self, ctx: Context, request: Value) -> Value:
-        first, second = await asyncio.gather(ctx.call(HOST_ECHO, Value(value=b"\x01")), ctx.call(HOST_ECHO, Value(value=b"\x02")))
+        first, second = await asyncio.gather(ctx._call(HOST_ECHO, Value(value=b"\x01")), ctx._call(HOST_ECHO, Value(value=b"\x02")))
         return Value(value=first.value + second.value)
 
     @operation("conformance.cancel", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def cancel(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
+        return await ctx._call(HOST_PENDING, request)
 
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
@@ -156,18 +157,27 @@ class Fixture:
 
     @operation("conformance.child_failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def child_failure(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_FAIL, request)
+        return await ctx._call(HOST_FAIL, request)
 
     @operation("conformance.policy", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def policy(self, ctx: Context, request: Value) -> Value:
-        first = await ctx.call(
+        first = await ctx._call(
             HOST_ECHO,
             request,
             policy=OperationPolicy(
                 retries=RetryPolicy(total_attempts=3, initial=Duration(seconds=1), maximum=Duration(seconds=4), deterministic_jitter=True)
             ),
         )
-        return await ctx.call(HOST_ECHO, first)
+        return await ctx._call(HOST_ECHO, first)
+
+    @operation("conformance.untyped", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
+    async def untyped_call(self, context: Context, request: Value) -> Value:
+        value = json.loads(request.value)
+        try:
+            reply = await context.operation(value["operation"], value["payload"])
+            return Value(value=json.dumps(reply).encode())
+        except FailureError as error:
+            return Value(value=error.value.SerializeToString())
 
     @operation("conformance.schema", request=Graph, response=Graph.Nested, visibility=VISIBILITY_PUBLIC)
     async def schema(self, ctx: Context, request: Graph) -> Graph.Nested:
@@ -202,12 +212,12 @@ class Fixture:
     @operation("conformance.plugin.v1.Steps/Execute", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, replay_safe=True)
     async def resources(self, ctx: Context, request: Value) -> Value:
         ctx.set(request)
-        await ctx.call(HOST_ECHO, request)
+        await ctx._call(HOST_ECHO, request)
         return ctx.get(Value)
 
     @operation("conformance.cancel_reason", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def cancel_reason(self, ctx: Context, request: Value) -> Value:
-        await ctx.call(HOST_ECHO, request)
+        await ctx._call(HOST_ECHO, request)
         return Value(value=(await ctx.cancelled()).encode())
 
     @operation("conformance.watch", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
@@ -226,10 +236,10 @@ class Fixture:
     @operation("conformance.peer_call", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def peer_call(self, context: Context, request: Value) -> Value:
         if request.value == b"self":
-            return await context.call(OWN_PROTECTED, request)
+            return await context._call(OWN_PROTECTED, request)
         if request.value == b"public":
-            return await context.call(PEER_PUBLIC, Value(value=context.scope().encode()))
-        return await context.call(PEER_PROTECTED if request.value == b"protected" else PEER_LOCAL, request)
+            return await context._call(PEER_PUBLIC, Value(value=context.scope().encode()))
+        return await context._call(PEER_PROTECTED if request.value == b"protected" else PEER_LOCAL, request)
 
     @operation("conformance.settings_read", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def settings_read(self, context: Context, request: Value) -> Value:
@@ -251,7 +261,7 @@ class Fixture:
     async def caller_refusal(self, context: Context, request: Value) -> Value:
         create = InvocationsCreateRequest.FromString(REQUEST)
         try:
-            await context.call(CREATE_INVOCATION, create)
+            await context._call(CREATE_INVOCATION, create)
         except FailureError as failure:
             if request.value == b"propagate":
                 raise
@@ -273,12 +283,12 @@ class Fixture:
 
     @observer("conformance.window_children", row=Value, interval=Duration(seconds=1))
     async def window_children(self, context: Context) -> Value:
-        first, second = await asyncio.gather(context.call(HOST_ECHO, Value(value=b"\x01")), context.call(HOST_ECHO, Value(value=b"\x02")))
+        first, second = await asyncio.gather(context._call(HOST_ECHO, Value(value=b"\x01")), context._call(HOST_ECHO, Value(value=b"\x02")))
         return Value(value=first.value + second.value)
 
     @observer("conformance.window_context", row=Value, interval=Duration(seconds=1))
     async def window_context(self, context: Context) -> Value:
-        echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
+        echo = await context._call(HOST_ECHO, Value(value=context.scope().encode()))
         clock = TimeGetResponse(now=await context.host.time.get())
         settings = await context.host.plugins.settings.list()
         value = b""
@@ -290,7 +300,7 @@ class Fixture:
     @observer("conformance.window_failure", row=Value, interval=Duration(seconds=1))
     async def window_failure(self, context: Context) -> Value:
         try:
-            return await context.call(HOST_FAIL, Value())
+            return await context._call(HOST_FAIL, Value())
         except FailureError as failure:
             return Value(value=failure.value.SerializeToString())
 
@@ -312,14 +322,14 @@ class Fixture:
         async def pending() -> Value:
             started.set()
             try:
-                return await context.call(HOST_PENDING, Value())
+                return await context._call(HOST_PENDING, Value())
             except FailureError:
                 return Value()
 
         task = asyncio.create_task(pending())
         await started.wait()
         try:
-            await context.call(HOST_ECHO, Value(value=b"release"))
+            await context._call(HOST_ECHO, Value(value=b"release"))
         finally:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
@@ -344,23 +354,23 @@ class Fixture:
 
     @operation("conformance.lane.first", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
     async def lane_first(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
+        return await ctx._call(HOST_PENDING, request)
 
     @operation("conformance.lane.second", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
     async def lane_second(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
+        return await ctx._call(HOST_PENDING, request)
 
     @operation("conformance.lane.parallel", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=PARALLEL)
     async def lane_parallel(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
+        return await ctx._call(HOST_PENDING, request)
 
     @operation("conformance.lane.other", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=OTHER)
     async def lane_other(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
+        return await ctx._call(HOST_PENDING, request)
 
     @operation("conformance.lane.open", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def lane_open(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
+        return await ctx._call(HOST_PENDING, request)
 
 
 class ClockFixture:

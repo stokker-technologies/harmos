@@ -51,4 +51,6 @@ enum Classification {
   CLASSIFICATION_TIMED_OUT = 4;
   // Not admitted: visibility, fingerprint mismatch or absent provider.
   CLASSIFICATION_REFUSED = 5;
+  // The Request Does Not Match the Served Operation Contract.
+  CLASSIFICATION_INVALID = 6;
 }

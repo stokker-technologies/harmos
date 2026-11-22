@@ -15,12 +15,14 @@ class Classification(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CLASSIFICATION_CANCELLED: _ClassVar[Classification]
     CLASSIFICATION_TIMED_OUT: _ClassVar[Classification]
     CLASSIFICATION_REFUSED: _ClassVar[Classification]
+    CLASSIFICATION_INVALID: _ClassVar[Classification]
 CLASSIFICATION_UNSPECIFIED: Classification
 CLASSIFICATION_PERMANENT: Classification
 CLASSIFICATION_TRANSIENT: Classification
 CLASSIFICATION_CANCELLED: Classification
 CLASSIFICATION_TIMED_OUT: Classification
 CLASSIFICATION_REFUSED: Classification
+CLASSIFICATION_INVALID: Classification
 
 class Failure(_message.Message):
     __slots__ = ("classification", "code", "message", "action", "operation", "plugin", "cause", "details", "diagnostics")

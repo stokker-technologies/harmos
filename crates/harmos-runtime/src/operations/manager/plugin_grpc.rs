@@ -19,11 +19,12 @@
 use std::sync::{Arc, Weak};
 
 // Third Party Imports
+use prost_reflect::{DescriptorPool, MessageDescriptor};
 
 // Local Imports
 use super::*;
-use crate::operations::lane;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
+use crate::operations::{json, lane};
 use crate::plugin::grpc::{self, Activation, invoke::Binding};
 use harmos_operations::clock::WindDown;
 use harmos_protocol::host::InvocationsCreateRequest;
@@ -365,23 +366,40 @@ impl crate::operations::Context<'_> {
         self.submit_encoded(&request.operation, request.payload)?.await
     }
 
-    pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
+    pub(crate) fn submit_grpc_child(
+        &self, caller: &crate::plugin::grpc::CallingPlugin, mut child: ChildRequest,
+    ) -> Result<ChildInvocation> {
         if child.background && child.operation != "harmos.plugin.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
                 reason: "Call Plugin Child permits background waits only for Time.Sleep",
             });
         }
-        let entry = self.operations.capture_entry(&child.operation)?;
-        entry.available()?;
-        let required = entry.authorize_grpc_plugin(caller)?;
+        let entry = self.operations.capture_entry(&child.operation).map_err(|error| {
+            if child.json.is_some() && matches!(error, Error::NotRegistered { .. }) { json::unserved(&child.operation) } else { error }
+        })?;
+        entry.available().map_err(|error| if child.json.is_some() { json::unserved(&child.operation) } else { error })?;
+        entry.authorize_grpc_plugin(caller)?;
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if required.fingerprint != child.fingerprint {
+        if child.json.is_none() && entry.require_grpc_plugin(caller)?.fingerprint != child.fingerprint {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
                 reason: "callee differs from the declared requirement; refresh the plugin declarations",
             });
         }
+        let response = if let Some(text) = &child.json {
+            if !child.payload.is_empty() || !child.fingerprint.is_empty() || child.watch {
+                return Err(Error::InvalidInput {
+                    field: "JSON operation call",
+                    reason: "Send JSON Only, Without Protobuf Payload, Fingerprint or Watch",
+                });
+            }
+            let (request, response) = json_descriptors(&entry)?;
+            child.payload = json::decode(&child.operation, request, text)?;
+            Some(response)
+        } else {
+            None
+        };
         let output = entry.contract.as_ref().is_some_and(|contract| contract.output().is_some());
         let input = entry.contract.as_ref().is_some_and(|contract| contract.input().is_some());
         if input || output != child.watch || (child.watch && child.max_response_bytes == 0) {
@@ -448,7 +466,15 @@ impl crate::operations::Context<'_> {
         };
         let streams = prepared.streams.clone();
         let override_policy = child.policy.as_ref().map(|value| policy(Some(value))).transpose()?;
-        let invocation = self.operations.dispatch_grpc_prepared(entry, prepared, self, caller, override_policy)?;
+        let mut invocation =
+            self.operations.dispatch_grpc_prepared(entry, prepared, self, caller, override_policy, child.json.is_some())?;
+        if let Some(response) = response {
+            let outcome = invocation.outcome;
+            invocation.outcome = Box::pin(async move {
+                let payload = outcome.await?;
+                json::encode(&child.operation, response, &payload)
+            });
+        }
         Ok(ChildInvocation { invocation, streams })
     }
 }
@@ -457,6 +483,7 @@ impl Manager {
     fn dispatch_grpc_prepared(
         &self, entry: Arc<Entry>, prepared: harmos_operations::execution::__private::PreparedNative,
         context: &crate::operations::Context<'_>, caller: &crate::plugin::grpc::CallingPlugin, override_policy: Option<OperationPolicy>,
+        untyped: bool,
     ) -> Result<crate::operations::EncodedInvocation> {
         let mut request = crate::operations::binding::Request::from(Vec::new());
         request.policy = override_policy;
@@ -468,7 +495,10 @@ impl Manager {
                 cause: None,
                 preparation: None,
             },
-            Source::GrpcPlugin(Arc::new(caller.clone())),
+            Source::GrpcPlugin {
+                caller: Arc::new(caller.clone()),
+                untyped,
+            },
             Some(crate::operations::wire::Parent {
                 scope: &context.scope,
                 ancestors: context.admission.held(),
@@ -482,6 +512,50 @@ impl Manager {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn json_descriptors(entry: &Entry) -> Result<(MessageDescriptor, MessageDescriptor)> {
+    let failure = |reason: &str| Error::OperationFailed {
+        operation: entry.id().into(),
+        source: Arc::new(tonic::Status::invalid_argument(format!("Call {}: {reason}", entry.id()))),
+    };
+    if let Some(binding) = entry.binding.downcast_ref::<Binding>() {
+        let declarations = binding.caller.description.declarations.as_ref().expect("admitted declarations");
+        let pool = DescriptorPool::from_file_descriptor_set(declarations.types.clone().unwrap_or_default())
+            .map_err(|_| failure("Refresh the Plugin's Invalid Protobuf Descriptors"))?;
+        return Ok((
+            pool.get_message_by_name(&binding.contract.request).ok_or_else(|| failure("Declare the Request Descriptor"))?,
+            pool.get_message_by_name(&binding.contract.response).ok_or_else(|| failure("Declare the Response Descriptor"))?,
+        ));
+    }
+    let contract = entry.contract.as_ref().ok_or_else(|| failure("Serve a Protobuf Contract for This Operation"))?;
+    if let Some(protobuf) = contract.protobuf() {
+        let pool =
+            DescriptorPool::decode(protobuf.descriptors.as_slice()).map_err(|_| failure("Refresh the Served Protobuf Descriptors"))?;
+        return Ok((
+            pool.get_message_by_name(&protobuf.request).ok_or_else(|| failure("Declare the Request Descriptor"))?,
+            pool.get_message_by_name(&protobuf.response).ok_or_else(|| failure("Declare the Response Descriptor"))?,
+        ));
+    }
+    json_projected_descriptors(entry, contract)
+}
+
+#[cfg(feature = "grpc")]
+fn json_projected_descriptors(entry: &Entry, contract: &crate::operations::Contract) -> Result<(MessageDescriptor, MessageDescriptor)> {
+    let binding = contract.grpc().ok_or_else(|| json::unserved(entry.id()))?;
+    let service = crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
+        Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        }
+    })?;
+    let method = service.methods().find(|method| method.name() == binding.method.as_ref()).expect("projected method");
+    Ok((method.input(), method.output()))
+}
+
+#[cfg(not(feature = "grpc"))]
+fn json_projected_descriptors(entry: &Entry, _: &crate::operations::Contract) -> Result<(MessageDescriptor, MessageDescriptor)> {
+    Err(json::unserved(entry.id()))
+}
 
 pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     if let Some(binding) = entry.binding.downcast_ref::<Binding>() {

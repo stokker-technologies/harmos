@@ -53,6 +53,7 @@ use {
 // Third Party Imports
 use prost::Message;
 use prost_types::Timestamp;
+use serde_json::Value;
 use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tonic::Status;
 
@@ -113,6 +114,12 @@ impl Drop for PendingDrop {
 }
 
 /* === Structs === */
+
+/// An operation identifier and JSON payload, resolved against the host's served contract.
+pub struct Untyped {
+    operation: String,
+    payload: Value,
+}
 
 /// Resources belong to this execution, including its child calls; never another invocation.
 /// Virtual time cannot observe background work started independently by a handler.
@@ -242,6 +249,24 @@ impl Context {
         }
     }
 
+    /// Call a Served Operation With JSON; Conversion Belongs to the Host.
+    pub async fn operation(&self, request: Untyped) -> Result<Value> {
+        self.operation_with(request, None).await
+    }
+
+    pub async fn operation_with(&self, request: Untyped, policy: Option<OperationPolicy>) -> Result<Value> {
+        let json = serde_json::to_string(&request.payload)
+            .map_err(|error| Error::Invalid(format!("Call {}: Encode JSON Payload: {error}", request.operation)))?;
+        let child = ChildRequest {
+            operation: request.operation,
+            json: Some(json),
+            policy,
+            ..Default::default()
+        };
+        let payload = self.send_call(child).await?;
+        serde_json::from_slice(&payload).map_err(|error| Error::Invalid(format!("Read Operation Reply: Host Must Send JSON: {error}")))
+    }
+
     pub async fn call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
         self.call_with(request, None).await
     }
@@ -267,7 +292,15 @@ impl Context {
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
         }
-        let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, policy).await?;
+        let payload = self
+            .send_call(ChildRequest {
+                operation: Q::ID.into(),
+                payload: request.encode_to_vec(),
+                fingerprint,
+                policy,
+                ..Default::default()
+            })
+            .await?;
         Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
     }
 
@@ -444,28 +477,23 @@ impl Context {
     // Local Operation Policies Depend on the Clock, so Clock Calls Go Straight to the Host.
     async fn clock_call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
         let fingerprint = self.requires.get(Q::ID).ok_or_else(|| Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)))?.clone();
-        let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, None).await?;
+        let payload = self
+            .send_call(ChildRequest {
+                operation: Q::ID.into(),
+                payload: request.encode_to_vec(),
+                fingerprint,
+                ..Default::default()
+            })
+            .await?;
         Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
     }
 
-    async fn send_call(&self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
-        if let Some(child) = &self.child {
-            return child
-                .call(
-                    ChildRequest {
-                        call: 0,
-                        operation: operation.into(),
-                        payload,
-                        fingerprint,
-                        policy,
-                        background: self.background,
-                        ..Default::default()
-                    },
-                    self.values.clone(),
-                    false,
-                )
-                .await;
+    async fn send_call(&self, mut child: ChildRequest) -> Result<Vec<u8>> {
+        child.background = self.background;
+        if let Some(transport) = &self.child {
+            return transport.call(child, self.values.clone(), false).await;
         }
+        let operation = &child.operation;
         let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Call {operation}: Child Carrier Required")))?;
         output.check()?;
         if !self.background
@@ -491,15 +519,7 @@ impl Context {
             call
         };
         let _pending = PendingDrop { context: self.clone(), call };
-        let child = ChildRequest {
-            call,
-            operation: operation.into(),
-            payload,
-            fingerprint,
-            policy,
-            background: self.background,
-            ..Default::default()
-        };
+        child.call = call;
         output.send(instance_invoke_response::Frame::Child(child)).await?;
         if let Some(pending) = self.calls.lock().expect("Child Calls Poisoned").pending.get_mut(&call) {
             pending.sent = true;
@@ -627,6 +647,11 @@ impl<R: message::Message> Drop for Watching<R> {
 }
 
 /* === Public Functions === */
+
+/// Call an operation by identifier with a standard Protobuf JSON payload.
+pub fn untyped(operation: impl Into<String>, payload: Value) -> Untyped {
+    Untyped { operation: operation.into(), payload }
+}
 
 /* === Private Functions === */
 

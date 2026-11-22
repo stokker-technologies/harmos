@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dharmos/model/v1/failure.proto\x12\x0fharmos.model.v1\"\xba\x02\n\x07\x46\x61ilure\x12\x37\n\x0e\x63lassification\x18\x01 \x01(\x0e\x32\x1f.harmos.model.v1.Classification\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x0e\n\x06\x61\x63tion\x18\x04 \x01(\t\x12\x11\n\toperation\x18\x05 \x01(\t\x12\x0e\n\x06plugin\x18\x06 \x01(\t\x12\'\n\x05\x63\x61use\x18\x07 \x01(\x0b\x32\x18.harmos.model.v1.Failure\x12\x36\n\x07\x64\x65tails\x18\x08 \x03(\x0b\x32%.harmos.model.v1.Failure.DetailsEntry\x12\x13\n\x0b\x64iagnostics\x18\t \x01(\t\x1a.\n\x0c\x44\x65tailsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*\xc4\x01\n\x0e\x43lassification\x12\x1e\n\x1a\x43LASSIFICATION_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x43LASSIFICATION_PERMANENT\x10\x01\x12\x1c\n\x18\x43LASSIFICATION_TRANSIENT\x10\x02\x12\x1c\n\x18\x43LASSIFICATION_CANCELLED\x10\x03\x12\x1c\n\x18\x43LASSIFICATION_TIMED_OUT\x10\x04\x12\x1a\n\x16\x43LASSIFICATION_REFUSED\x10\x05\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dharmos/model/v1/failure.proto\x12\x0fharmos.model.v1\"\xba\x02\n\x07\x46\x61ilure\x12\x37\n\x0e\x63lassification\x18\x01 \x01(\x0e\x32\x1f.harmos.model.v1.Classification\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x0e\n\x06\x61\x63tion\x18\x04 \x01(\t\x12\x11\n\toperation\x18\x05 \x01(\t\x12\x0e\n\x06plugin\x18\x06 \x01(\t\x12\'\n\x05\x63\x61use\x18\x07 \x01(\x0b\x32\x18.harmos.model.v1.Failure\x12\x36\n\x07\x64\x65tails\x18\x08 \x03(\x0b\x32%.harmos.model.v1.Failure.DetailsEntry\x12\x13\n\x0b\x64iagnostics\x18\t \x01(\t\x1a.\n\x0c\x44\x65tailsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*\xe0\x01\n\x0e\x43lassification\x12\x1e\n\x1a\x43LASSIFICATION_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x43LASSIFICATION_PERMANENT\x10\x01\x12\x1c\n\x18\x43LASSIFICATION_TRANSIENT\x10\x02\x12\x1c\n\x18\x43LASSIFICATION_CANCELLED\x10\x03\x12\x1c\n\x18\x43LASSIFICATION_TIMED_OUT\x10\x04\x12\x1a\n\x16\x43LASSIFICATION_REFUSED\x10\x05\x12\x1a\n\x16\x43LASSIFICATION_INVALID\x10\x06\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,7 +34,7 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_FAILURE_DETAILSENTRY']._loaded_options = None
   _globals['_FAILURE_DETAILSENTRY']._serialized_options = b'8\001'
   _globals['_CLASSIFICATION']._serialized_start=368
-  _globals['_CLASSIFICATION']._serialized_end=564
+  _globals['_CLASSIFICATION']._serialized_end=592
   _globals['_FAILURE']._serialized_start=51
   _globals['_FAILURE']._serialized_end=365
   _globals['_FAILURE_DETAILSENTRY']._serialized_start=319

@@ -289,6 +289,7 @@ pub fn catalog() -> impl Registration {
         ctx.register(Operation::new("conformance.failure", failure).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.child_failure", child_failure).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.policy", policy).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.untyped", untyped_call).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.schema", schema).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.nested", nested).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.projected", projected).visibility(Visibility::Public))?;
@@ -686,4 +687,16 @@ async fn window_cancel(context: &Context) -> Result<Value> {
     })
     .await?;
     Ok(Value { value: b"cancelled".to_vec() })
+}
+
+async fn untyped_call(context: &Context, request: Value) -> Result<Value> {
+    let request: serde_json::Value = serde_json::from_slice(&request.value).expect("Conformance JSON Request");
+    let operation = request["operation"].as_str().expect("Conformance Operation Identifier");
+    match context.operation(harmos::untyped(operation, request["payload"].clone())).await {
+        Ok(reply) => Ok(Value {
+            value: serde_json::to_vec(&reply).expect("Conformance JSON Reply"),
+        }),
+        Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
+        Err(error) => Err(error),
+    }
 }

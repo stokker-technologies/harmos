@@ -25,6 +25,7 @@ use futures_core::Stream;
 use futures_util::stream;
 use prost::Message;
 use prost_types::{Duration, Timestamp};
+use serde_json::Value;
 use tokio::{
     net::TcpListener,
     sync::{Mutex, mpsc, oneshot},
@@ -234,6 +235,33 @@ async fn invoke(
     output: &mpsc::Sender<result::Result<InstanceInvokeResponse, Status>>,
 ) -> result::Result<(), Status> {
     let result = match request.operation.as_str() {
+        "conformance.untyped" => {
+            let value = fixture::Value::decode(request.payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()))?;
+            let request: Value = serde_json::from_slice(&value.value).map_err(|error| Status::invalid_argument(error.to_string()))?;
+            let operation =
+                request["operation"].as_str().ok_or_else(|| Status::invalid_argument("Call Untyped: Supply an Operation Identifier"))?;
+            let child = ChildRequest {
+                call: 1,
+                operation: operation.into(),
+                json: Some(request["payload"].to_string()),
+                ..Default::default()
+            };
+            output
+                .send(Ok(InstanceInvokeResponse {
+                    frame: Some(instance_invoke_response::Frame::Child(child)),
+                }))
+                .await
+                .map_err(|_| Status::cancelled("Invocation Closed"))?;
+            let Some(instance_invoke_request::Frame::Child(child)) = input.message().await?.and_then(|frame| frame.frame) else {
+                return Err(Status::invalid_argument("Call Untyped: Expected a Child Reply"));
+            };
+            let value = match child.result {
+                Some(child_response::Result::Payload(payload)) => payload,
+                Some(child_response::Result::Failure(failure)) => failure.encode_to_vec(),
+                _ => return Err(Status::invalid_argument("Call Untyped: Expected JSON or Failure")),
+            };
+            response::Result::Payload(fixture::payload(&value))
+        }
         "conformance.caller_refusal" => {
             send_child(output, 1, "application.host.v1.Invocations/Create", crate::callers::request()).await?;
             let Some(instance_invoke_request::Frame::Child(ChildResponse {

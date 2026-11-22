@@ -34,11 +34,12 @@ namespace Harmos;
             "cxgIIAMoCzIlLmhhcm1vcy5tb2RlbC52MS5GYWlsdXJlLkRldGFpbHNFbnRy",
             "eVIHZGV0YWlscxIgCgtkaWFnbm9zdGljcxgJIAEoCVILZGlhZ25vc3RpY3Ma",
             "OgoMRGV0YWlsc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIg",
-            "ASgJUgV2YWx1ZToCOAEqxAEKDkNsYXNzaWZpY2F0aW9uEh4KGkNMQVNTSUZJ",
+            "ASgJUgV2YWx1ZToCOAEq4AEKDkNsYXNzaWZpY2F0aW9uEh4KGkNMQVNTSUZJ",
             "Q0FUSU9OX1VOU1BFQ0lGSUVEEAASHAoYQ0xBU1NJRklDQVRJT05fUEVSTUFO",
             "RU5UEAESHAoYQ0xBU1NJRklDQVRJT05fVFJBTlNJRU5UEAISHAoYQ0xBU1NJ",
             "RklDQVRJT05fQ0FOQ0VMTEVEEAMSHAoYQ0xBU1NJRklDQVRJT05fVElNRURf",
-            "T1VUEAQSGgoWQ0xBU1NJRklDQVRJT05fUkVGVVNFRBAFYgZwcm90bzM="));
+            "T1VUEAQSGgoWQ0xBU1NJRklDQVRJT05fUkVGVVNFRBAFEhoKFkNMQVNTSUZJ",
+            "Q0FUSU9OX0lOVkFMSUQQBmIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Harmos.Classification), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -56,6 +57,7 @@ namespace Harmos;
     [pbr::OriginalName("CLASSIFICATION_CANCELLED")] Cancelled = 3,
     [pbr::OriginalName("CLASSIFICATION_TIMED_OUT")] TimedOut = 4,
     [pbr::OriginalName("CLASSIFICATION_REFUSED")] Refused = 5,
+    [pbr::OriginalName("CLASSIFICATION_INVALID")] Invalid = 6,
   }
 
   #endregion

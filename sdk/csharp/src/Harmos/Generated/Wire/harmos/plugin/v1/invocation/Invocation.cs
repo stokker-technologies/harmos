@@ -32,26 +32,27 @@ namespace Harmos.Internal.Plugin;
             "GAQgASgNUgdhdHRlbXB0EhQKBXNjb3BlGAUgASgJUgVzY29wZSIgCgZDYW5j",
             "ZWwSFgoGcmVhc29uGAEgASgJUgZyZWFzb24iZgoIUmVzcG9uc2USGgoHcGF5",
             "bG9hZBgBIAEoDEgAUgdwYXlsb2FkEjQKB2ZhaWx1cmUYAiABKAsyGC5oYXJt",
-            "b3MubW9kZWwudjEuRmFpbHVyZUgAUgdmYWlsdXJlQggKBnJlc3VsdCKaAgoM",
+            "b3MubW9kZWwudjEuRmFpbHVyZUgAUgdmYWlsdXJlQggKBnJlc3VsdCK8AgoM",
             "Q2hpbGRSZXF1ZXN0EhIKBGNhbGwYASABKARSBGNhbGwSHAoJb3BlcmF0aW9u",
             "GAIgASgJUglvcGVyYXRpb24SGAoHcGF5bG9hZBgDIAEoDFIHcGF5bG9hZBIg",
             "CgtmaW5nZXJwcmludBgEIAEoDFILZmluZ2VycHJpbnQSOAoGcG9saWN5GAUg",
             "ASgLMiAuaGFybW9zLm1vZGVsLnYxLk9wZXJhdGlvblBvbGljeVIGcG9saWN5",
             "EhQKBXdhdGNoGAYgASgIUgV3YXRjaBIsChJtYXhfcmVzcG9uc2VfYnl0ZXMY",
             "ByABKARSEG1heFJlc3BvbnNlQnl0ZXMSHgoKYmFja2dyb3VuZBgIIAEoCFIK",
-            "YmFja2dyb3VuZCIhCgtDaGlsZERlbWFuZBISCgRjYWxsGAEgASgEUgRjYWxs",
-            "IiEKC0NoaWxkQ2FuY2VsEhIKBGNhbGwYASABKARSBGNhbGwilQEKDUNoaWxk",
-            "UmVzcG9uc2USEgoEY2FsbBgBIAEoBFIEY2FsbBIaCgdwYXlsb2FkGAIgASgM",
-            "SABSB3BheWxvYWQSNAoHZmFpbHVyZRgDIAEoCzIYLmhhcm1vcy5tb2RlbC52",
-            "MS5GYWlsdXJlSABSB2ZhaWx1cmUSFAoEaXRlbRgEIAEoDEgAUgRpdGVtQggK",
-            "BnJlc3VsdGIGcHJvdG8z"));
+            "YmFja2dyb3VuZBIXCgRqc29uGAkgASgJSABSBGpzb26IAQFCBwoFX2pzb24i",
+            "IQoLQ2hpbGREZW1hbmQSEgoEY2FsbBgBIAEoBFIEY2FsbCIhCgtDaGlsZENh",
+            "bmNlbBISCgRjYWxsGAEgASgEUgRjYWxsIpUBCg1DaGlsZFJlc3BvbnNlEhIK",
+            "BGNhbGwYASABKARSBGNhbGwSGgoHcGF5bG9hZBgCIAEoDEgAUgdwYXlsb2Fk",
+            "EjQKB2ZhaWx1cmUYAyABKAsyGC5oYXJtb3MubW9kZWwudjEuRmFpbHVyZUgA",
+            "UgdmYWlsdXJlEhQKBGl0ZW0YBCABKAxIAFIEaXRlbUIICgZyZXN1bHRiBnBy",
+            "b3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Harmos.FailureReflection.Descriptor, global::Harmos.PolicyReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Request), global::Harmos.Internal.Plugin.Request.Parser, new[]{ "Operation", "Payload", "Invocation", "Attempt", "Scope" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Cancel), global::Harmos.Internal.Plugin.Cancel.Parser, new[]{ "Reason" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Response), global::Harmos.Internal.Plugin.Response.Parser, new[]{ "Payload", "Failure" }, new[]{ "Result" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildRequest), global::Harmos.Internal.Plugin.ChildRequest.Parser, new[]{ "Call", "Operation", "Payload", "Fingerprint", "Policy", "Watch", "MaxResponseBytes", "Background" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildRequest), global::Harmos.Internal.Plugin.ChildRequest.Parser, new[]{ "Call", "Operation", "Payload", "Fingerprint", "Policy", "Watch", "MaxResponseBytes", "Background", "Json" }, new[]{ "Json" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildDemand), global::Harmos.Internal.Plugin.ChildDemand.Parser, new[]{ "Call" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildCancel), global::Harmos.Internal.Plugin.ChildCancel.Parser, new[]{ "Call" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildResponse), global::Harmos.Internal.Plugin.ChildResponse.Parser, new[]{ "Call", "Payload", "Failure", "Item" }, new[]{ "Result" }, null, null, null)
@@ -943,6 +944,7 @@ namespace Harmos.Internal.Plugin;
       watch_ = other.watch_;
       maxResponseBytes_ = other.maxResponseBytes_;
       background_ = other.background_;
+      json_ = other.json_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1048,6 +1050,32 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "json" field.</summary>
+    public const int JsonFieldNumber = 9;
+    private readonly static string JsonDefaultValue = "";
+
+    private string json_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Json {
+      get { return json_ ?? JsonDefaultValue; }
+      set {
+        json_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "json" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasJson {
+      get { return json_ != null; }
+    }
+    /// <summary>Clears the value of the "json" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearJson() {
+      json_ = null;
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1071,6 +1099,7 @@ namespace Harmos.Internal.Plugin;
       if (Watch != other.Watch) return false;
       if (MaxResponseBytes != other.MaxResponseBytes) return false;
       if (Background != other.Background) return false;
+      if (Json != other.Json) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1086,6 +1115,7 @@ namespace Harmos.Internal.Plugin;
       if (Watch != false) hash ^= Watch.GetHashCode();
       if (MaxResponseBytes != 0UL) hash ^= MaxResponseBytes.GetHashCode();
       if (Background != false) hash ^= Background.GetHashCode();
+      if (HasJson) hash ^= Json.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1136,6 +1166,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(64);
         output.WriteBool(Background);
       }
+      if (HasJson) {
+        output.WriteRawTag(74);
+        output.WriteString(Json);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1178,6 +1212,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(64);
         output.WriteBool(Background);
       }
+      if (HasJson) {
+        output.WriteRawTag(74);
+        output.WriteString(Json);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1211,6 +1249,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (Background != false) {
         size += 1 + 1;
+      }
+      if (HasJson) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Json);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1250,6 +1291,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (other.Background != false) {
         Background = other.Background;
+      }
+      if (other.HasJson) {
+        Json = other.Json;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1305,6 +1349,10 @@ namespace Harmos.Internal.Plugin;
             Background = input.ReadBool();
             break;
           }
+          case 74: {
+            Json = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -1357,6 +1405,10 @@ namespace Harmos.Internal.Plugin;
           }
           case 64: {
             Background = input.ReadBool();
+            break;
+          }
+          case 74: {
+            Json = input.ReadString();
             break;
           }
         }

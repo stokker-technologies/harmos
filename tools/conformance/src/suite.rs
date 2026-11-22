@@ -29,6 +29,7 @@ use std::{
 use futures_util::stream;
 use prost::Message;
 use prost_types::Timestamp;
+use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tonic::{Code, Streaming, transport::Channel};
 
@@ -99,6 +100,7 @@ pub const CASES: &[&str] = &[
     "Plugin Lane Description Facts",
     "Plugin Lane Admission and Cancellation",
     "Scope Wind-Down Without Cancellation",
+    "Untyped Operation Calls and Failures",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -531,6 +533,66 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
+        45 => {
+            for (operation, payload, classification, reason) in [
+                ("conformance.host.json", json!({"radio":"wifi","state":"off"}), None, ""),
+                ("conformance.host.json", json!({}), None, ""),
+                (
+                    "conformance.absent",
+                    json!({}),
+                    Some(Classification::Refused),
+                    "No Plugin Serves This Operation; Install or Enable the Plugin That Provides It",
+                ),
+                (
+                    "conformance.host.json",
+                    json!({"extra":true}),
+                    Some(Classification::Invalid),
+                    "Field \"extra\" Is Not in Its Request; Expected radio, state",
+                ),
+                ("conformance.host.json", json!({"radio":false}), Some(Classification::Invalid), "Field \"radio\" Must Be String"),
+                ("conformance.host.json", json!({"radio":"wifi"}), Some(Classification::Invalid), "Field \"state\" Is Required"),
+            ] {
+                let request = json!({"operation":operation, "payload":payload});
+                let (send, mut input) =
+                    invoke(&mut client, "conformance.untyped", fixture::payload(request.to_string().as_bytes())).await?;
+                let frame = input.message().await?.and_then(|frame| frame.frame);
+                let Some(instance_invoke_response::Frame::Child(child)) = frame else {
+                    return Err(Error::Invalid("Call Untyped: Expected a Child Request".into()));
+                };
+                require(
+                    child.operation == operation && child.payload.is_empty() && child.fingerprint.is_empty() && !child.watch,
+                    "Call Untyped: Send Only the Operation Identifier and JSON",
+                )?;
+                let actual: Value =
+                    serde_json::from_str(child.json.as_deref().ok_or_else(|| Error::Invalid("Call Untyped: Missing JSON".into()))?)
+                        .map_err(|error| Error::Invalid(error.to_string()))?;
+                require(actual == payload, "Call Untyped: JSON Payload Differs")?;
+                let expected = if let Some(classification) = classification {
+                    let failure = Failure {
+                        classification: classification as i32,
+                        operation: operation.into(),
+                        message: format!("Call {operation}: {reason}"),
+                        code: "operation_payload".into(),
+                        ..Default::default()
+                    };
+                    send_child(&send, child.call, child_response::Result::Failure(failure.clone())).await?;
+                    Some(failure)
+                } else {
+                    send_child(&send, child.call, child_response::Result::Payload(br#"{"radio":"wifi","state":"off"}"#.to_vec())).await?;
+                    None
+                };
+                let response::Result::Payload(reply) = terminal(&mut input).await? else {
+                    return Err(Error::Invalid("Call Untyped: Expected the Fixture Reply".into()));
+                };
+                let value = fixture::Value::decode(reply.as_slice())?.value;
+                if let Some(expected) = expected {
+                    require(Failure::decode(value.as_slice())? == expected, "Call Untyped: Preserve Every Failure Field")?;
+                } else {
+                    let reply: Value = serde_json::from_slice(&value).map_err(|error| Error::Invalid(error.to_string()))?;
+                    require(reply == json!({"radio":"wifi","state":"off"}), "Call Untyped: JSON Reply Differs")?;
+                }
+            }
+        }
         44 => {
             // A Carrier Notification Precedes Normally Completed Host Waits.
             let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(b"wind_down")).await?;

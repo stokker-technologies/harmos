@@ -48,11 +48,13 @@ tracing = { workspace = true }
 # Utilities
 bytes = { workspace = true }
 semver = { workspace = true }
+wit-bindgen = { workspace = true, default-features = true, features = ["async-spawn", "inter-task-wakeup"], optional = true }
 
 # Serialization
 prost = { workspace = true, features = ["derive", "std"] }
 prost-reflect = { workspace = true }
 prost-types = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
 
 # Async
 futures-core = { workspace = true }
@@ -62,8 +64,6 @@ tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 # Networking
 tonic = { workspace = true, features = ["codegen"] }
 
-wit-bindgen = { workspace = true, default-features = true, features = ["async-spawn", "inter-task-wakeup"], optional = true }
-
 # === Build Dependencies === #
 
 # === Dev Dependencies === #
@@ -72,14 +72,13 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 # Local
 harmos-protocol = { workspace = true }
 
-# Serialization
-tonic-prost = { workspace = true }
-serde_json = { workspace = true, features = ["std"] }
-
 # Utilities
 sha2 = { workspace = true, default-features = true }
 wasmtime = { workspace = true }
 wit-component = { workspace = true, default-features = true }
+
+# Serialization
+tonic-prost = { workspace = true }
 
 # Filesystem
 tempfile = { workspace = true }
@@ -90,7 +89,7 @@ tokio = { workspace = true, features = ["io-util", "process", "rt-multi-thread"]
 # === Target Dependencies === #
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Random
+# Utilities
 getrandom = { workspace = true }
 
 # Async

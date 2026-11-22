@@ -33,7 +33,7 @@ use harmos_protocol::model::{
 
 /* === Constants === */
 
-pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
+pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy", "untyped"];
 pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.plugin.v1.Time/Sleep", "harmos.plugin.v1.Time/Get"];
 
 pub const WINDOW_STREAMS: &[&str] = &[

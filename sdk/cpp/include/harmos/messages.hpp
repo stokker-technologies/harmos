@@ -40,6 +40,7 @@ using ::harmos::detail::payloads::model::Failure;
 }
 using ::harmos::detail::payloads::Classification;
 using ::harmos::detail::payloads::CLASSIFICATION_CANCELLED;
+using ::harmos::detail::payloads::CLASSIFICATION_INVALID;
 using ::harmos::detail::payloads::CLASSIFICATION_PERMANENT;
 using ::harmos::detail::payloads::CLASSIFICATION_REFUSED;
 using ::harmos::detail::payloads::CLASSIFICATION_TIMED_OUT;

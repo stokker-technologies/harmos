@@ -165,7 +165,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         Code = "handler_failed",
         Message = error.Message,
         Action = "Inspect Plugin Diagnostics",
-        Operation = context.Operation,
+        Operation = context.OperationId,
         Plugin = context.Plugin,
         Diagnostics = error.ToString()
       });

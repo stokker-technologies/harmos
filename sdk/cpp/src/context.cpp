@@ -18,6 +18,7 @@
 #include "harmos/plugin/v1/subscriptions.pb.h"
 #include "invocation.hpp"
 #include <absl/numeric/int128.h>
+#include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/time_util.h>
 
 using google::protobuf::Duration;
@@ -458,11 +459,13 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
 }
 
 shared_future<string> Context::send(const detail::OperationDefinition &operation, const string &payload,
-                                    std::optional<OperationPolicy> policy, std::function<void()> *cancel) {
+                                    std::optional<OperationPolicy> policy, std::function<void()> *cancel, optional<string> json) {
   plugin::v1::ChildRequest request;
   request.set_operation(operation.contract.id());
   request.set_fingerprint(operation.contract.fingerprint());
   request.set_payload(payload);
+  if (json)
+    request.set_json(std::move(*json));
   if (policy)
     *request.mutable_policy() = std::move(*policy);
   auto root = transport(state_);
@@ -477,7 +480,7 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
       if (auto reason = cancellation(state_))
         throw Failure(interrupted(state_, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
     auto requirement = state_->requirements.find(request.operation());
-    if (requirement == state_->requirements.end() || requirement->second != request.fingerprint())
+    if (!request.has_json() && (requirement == state_->requirements.end() || requirement->second != request.fingerprint()))
       throw invalid_argument("Invoke " + request.operation() + ": Undeclared Requirement");
     if (root->next == UINT64_MAX)
       throw TransportError(8, "Invoke " + request.operation() + ": Child Identity Exhausted");
@@ -511,6 +514,22 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
   *frame.mutable_child() = std::move(request);
   root->emit(std::move(frame));
   root->start_reading();
+  return result;
+}
+
+google::protobuf::Struct Context::operation(const string &operation, const google::protobuf::Struct &payload,
+                                            optional<OperationPolicy> policy) {
+  string text;
+  auto status = google::protobuf::util::MessageToJsonString(payload, &text);
+  if (!status.ok())
+    throw invalid_argument("Call " + operation + ": Encode a JSON Object: " + status.ToString());
+  detail::OperationDefinition definition;
+  definition.contract.set_id(operation);
+  auto reply = send(definition, {}, std::move(policy), nullptr, std::move(text)).get();
+  google::protobuf::Struct result;
+  status = google::protobuf::util::JsonStringToMessage(reply, &result);
+  if (!status.ok())
+    throw TransportError(3, "Call " + operation + ": Host Must Return a JSON Object: " + status.ToString());
   return result;
 }
 
@@ -585,3 +604,13 @@ void cancel_children(const shared_ptr<Invocation> &state, const string &reason) 
 /* === Private Functions === */
 
 /* === Entry Point === */
+
+namespace harmos {
+google::protobuf::Struct json(const std::string &text) {
+  google::protobuf::Struct value;
+  auto status = google::protobuf::util::JsonStringToMessage(text, &value);
+  if (!status.ok())
+    throw std::invalid_argument("Parse Operation Payload: Supply a JSON Object: " + status.ToString());
+  return value;
+}
+} // namespace harmos

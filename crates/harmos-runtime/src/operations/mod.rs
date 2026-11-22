@@ -30,6 +30,7 @@ mod grpc;
 mod handler;
 pub(crate) mod instances;
 mod invocation;
+mod json;
 pub(crate) mod lane;
 mod manager;
 pub mod middleware;

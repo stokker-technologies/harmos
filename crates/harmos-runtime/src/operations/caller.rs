@@ -55,6 +55,7 @@ pub struct Caller {
 pub(super) struct Origin {
     pub(super) identity: Identity,
     pub(super) grpc: Option<Arc<crate::plugin::grpc::CallingPlugin>>,
+    pub(super) untyped: bool,
 
     #[cfg(feature = "plugin-guest")]
     pub(super) scope: Option<PluginScope>,
@@ -86,7 +87,10 @@ pub(super) enum Source {
     // Native Admission Uses Host Authority While Results Retain the Incoming Caller.
     Native(Box<Source>),
 
-    GrpcPlugin(Arc<crate::plugin::grpc::CallingPlugin>),
+    GrpcPlugin {
+        caller: Arc<crate::plugin::grpc::CallingPlugin>,
+        untyped: bool,
+    },
 
     #[cfg(feature = "grpc")]
     External {
@@ -274,9 +278,10 @@ impl Source {
             return Ok(origin);
         }
 
-        if let Self::GrpcPlugin(caller) = self {
+        if let Self::GrpcPlugin { caller, untyped } = self {
             return Ok(Origin {
                 grpc: Some(caller.clone()),
+                untyped: *untyped,
                 identity: Identity::GrpcPlugin {
                     owner: caller.owner().to_owned(),
                     connection: caller.connection_identity(),
@@ -295,7 +300,7 @@ impl Source {
         let scope = match self {
             Self::Host => None,
             Self::Native(_) => unreachable!("native authority was checked"),
-            Self::GrpcPlugin(_) => unreachable!("gRPC plugin origin was checked"),
+            Self::GrpcPlugin { .. } => unreachable!("gRPC plugin origin was checked"),
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
             Self::Scope(scope) => {
@@ -321,6 +326,7 @@ impl Source {
         };
         Ok(Origin {
             grpc: None,
+            untyped: false,
             #[cfg(not(feature = "plugin-guest"))]
             identity: Identity::Host,
             #[cfg(feature = "plugin-guest")]
@@ -357,7 +363,7 @@ impl Source {
                 id: *id,
             };
         }
-        if matches!(self, Self::GrpcPlugin(_)) {
+        if matches!(self, Self::GrpcPlugin { .. }) {
             return self.clone();
         }
         // A Host Provider Serving a Plugin Requirement Acts for That Caller
@@ -382,7 +388,10 @@ impl Source {
 
     pub(super) fn for_binding(_entry: &Arc<super::manager::Entry>) -> Self {
         if let Some(binding) = _entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
-            return Self::GrpcPlugin(Arc::new(binding.caller.clone()));
+            return Self::GrpcPlugin {
+                caller: Arc::new(binding.caller.clone()),
+                untyped: false,
+            };
         }
         #[cfg(feature = "plugin-guest")]
         if _entry.plugin().is_some() {

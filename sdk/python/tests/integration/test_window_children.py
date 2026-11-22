@@ -68,7 +68,7 @@ class Reader:
     async def read(self, context: Context) -> Value:
         self.escaped = context
         if context.sequence == 1:
-            first, second = await asyncio.gather(context.call(ECHO, Value(value=b"first")), context.call(ECHO, Value(value=b"second")))
+            first, second = await asyncio.gather(context._call(ECHO, Value(value=b"first")), context._call(ECHO, Value(value=b"second")))
             return Value(value=first.value + second.value + context.scope().encode())
         if context.sequence == 2:
             settings = await context.host.plugins.settings.list()
@@ -85,11 +85,11 @@ class Reader:
                 await items.aclose()
             return Value(value=result + now.seconds.to_bytes(8, "little"))
         if context.sequence == 3:
-            self.pending = asyncio.create_task(context.call(ECHO, Value(value=b"pending")))
+            self.pending = asyncio.create_task(context._call(ECHO, Value(value=b"pending")))
             await self.answer.wait()
             return Value(value=b"answered")
         try:
-            return await context.call(ECHO, Value(value=b"failure"))
+            return await context._call(ECHO, Value(value=b"failure"))
         except FailureError as failure:
             return Value(value=failure.value.SerializeToString())
 
@@ -142,7 +142,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).batch, SampleBatch(count=1, columns=_columns(b"firstsecondselected"), last=True))
         assert reader.escaped is not None
         with self.assertRaises(ValueError):
-            await reader.escaped.call(ECHO, Value())
+            await reader.escaped._call(ECHO, Value())
 
         # Settings and the Controlled Host Clock Drive the Next Window's Watch.
         await stream.write(
@@ -267,7 +267,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertIs(await closing.read(), EOF)
         await active.cancelled()
         with self.assertRaises(ValueError):
-            await active.call(ECHO, Value())
+            await active._call(ECHO, Value())
 
         # Reject Incomplete or Duplicate Settings at Declarations Construction.
         for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):

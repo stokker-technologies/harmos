@@ -75,6 +75,10 @@ pub struct ChildRequest {
     /// Policy guard timers do not make the executing handler idle.
     #[prost(bool, tag = "8")]
     pub background: bool,
+    /// Standard Protobuf JSON request. When present, payload and fingerprint must be empty;
+    /// the host resolves the served contract and returns UTF-8 JSON in ChildResponse.payload.
+    #[prost(string, optional, tag = "9")]
+    pub json: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Permits one further item from a streaming child; demand is not a second child invocation.
 #[allow(clippy::all)]

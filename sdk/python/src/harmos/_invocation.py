@@ -13,6 +13,7 @@
 # Standard Library Imports
 import asyncio
 import copy
+import json
 from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from typing import TYPE_CHECKING, Protocol
@@ -201,7 +202,7 @@ class Context:
             raise TypeError("Invalid Resource Type")
         return value
 
-    async def call[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, policy: OperationPolicy | None = None) -> R:
+    async def _call[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, policy: OperationPolicy | None = None) -> R:
         if self._output is None:
             raise ValueError(f"Call {operation.id}: No Active Invocation or Unanswered Window")
         if operation.watch:
@@ -212,27 +213,43 @@ class Context:
             return await self._invoke_local(operation, request, policy)
         if self._requires.get(operation.id) != operation.fingerprint:
             raise ValueError(f"Undeclared or Incompatible Requirement: {operation.id}")
-        if self._cancelled.is_set():
-            raise self._cancel_failure()
-
-        self._next[0] += 1
-        call = self._next[0]
-        complete: Future[ChildResponse] = asyncio.get_running_loop().create_future()
-        self._pending[call] = complete
         child = ChildRequest(
-            call=call,
             operation=operation.id,
             payload=request.SerializeToString(),
             fingerprint=operation.fingerprint,
             policy=policy,
-            background=self._background,
         )
+        reply = await self._send(child)
+        return operation.response.FromString(reply)
+
+    async def operation(
+        self, operation: str, payload: dict[str, object] | None = None, *, policy: OperationPolicy | None = None
+    ) -> dict[str, object]:
+        """Call a Served Operation by Identifier; the Host Converts Its JSON Payload."""
+        child = ChildRequest(operation=operation, json=json.dumps({} if payload is None else payload, allow_nan=False), policy=policy)
+        reply = await self._send(child)
+        value = json.loads(reply)
+        if not isinstance(value, dict):
+            raise ProtocolError(f"Call {operation}: Host Must Return a JSON Object")
+        return value
+
+    async def _send(self, child: ChildRequest) -> bytes:
+        if self._output is None:
+            raise ValueError(f"Call {child.operation}: No Active Invocation or Unanswered Window")
+        if self._cancelled.is_set():
+            raise self._cancel_failure()
+        self._next[0] += 1
+        call = self._next[0]
+        child.call = call
+        child.background = self._background
+        complete: Future[ChildResponse] = asyncio.get_running_loop().create_future()
+        self._pending[call] = complete
         try:
             await self._output.put(InstanceInvokeResponse(child=child))
             reply = await complete
             if reply.WhichOneof("result") == "failure":
                 raise FailureError(reply.failure)
-            return operation.response.FromString(reply.payload)
+            return reply.payload
         except CancelledError:
             if self._pending.pop(call, None) is not None:
                 self._retired.add(call)
@@ -431,10 +448,10 @@ class Context:
         return await self.host.plugins.settings.list(at=at)
 
     async def sleep(self, duration: Duration) -> None:
-        await self.call(SLEEP, TimeSleepRequest(duration=duration))
+        await self._call(SLEEP, TimeSleepRequest(duration=duration))
 
     async def now(self) -> Timestamp:
-        reply = await self.call(GET_TIME, TimeGetRequest())
+        reply = await self._call(GET_TIME, TimeGetRequest())
         if not reply.HasField("now"):
             raise ProtocolError("Read Host Time: Missing Value")
         validate_timestamp(reply.now)

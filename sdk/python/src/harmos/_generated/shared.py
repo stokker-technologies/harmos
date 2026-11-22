@@ -3,6 +3,7 @@ from harmos._wire.model.v1.callers_pb2 import ALL, CALLERS_UNSPECIFIED, CLIENTS,
 from harmos._wire.model.v1.description_pb2 import Declarations, LaneDeclaration, Section
 from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
+    CLASSIFICATION_INVALID,
     CLASSIFICATION_PERMANENT,
     CLASSIFICATION_REFUSED,
     CLASSIFICATION_TIMED_OUT,
@@ -123,6 +124,7 @@ __all__ = [
     "ALL",
     "CALLERS_UNSPECIFIED",
     "CLASSIFICATION_CANCELLED",
+    "CLASSIFICATION_INVALID",
     "CLASSIFICATION_PERMANENT",
     "CLASSIFICATION_REFUSED",
     "CLASSIFICATION_TIMED_OUT",

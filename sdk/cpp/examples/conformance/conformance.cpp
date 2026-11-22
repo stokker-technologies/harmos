@@ -19,6 +19,7 @@
 #include "_wire/contracts.hpp"
 #include "generated/types.hpp"
 #include "harmos/host/v1/invocations.pb.h"
+#include <google/protobuf/util/json_util.h>
 
 using google::protobuf::Duration;
 using std::optional;
@@ -199,6 +200,20 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
           const auto first = ctx.call(echo, request, policy).get();
           return ctx.call(echo, first).get();
         }).visibility(harmos::VISIBILITY_PUBLIC));
+    registrar.add(
+        harmos::plugin::Operation<Value, Value>("conformance.untyped", harmos::VISIBILITY_PUBLIC, [](Context &context, Value request) {
+          auto input = harmos::json(request.value());
+          try {
+            auto reply = context.operation(input.fields().at("operation").string_value(), input.fields().at("payload").struct_value());
+            string text;
+            auto status = google::protobuf::util::MessageToJsonString(reply, &text);
+            if (!status.ok())
+              throw runtime_error(status.ToString());
+            return value(std::move(text));
+          } catch (const harmos::Failure &error) {
+            return value(error.value.SerializeAsString());
+          }
+        }));
     registrar.add(
         harmos::plugin::Operation<Graph, Graph::Nested>("conformance.schema", harmos::VISIBILITY_PUBLIC, [](Context &, Graph request) {
           Graph::Nested response;

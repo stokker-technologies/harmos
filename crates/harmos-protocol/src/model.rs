@@ -518,6 +518,8 @@ pub enum Classification {
     TimedOut = 4,
     /// Not admitted: visibility, fingerprint mismatch or absent provider.
     Refused = 5,
+    /// The Request Does Not Match the Served Operation Contract.
+    Invalid = 6,
 }
 impl Classification {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -532,6 +534,7 @@ impl Classification {
             Self::Cancelled => "CLASSIFICATION_CANCELLED",
             Self::TimedOut => "CLASSIFICATION_TIMED_OUT",
             Self::Refused => "CLASSIFICATION_REFUSED",
+            Self::Invalid => "CLASSIFICATION_INVALID",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -543,6 +546,7 @@ impl Classification {
             "CLASSIFICATION_CANCELLED" => Some(Self::Cancelled),
             "CLASSIFICATION_TIMED_OUT" => Some(Self::TimedOut),
             "CLASSIFICATION_REFUSED" => Some(Self::Refused),
+            "CLASSIFICATION_INVALID" => Some(Self::Invalid),
             _ => None,
         }
     }

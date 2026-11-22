@@ -26,7 +26,7 @@ from harmos._wire.model.v1 import failure_pb2 as harmos_dot_model_dot_v1_dot_fai
 from harmos._wire.model.v1 import policy_pb2 as harmos_dot_model_dot_v1_dot_policy__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!harmos/plugin/v1/invocation.proto\x12\x10harmos.plugin.v1\x1a\x1dharmos/model/v1/failure.proto\x1a\x1charmos/model/v1/policy.proto\"a\n\x07Request\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x0f\n\x07payload\x18\x02 \x01(\x0c\x12\x12\n\ninvocation\x18\x03 \x01(\t\x12\x0f\n\x07\x61ttempt\x18\x04 \x01(\r\x12\r\n\x05scope\x18\x05 \x01(\t\"\x18\n\x06\x43\x61ncel\x12\x0e\n\x06reason\x18\x01 \x01(\t\"T\n\x08Response\x12\x11\n\x07payload\x18\x01 \x01(\x0cH\x00\x12+\n\x07\x66\x61ilure\x18\x02 \x01(\x0b\x32\x18.harmos.model.v1.FailureH\x00\x42\x08\n\x06result\"\xc6\x01\n\x0c\x43hildRequest\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\x12\x11\n\toperation\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x13\n\x0b\x66ingerprint\x18\x04 \x01(\x0c\x12\x30\n\x06policy\x18\x05 \x01(\x0b\x32 .harmos.model.v1.OperationPolicy\x12\r\n\x05watch\x18\x06 \x01(\x08\x12\x1a\n\x12max_response_bytes\x18\x07 \x01(\x04\x12\x12\n\nbackground\x18\x08 \x01(\x08\"\x1b\n\x0b\x43hildDemand\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\"\x1b\n\x0b\x43hildCancel\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\"w\n\rChildResponse\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\x12\x11\n\x07payload\x18\x02 \x01(\x0cH\x00\x12+\n\x07\x66\x61ilure\x18\x03 \x01(\x0b\x32\x18.harmos.model.v1.FailureH\x00\x12\x0e\n\x04item\x18\x04 \x01(\x0cH\x00\x42\x08\n\x06resultb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!harmos/plugin/v1/invocation.proto\x12\x10harmos.plugin.v1\x1a\x1dharmos/model/v1/failure.proto\x1a\x1charmos/model/v1/policy.proto\"a\n\x07Request\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x0f\n\x07payload\x18\x02 \x01(\x0c\x12\x12\n\ninvocation\x18\x03 \x01(\t\x12\x0f\n\x07\x61ttempt\x18\x04 \x01(\r\x12\r\n\x05scope\x18\x05 \x01(\t\"\x18\n\x06\x43\x61ncel\x12\x0e\n\x06reason\x18\x01 \x01(\t\"T\n\x08Response\x12\x11\n\x07payload\x18\x01 \x01(\x0cH\x00\x12+\n\x07\x66\x61ilure\x18\x02 \x01(\x0b\x32\x18.harmos.model.v1.FailureH\x00\x42\x08\n\x06result\"\xe2\x01\n\x0c\x43hildRequest\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\x12\x11\n\toperation\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x13\n\x0b\x66ingerprint\x18\x04 \x01(\x0c\x12\x30\n\x06policy\x18\x05 \x01(\x0b\x32 .harmos.model.v1.OperationPolicy\x12\r\n\x05watch\x18\x06 \x01(\x08\x12\x1a\n\x12max_response_bytes\x18\x07 \x01(\x04\x12\x12\n\nbackground\x18\x08 \x01(\x08\x12\x11\n\x04json\x18\t \x01(\tH\x00\x88\x01\x01\x42\x07\n\x05_json\"\x1b\n\x0b\x43hildDemand\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\"\x1b\n\x0b\x43hildCancel\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\"w\n\rChildResponse\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\x04\x12\x11\n\x07payload\x18\x02 \x01(\x0cH\x00\x12+\n\x07\x66\x61ilure\x18\x03 \x01(\x0b\x32\x18.harmos.model.v1.FailureH\x00\x12\x0e\n\x04item\x18\x04 \x01(\x0cH\x00\x42\x08\n\x06resultb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -40,11 +40,11 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RESPONSE']._serialized_start=241
   _globals['_RESPONSE']._serialized_end=325
   _globals['_CHILDREQUEST']._serialized_start=328
-  _globals['_CHILDREQUEST']._serialized_end=526
-  _globals['_CHILDDEMAND']._serialized_start=528
-  _globals['_CHILDDEMAND']._serialized_end=555
-  _globals['_CHILDCANCEL']._serialized_start=557
-  _globals['_CHILDCANCEL']._serialized_end=584
-  _globals['_CHILDRESPONSE']._serialized_start=586
-  _globals['_CHILDRESPONSE']._serialized_end=705
+  _globals['_CHILDREQUEST']._serialized_end=554
+  _globals['_CHILDDEMAND']._serialized_start=556
+  _globals['_CHILDDEMAND']._serialized_end=583
+  _globals['_CHILDCANCEL']._serialized_start=585
+  _globals['_CHILDCANCEL']._serialized_end=612
+  _globals['_CHILDRESPONSE']._serialized_start=614
+  _globals['_CHILDRESPONSE']._serialized_end=733
 # @@protoc_insertion_point(module_scope)

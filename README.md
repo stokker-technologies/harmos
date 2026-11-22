@@ -79,6 +79,24 @@ settings through their plugin entries; see [Schematic](docs/schematic.md).
 Install `harmos-sdk` (import `harmos`) for plugin carrier helpers. Products own their author-facing SDKs and generated clients.
 Applications generate their own protobuf messages and own connection and authentication.
 
+gRPC plugin contexts call operations by identifier with a JSON object. The host resolves the
+served Protobuf contract, rejects unknown fields and returns the reply's standard JSON mapping.
+The same invocation owns admission, retries, cancellation and deadlines:
+
+```python
+reply = await ctx.operation("example.radio.set", {"radio": "wifi", "state": "off"})
+```
+
+Python has one public generic operation call. Typed host resources remain available through
+`ctx.host`; the former declaration-plus-request generic `ctx.call` form is removed.
+Rust keeps typed request values and accepts `ctx.operation(harmos::untyped(id, payload))`
+for `serde_json::Value` replies. C# offers `ctx.Operation(id, payload)` returning `JsonNode`
+alongside typed declarations; the invocation's identifier is `OperationId`.
+C++ offers `ctx.operation(id, harmos::json(text))` with Protobuf `Struct` objects.
+Python and C++ calls take and return JSON objects; Rust and C# also represent scalar roots.
+Typed Rust and C++ calls retain `call`; typed C# calls retain `CallAsync`.
+
+
 #### Examples
 
 The [Python SDK Guide](docs/sdks/python.md) covers typed clients, product roots and
