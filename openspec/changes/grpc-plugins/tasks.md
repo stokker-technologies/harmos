@@ -214,3 +214,11 @@
 - [x] 22.2 Prove repeated RPC identity, separate connections, graceful close, reset, TLS failure, all-open shutdown, notification isolation and release of connection state with retained public handles, for plaintext and both TLS listener entry points. Own runtime grpc connection unit tests and tests/grpc/connection.rs.
 - [x] 22.3 Run focused tests, guarded workspace test-target compilation, format, repository checks and strict OpenSpec validation on Windows; report native Linux proof as outstanding. This worker's explicit no-lint scope overrides the earlier Nightly repair lint direction in design.md:52; the absent --changed selector uses the maintained guarded workspace equivalent.
 - [ ] 22.4 Owner Documentation: `docs/guides/access-status.md:21` must introduce ConnectionSession in middleware, request extensions and call contexts, distinguishing physical closure from settled ConnectionEnd cleanup. README claims remain accurate.
+
+## 23. Nightly Python and Clock Wait Repairs
+
+- [x] 23.1 Replace the obsolete proto3-optional rejection fixture with a repeated-message row, retain map and real-oneof refusals, and explicitly accept Graph.Nested with optional presence.
+- [x] 23.2 Prove the complete Python SDK suite and SDK lint/type checks on Windows: 31 tests pass in the full run; both missing-reference-host errors pass on focused reruns after building the prerequisite. Ruff and ty pass. The suite has no separate unit leaf.
+- [ ] 23.3 Give native and generated operation adapters one admitted clock-wait registration implementation without changing admission timing or resource ownership.
+- [ ] 23.4 Prove focused operation registration and runtime clock behavior, workspace test-target compilation, format and repository checks on Windows. Native Linux proof remains with the owner.
+- [ ] 23.5 Owner Documentation: docs/project/architecture.md:1342 should distinguish refused real oneofs from legal proto3-optional synthetic oneofs; repeated and map fields remain refused.
