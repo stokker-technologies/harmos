@@ -198,4 +198,4 @@
 
 - [ ] 21.1 Generalize the lower operation protobuf codec for dynamic stream rows, preserve both contracts and delete the runtime's duplicate traversal. Keep runtime batch slicing and the crate graph acyclic.
 - [x] 21.2 Make generation and caller auditing consume one annotation-driven catalog; delete the callback service-name and file-suffix lists.
-- [ ] 21.3 Replace the C++ protocol hand list with sorted recursive discovery matching Rust codegen and prove the SDK build and focused tests on the available native toolchain.
+- [x] 21.3 Replace the C++ protocol hand list with sorted recursive discovery matching Rust codegen and prove the SDK build and focused tests on the available native toolchain.
