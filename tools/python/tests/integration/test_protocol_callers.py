@@ -21,7 +21,8 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
 import harmos_tools.build.resources.descriptor
-from harmos_tools.source.protocol import caller_options, check_public_surfaces
+from harmos_tools.build.resources.descriptor import caller_options
+from harmos_tools.source.protocol import check_public_surfaces
 
 # Type Checking Imports
 
@@ -46,11 +47,33 @@ class ProtocolCallers(unittest.TestCase):
         descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
         declared = caller_options(descriptors)
         self.assertFalse(any(file.service for file in descriptors.file if "/host/" in file.name))
-        context = next(file for file in descriptors.file if file.name == "harmos/plugin/v1/time.proto")
-        context.service[0].method[0].ClearField("options")
-        with self.assertRaises(ValueError):
-            caller_options(descriptors)
         self.assertTrue(declared)
+        for file in descriptors.file:
+            for service in file.service:
+                for method in service.method:
+                    identity = f"{file.package}.{service.name}/{method.name}"
+                    if identity not in declared:
+                        continue
+                    with self.subTest(method=identity):
+                        options = method.options.SerializeToString()
+                        method.ClearField("options")
+                        with self.assertRaises(ValueError):
+                            caller_options(descriptors)
+                        method.options.ParseFromString(options)
+
+    def test_callback_faces_follow_annotations_after_service_renaming(self) -> None:
+        descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
+        for file in descriptors.file:
+            if file.package.startswith("harmos.plugin.") and "harmos/model/v1/callers.proto" in file.dependency:
+                for service in file.service:
+                    service.name += "Renamed"
+        callers = caller_options(descriptors)
+        methods = harmos_tools.build.resources.descriptor.table(descriptors)
+        for method in methods:
+            identity = f"{method['package']}.{method['service']}/{method['method']}"
+            if method["package"].startswith("harmos.plugin.") and identity in callers:
+                with self.subTest(method=identity):
+                    self.assertEqual(method["face"], "context")
 
     def test_shared_settings_has_nested_paths_and_optional_selector(self) -> None:
         methods = [

@@ -34,7 +34,8 @@ from harmos_tools.build import csharp_protocol, python_protocol
 from harmos_tools.build.resources import cpp, csharp, descriptor, python, rust, sdk
 from harmos_tools.build.resources.configuration import Configuration
 from harmos_tools.process import spawn_flags
-from harmos_tools.source.protocol import caller_options, check_public_surfaces
+from harmos_tools.build.resources.descriptor import caller_options
+from harmos_tools.source.protocol import check_public_surfaces
 
 # Type Checking Imports
 
