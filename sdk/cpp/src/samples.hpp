@@ -65,6 +65,15 @@ public:
 
   void settle_children() override {
     state_->settle_workers();
+    if (sampling_) {
+      sampling_ = false;
+      Context context(state_);
+      try {
+        stream_->sampling->change(context, false);
+      } catch (const std::exception &error) {
+        end({grpc::StatusCode::INTERNAL, error.what()});
+      }
+    }
   }
   void closed() override {
     state_->close(std::make_exception_ptr(TransportError(1, "Sample: Demand Closed")));
@@ -119,6 +128,42 @@ public:
     if (input.has_wind_down() && input.wind_down()) {
       state_->wind_down_requested = true;
       read_next();
+      return;
+    }
+    if (input.has_demand()) {
+      const auto &selected = input.demand().streams();
+      if (stream_->producer || selected.size() > 1 || (selected.size() == 1 && selected[0] != stream_->declaration.id())) {
+        refuse("Select This Observer's Stream Once or Release It");
+        return;
+      }
+      {
+        std::lock_guard lock(state_->mutex);
+        if (state_->window_active) {
+          refuse("Change Sampling Demand After the Window Is Answered");
+          return;
+        }
+      }
+      if (worker.joinable())
+        worker.join();
+      const bool wanted = !selected.empty();
+      worker = std::thread([this, wanted] {
+        try {
+          if (sampling_ != wanted) {
+            if (!wanted)
+              sampling_ = false;
+            Context context(state_);
+            stream_->sampling->change(context, wanted);
+            sampling_ = wanted;
+          }
+          plugin::v1::InstanceSamplesResponse response;
+          response.mutable_demand();
+          write(std::move(response));
+          read_next();
+        } catch (const std::exception &error) {
+          end({grpc::StatusCode::INTERNAL, error.what()});
+          closed();
+        }
+      });
       return;
     }
     if (input.has_child()) {
@@ -195,6 +240,7 @@ private:
   std::size_t message_bytes_;
   std::recursive_mutex window_mutex_;
   std::uint64_t sequence_ = 0;
+  bool sampling_ = false;
 
   void answer(const std::shared_ptr<Invocation> &window_state, const Window &window) {
     // Run the Observer, Then Close the Window's Children Before Any Part Is Sent.

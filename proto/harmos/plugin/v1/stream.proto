@@ -47,11 +47,12 @@ message SampleBatch {
   // Set on the part that completes the window. It answers the window and ends its child calls.
   bool last = 4;
 }
-// Changes the listened members of a collection between windows. Empty releases demand.
+// Changes sampling demand between windows. Ordinary observers select their stream;
+// collections select their listened members. Empty releases demand and awaits cleanup.
 message CollectionDemand {
   repeated string streams = 1;
 }
-// Acknowledges completed first-listener acquisition or last-listener cleanup.
+// Acknowledges completed first-demand acquisition or last-demand cleanup.
 message CollectionDemandResponse {}
 // Answers exactly one tick of a collection window, including a tick with no rows.
 message CollectionBatch {

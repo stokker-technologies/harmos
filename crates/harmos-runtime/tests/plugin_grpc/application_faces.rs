@@ -150,6 +150,7 @@ async fn harmos_host_operations_are_unreachable_on_the_wire() {
         let contracts = contracts.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            support::acknowledge_demand(&mut input, &output).await;
             let Some(instance_samples_request::Frame::Window(window)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected a Window")
             };
@@ -315,6 +316,7 @@ async fn untyped_children_use_the_served_contract_and_typed_invocation() {
         let complete = completed.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            support::acknowledge_demand(&mut input, &output).await;
             let Some(instance_samples_request::Frame::Window(window)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected a Window")
             };

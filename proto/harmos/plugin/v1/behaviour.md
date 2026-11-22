@@ -116,8 +116,12 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
     a supplied device timestamp is source time and MUST NOT replace host evidence
     time. conformance.device emits one Value containing UTF-8 device, sequence 1,
     with at absent immediately after open, then awaits demand closure.
-13. **Demand and Reopen.** For ordinary streams, opening Instance.Samples is demand; closing/cancelling it ends
-    demand and releases its work. The fixture MUST also close output after input
+13. **Demand and Reopen.** Device streams take demand from opening Instance.Samples.
+    Interval observers receive CollectionDemand selecting their stream or no streams
+    to release demand. Collections select their listened members through that same frame.
+    Every transition MUST be acknowledged after first-demand acquisition or last-demand
+    cleanup. Reacquiring after the last release starts a fresh sampling period.
+    Closing/cancelling the carrier ends its demand and releases its work. The fixture MUST also close output after input
     EOF. Reopening is a fresh call with sequence 1, independent of previous calls.
     Closing one demand MUST leave the connection usable. Disconnected samples
     are lost; no replay or publication lease is implied.

@@ -25,6 +25,45 @@ public sealed class SamplesCalls
   private static readonly Operation<StringValue, StringValue> Watch = new("fixture.watch", Visibility.Public, watch: true);
 
   [Fact]
+  public async Task SamplingHooksAcquireOnceReleaseLastAndRestart()
+  {
+    var starts = 0;
+    var stops = 0;
+    var plugin = new Harmos.Plugins.Plugin("google", "1.0.0").Register(ctx => ctx.Register(
+        "google.fixture", new Duration { Seconds = 1 }, context => Task.FromResult(new StringValue { Value = "sample" }),
+        onStart: context =>
+        {
+          starts++;
+          return Task.CompletedTask;
+        },
+        onStop: context =>
+        {
+          stops++;
+          return Task.CompletedTask;
+        }));
+    var service = Serve(plugin);
+    var first = new Call();
+    var second = new Call();
+    var firstServing = service.Samples(first, first, first.Context);
+    var secondServing = service.Samples(second, second, second.Context);
+    await first.Demand(true);
+    await second.Demand(true);
+    Assert.Equal(1, starts);
+    await first.Grant(1);
+    Assert.Equal(1UL, (await first.ReadBatch()).Count);
+    await first.Demand(false);
+    Assert.Equal(0, stops);
+    await second.Demand(false);
+    Assert.Equal(1, stops);
+    await first.Demand(true);
+    Assert.Equal(2, starts);
+    first.Close();
+    second.Close();
+    await Task.WhenAll(firstServing, secondServing);
+    Assert.Equal(2, stops);
+  }
+
+  [Fact]
   public async Task ReverseRepliesCorrelateAcrossWindowsAndIndependentStreams()
   {
     // Open Two Independent Demand Calls.
@@ -428,6 +467,14 @@ public sealed class SamplesCalls
     }
     public Task WriteAsync(InstanceSamplesResponse message) => output.Writer.WriteAsync(message).AsTask();
     public ValueTask Send(InstanceSamplesRequest message) => input.Writer.WriteAsync(message);
+    public async Task Demand(bool active)
+    {
+      var request = new InstanceSamplesRequest { Demand = new CollectionDemand() };
+      if (active)
+        request.Demand.Streams.Add("google.fixture");
+      await Send(request);
+      Assert.Equal(InstanceSamplesResponse.FrameOneofCase.Demand, (await Read()).FrameCase);
+    }
     public ValueTask Grant(ulong sequence, ulong count = 1) => Send(new InstanceSamplesRequest
     {
       Window = new Harmos.Internal.Plugin.Window { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = count, Sequence = sequence }

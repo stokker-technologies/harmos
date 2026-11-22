@@ -50,7 +50,7 @@ from harmos._wire.plugin.v1.instance_pb2 import (
 from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.launches_pb2 import LaunchesAnnounceRequest
 from harmos._wire.plugin.v1.launches_pb2_grpc import LaunchesStub
-from harmos._wire.plugin.v1.stream_pb2 import Sample
+from harmos._wire.plugin.v1.stream_pb2 import CollectionDemandResponse, Sample
 
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Lane, Operation, Stream, Window, message_types
@@ -397,6 +397,44 @@ class _SamplesScope:
         self.next = [0]
         self.retired: set[int] = set()
         self.wind_down = asyncio.Event()
+        self.active = False
+
+
+class _Sampling:
+    def __init__(self, definition: Stream) -> None:
+        self.definition = definition
+        self.active = 0
+        self.lock = asyncio.Lock()
+
+    async def change(self, scope: _SamplesScope, start: bool) -> None:
+        if scope.active == start:
+            return
+        # The Shared Count Covers All Scopes Sampling This Observer.
+        async with self.lock:
+            hook = None
+            cancelled = False
+            if start and self.active == 0:
+                hook = self.definition.on_start
+            if not start:
+                scope.active = False
+                self.active -= 1
+                if self.active == 0:
+                    hook = self.definition.on_stop
+            if hook is not None:
+                context = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
+                context._instance = scope.instance
+                running = asyncio.ensure_future(hook(context))
+                try:
+                    await asyncio.shield(running)
+                except asyncio.CancelledError:
+                    # Settle Acquisition or Cleanup Before Releasing Its Shared Ownership.
+                    await running
+                    cancelled = True
+            if start:
+                self.active += 1
+                scope.active = True
+            if cancelled:
+                raise asyncio.CancelledError
 
 
 class _Service:
@@ -420,6 +458,7 @@ class _Service:
             definition.id: (definition, handler) for definition, handler in operations if definition.visibility != VISIBILITY_PRIVATE
         }
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
+        self.sampling = {definition.id: _Sampling(definition) for definition, _, observing in streams if observing}
         self.requires = {requirement.id: requirement.fingerprint for requirement in declarations.requires}
 
     async def get(self, request: InstanceGetRequest, context: ServicerContext) -> InstanceGetResponse:
@@ -483,7 +522,8 @@ class _Service:
         scope = _SamplesScope(
             first.open.stream, first.open.scope, self.description.id, self.requires, self.local, getattr(handler, "__self__", None)
         )
-        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output))
+        sampling = self.sampling.get(definition.id)
+        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output, sampling))
         running = asyncio.create_task(_produce(handler, scope, definition, observing, windows, output, self.description.message_bytes))
         sequence = 0
         try:
@@ -502,6 +542,8 @@ class _Service:
                 await context.write(InstanceSamplesResponse(samples=[frame]))
         finally:
             await _release(scope.context, running, reading)
+            if sampling is not None:
+                await sampling.change(scope, False)
 
 
 # === Public Functions === #
@@ -623,12 +665,21 @@ async def _read_publish(
     scope: _SamplesScope,
     windows: Queue[tuple[Window, Context]],
     output: Queue[Sample | InstanceSamplesResponse | _FaultError | None],
+    sampling: _Sampling | None,
 ) -> None:
     try:
         async for frame in input:
             kind = frame.WhichOneof("frame")
             if kind == "wind_down" and frame.wind_down:
                 scope.wind_down.set()
+                continue
+            if kind == "demand":
+                if sampling is None or frame.demand.streams not in ([], [scope.stream]):
+                    raise ProtocolError("Change Sampling Demand: Select This Observer's Stream Once or Release It")
+                if scope.context is not None:
+                    raise ProtocolError("Change Sampling Demand: Wait Until the Window Is Answered")
+                await sampling.change(scope, bool(frame.demand.streams))
+                await output.put(InstanceSamplesResponse(demand=CollectionDemandResponse()))
                 continue
             if kind == "child":
                 if scope.context is None:
@@ -654,6 +705,8 @@ async def _read_publish(
         await output.put(None)
     except ProtocolError as error:
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
+    except Exception as error:
+        await output.put(_FaultError(StatusCode.INTERNAL, str(error)))
 
 
 def _window(window: stream_pb2.Window) -> Window:

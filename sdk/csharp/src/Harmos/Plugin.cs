@@ -83,7 +83,8 @@ public sealed class Registrar
 
   /// <summary>Declare an interval stream answered one sample at a time, in order, for every sample of each host window.</summary>
   public Registrar Register<TRow>(string stream, Duration? interval, Func<Context, Task<TRow>> observer,
-      string description = "", string intervalSetting = "", string windowSetting = "") where TRow : IMessage<TRow>, new()
+      string description = "", string intervalSetting = "", string windowSetting = "",
+      Func<Context, Task>? onStart = null, Func<Context, Task>? onStop = null) where TRow : IMessage<TRow>, new()
   {
     var row = new TRow().Descriptor;
     var fields = Columns.RowFields(row, stream);
@@ -98,13 +99,14 @@ public sealed class Registrar
             ?? throw Columns.Failed($"Observe {stream}: Return a Row for Every Sample");
       }
       return Columns.FromRows(row, fields, rows);
-    });
+    }, onStart, onStop);
   }
 
   /// <summary>Declare an interval stream whose observer answers each host window with its columns message.</summary>
   /// <remarks>TColumns repeats every TRow field with the same number and type and holds one value per sample.</remarks>
   public Registrar Register<TRow, TColumns>(string stream, Duration? interval, Func<Context, Window, Task<TColumns>> observer,
-      string description = "", string intervalSetting = "", string windowSetting = "")
+      string description = "", string intervalSetting = "", string windowSetting = "",
+      Func<Context, Task>? onStart = null, Func<Context, Task>? onStop = null)
       where TRow : IMessage<TRow>, new()
       where TColumns : IMessage<TColumns>, new()
   {
@@ -112,7 +114,7 @@ public sealed class Registrar
     var fields = Columns.Mirror(row, new TColumns().Descriptor, stream);
     return AddInterval<TRow>(stream, interval, description, intervalSetting, windowSetting, async (context, window) =>
         Columns.FromColumns(row, fields, await observer(context, window)
-            ?? throw Columns.Failed($"Observe {stream}: Return the Window's Columns"), window, stream));
+            ?? throw Columns.Failed($"Observe {stream}: Return the Window's Columns"), window, stream), onStart, onStop);
   }
 
   public Registrar Register<TRow>(string stream, Func<Context, Publisher<TRow>, Task> producer, string description = "")
@@ -164,7 +166,7 @@ public sealed class Registrar
   }
 
   private Registrar AddInterval<TRow>(string stream, Duration? interval, string description, string intervalSetting, string windowSetting,
-      Func<Context, Window, Task<Columns>> observer) where TRow : IMessage<TRow>, new()
+      Func<Context, Window, Task<Columns>> observer, Func<Context, Task>? onStart, Func<Context, Task>? onStop) where TRow : IMessage<TRow>, new()
   {
     if (interval is null && string.IsNullOrEmpty(intervalSetting))
       throw new ArgumentException($"Declare {stream}: Give an Interval or Interval Setting");
@@ -178,7 +180,7 @@ public sealed class Registrar
       Description = description,
       IntervalSetting = intervalSetting,
       WindowSetting = windowSetting
-    }, new Publication(observer, null));
+    }, new Publication(observer, null, onStart, onStop));
   }
 
   private Registrar AddStream<TRow>(StreamDeclaration declaration, Publication publication) where TRow : IMessage<TRow>, new()
@@ -348,4 +350,31 @@ public sealed class Listener : IAsyncDisposable
 internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);
 
 internal sealed record Publication(Func<Context, Window, Task<Columns>>? Observer,
-    Func<Context, ChannelWriter<Sample>, Task>? Producer);
+    Func<Context, ChannelWriter<Sample>, Task>? Producer,
+    Func<Context, Task>? OnStart = null, Func<Context, Task>? OnStop = null)
+{
+  private readonly SemaphoreSlim gate = new(1);
+  private int active;
+
+  internal async Task Change(Context context, bool start)
+  {
+    await gate.WaitAsync();
+    try
+    {
+      if (start)
+      {
+        if (active == 0 && OnStart is not null)
+          await OnStart(context);
+        active++;
+        return;
+      }
+      active--;
+      if (active == 0 && OnStop is not null)
+        await OnStop(context);
+    }
+    finally
+    {
+      gate.Release();
+    }
+  }
+}

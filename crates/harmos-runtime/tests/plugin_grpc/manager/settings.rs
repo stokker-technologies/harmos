@@ -24,7 +24,7 @@ use prost_reflect::ReflectMessage;
 
 // Local Imports
 use super::support::{self, Backends, Host};
-use crate::plugin_grpc::support::Remote;
+use crate::plugin_grpc::support::{Remote, acknowledge_demand};
 use harmos_protocol::host;
 use harmos_protocol::host::plugins;
 use harmos_protocol::model;
@@ -311,6 +311,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let fingerprint = managed_fingerprint.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            acknowledge_demand(&mut input, &output).await;
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             for (index, name) in [None, Some("caller"), Some("remote")].into_iter().enumerate() {
                 output
@@ -375,6 +376,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let observed = observed.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            acknowledge_demand(&mut input, &output).await;
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             output
                 .send(Ok(plugin::InstanceSamplesResponse {

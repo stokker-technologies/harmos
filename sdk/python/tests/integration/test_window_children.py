@@ -39,7 +39,7 @@ from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
-from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
+from harmos._wire.plugin.v1.stream_pb2 import CollectionDemand, SampleBatch, SamplesSelection, Window
 from harmos.plugin import Catalog, Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 from tests.fixtures.conformance import Value, Values
 
@@ -100,6 +100,71 @@ class Reader:
 
 
 class WindowChildren(IsolatedAsyncioTestCase):
+    async def test_observer_sampling_hooks_release_and_recreate_resources(self) -> None:
+        # Keep a Fresh Resource for Each Sampling Period.
+        acquired: list[object] = []
+        released: list[object] = []
+        current: list[object] = []
+        stopping = Event()
+        release = Event()
+        stopped = Event()
+
+        async def start(context: Context) -> None:
+            resource = object()
+            current.append(resource)
+            acquired.append(resource)
+
+        async def stop(context: Context) -> None:
+            if len(acquired) == 3:
+                stopping.set()
+                await release.wait()
+            released.append(current.pop())
+            stopped.set()
+
+        class Sensor:
+            sampled: object | None = None
+
+            @observer("conformance.sensor", row=Value, interval=Duration(seconds=1), on_start=start, on_stop=stop)
+            async def sample(self, context: Context) -> Value:
+                self.sampled = current[0]
+                return Value(value=b"sample")
+
+        sensor = Sensor()
+        plugin = Plugin(id="conformance", version="1.0.0", register=lambda ctx: ctx.register(Catalog(sensor)))
+        endpoint = await plugin.start("127.0.0.1:0")
+        self.addAsyncCleanup(endpoint.stop)
+        channel = grpc.aio.insecure_channel(endpoint.address)
+        self.addAsyncCleanup(channel.close)
+        stream = InstanceStub(channel).Samples()
+        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.sensor")))
+
+        # Each Acknowledgement Follows Acquisition or Cleanup.
+        for period in range(2):
+            await stream.write(InstanceSamplesRequest(demand=CollectionDemand(streams=["conformance.sensor"])))
+            self.assertEqual((await stream.read()).WhichOneof("frame"), "demand")
+            self.assertEqual(len(acquired), period + 1)
+            await stream.write(
+                InstanceSamplesRequest(window=Window(start=Timestamp(seconds=1), period=Duration(seconds=1), count=1, sequence=period + 1))
+            )
+            self.assertEqual((await stream.read()).batch.count, 1)
+            self.assertIs(sensor.sampled, acquired[-1])
+            await stream.write(InstanceSamplesRequest(demand=CollectionDemand()))
+            self.assertEqual((await stream.read()).WhichOneof("frame"), "demand")
+            self.assertEqual(released, acquired)
+            self.assertEqual(current, [])
+        self.assertIsNot(acquired[0], acquired[1])
+
+        # Disconnecting During Cleanup Still Joins the Hook.
+        stopped.clear()
+        await stream.write(InstanceSamplesRequest(demand=CollectionDemand(streams=["conformance.sensor"])))
+        self.assertEqual((await stream.read()).WhichOneof("frame"), "demand")
+        await stream.write(InstanceSamplesRequest(demand=CollectionDemand()))
+        await stopping.wait()
+        stream.cancel()
+        release.set()
+        await stopped.wait()
+        self.assertEqual(released, acquired)
+
     async def test_observer_children_keep_window_scope_and_reject_invalid_traffic(self) -> None:
         # Declare Typed Settings and Serve the Observer.
         reader = Reader()

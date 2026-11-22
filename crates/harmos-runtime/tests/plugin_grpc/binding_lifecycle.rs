@@ -15,14 +15,14 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::InstanceSamplesResponse;
-use harmos_protocol::plugin::Sample;
-use harmos_protocol::plugin::instance_samples_request;
-
 // Standard Library Imports
-use {
-    std::collections::BTreeSet, std::sync, std::sync::Arc, std::sync::atomic::AtomicBool, std::sync::atomic::AtomicUsize,
-    std::sync::atomic::Ordering, std::time::Duration, std::time::SystemTime,
+use std::{
+    collections::BTreeSet,
+    sync::{
+        self, Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::{Duration, SystemTime},
 };
 
 // Third Party Imports
@@ -40,6 +40,7 @@ use super::{
     support::{self, Manual, Remote},
 };
 use harmos_protocol::model;
+use harmos_protocol::plugin::{self, InstanceSamplesResponse, Sample, instance_samples_request, instance_samples_response};
 use harmos_runtime::operations::CallContext;
 use harmos_runtime::{
     clock::{Clock, Source},
@@ -202,6 +203,16 @@ async fn windowed(registered: Arc<AtomicBool>, refused: Arc<AtomicUsize>) -> Rem
             };
             // Answer Each Window Until the Host Half-Closes the Demand.
             while let Some(request) = input.message().await.ok().flatten() {
+                if matches!(request.frame, Some(instance_samples_request::Frame::Demand(_))) {
+                    output
+                        .send(Ok(InstanceSamplesResponse {
+                            samples: vec![],
+                            frame: Some(instance_samples_response::Frame::Demand(plugin::CollectionDemandResponse {})),
+                        }))
+                        .await
+                        .unwrap();
+                    continue;
+                }
                 let Some(instance_samples_request::Frame::Window(window)) = request.frame else { continue };
                 if !registered.load(Ordering::SeqCst) {
                     refused.fetch_add(1, Ordering::SeqCst);

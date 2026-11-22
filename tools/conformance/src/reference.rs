@@ -762,6 +762,19 @@ async fn samples(
         let Some(frame) = frame else {
             return Ok(());
         };
+        if let Some(instance_samples_request::Frame::Demand(demand)) = &frame.frame {
+            if demand.streams.len() > 1 || demand.streams.first().is_some_and(|stream| stream != &open.stream) {
+                return Err(Status::invalid_argument("Change Sampling Demand: Select This Observer's Stream Once or Release It"));
+            }
+            output
+                .send(Ok(InstanceSamplesResponse {
+                    samples: vec![],
+                    frame: Some(instance_samples_response::Frame::Demand(plugin::CollectionDemandResponse {})),
+                }))
+                .await
+                .map_err(|_| Status::cancelled("Sampling Demand Closed"))?;
+            continue;
+        }
         let Some(instance_samples_request::Frame::Window(window)) = frame.frame else {
             return Err(Status::invalid_argument("Receive Samples: Expected a Window"));
         };

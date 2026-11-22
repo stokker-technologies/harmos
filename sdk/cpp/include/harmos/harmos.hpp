@@ -18,6 +18,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -88,6 +89,26 @@ struct OperationDefinition {
   google::protobuf::FileDescriptorSet types;
   std::function<std::string(Context &, const std::string &)> handler;
 };
+struct Sampling {
+  std::mutex mutex;
+  std::size_t active = 0;
+  std::function<void(Context &)> start;
+  std::function<void(Context &)> stop;
+
+  void change(Context &context, bool begin) {
+    std::lock_guard lock(mutex);
+    if (begin) {
+      if (active == 0 && start)
+        start(context);
+      ++active;
+      return;
+    }
+    --active;
+    if (active == 0 && stop)
+      stop(context);
+  }
+};
+
 struct StreamDefinition {
   StreamDeclaration declaration;
   google::protobuf::FileDescriptorSet types;
@@ -97,6 +118,7 @@ struct StreamDefinition {
   // A Window Observer Answers a Whole Window with One Columns Message.
   std::function<std::unique_ptr<google::protobuf::Message>(Context &, const Window &)> window;
   std::function<void(Context &, std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>)> producer;
+  std::shared_ptr<Sampling> sampling = std::make_shared<Sampling>();
 };
 struct Invocation;
 struct Watch {
@@ -544,6 +566,14 @@ private:
   }
 
 public:
+  Observer &on_start(std::function<void(Context &)> hook) {
+    definition.sampling->start = std::move(hook);
+    return *this;
+  }
+  Observer &on_stop(std::function<void(Context &)> hook) {
+    definition.sampling->stop = std::move(hook);
+    return *this;
+  }
   // Answers One Sample per Call; the SDK Calls It for Each Sample of a Window in Order.
   Observer(const Stream<R> &stream, std::function<R(Context &)> handler) : Observer(stream) {
     definition.sample = [handler](Context &ctx) -> std::unique_ptr<google::protobuf::Message> {
@@ -592,6 +622,7 @@ template <class R> Registrar &Registrar::add(const Observer<R> &observer) {
       throw std::invalid_argument("Observer Row Differs from Its Stream");
     stream.sample = observer.definition.sample;
     stream.window = observer.definition.window;
+    stream.sampling = observer.definition.sampling;
     if (observer.definition.declaration.has_interval()) {
       *stream.declaration.mutable_interval() = observer.definition.declaration.interval();
     }

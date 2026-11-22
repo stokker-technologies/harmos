@@ -39,7 +39,7 @@ use tonic::{Code, Streaming};
 use crate::server::{self, Job};
 use crate::{
     Error, Message,
-    plugin::{Collection, CollectionOutput, Context, Plugin, Stream},
+    plugin::{Collection, CollectionOutput, Context, Observer, Plugin, Stream},
 };
 use harmos_protocol::plugin::{
     self, InstanceSamplesRequest, InstanceSamplesResponse, instance_client::InstanceClient, instance_samples_request,
@@ -121,6 +121,78 @@ async fn open(
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn ordinary_observer_hooks_follow_first_and_last_demand_and_restart() {
+    // Register Resource Acquisition and Cleanup on an Ordinary Observer.
+    let starts = Arc::new(AtomicUsize::new(0));
+    let stops = Arc::new(AtomicUsize::new(0));
+    let stopping = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let cleaned = Arc::new(Notify::new());
+    let readings = Stream::<Reading>::new("fixture.alpha");
+    let observer = Observer::new(&readings, async |_: &Context| Ok(Reading { value: 7 }))
+        .every(Duration { seconds: 1, nanos: 0 })
+        .on_start({
+            let starts = starts.clone();
+            async move |_: &Context| {
+                starts.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        })
+        .on_stop({
+            let stops = stops.clone();
+            let stopping = stopping.clone();
+            let release = release.clone();
+            let cleaned = cleaned.clone();
+            async move |_: &Context| {
+                if stops.load(Ordering::SeqCst) == 1 {
+                    stopping.notify_one();
+                    release.notified().await;
+                }
+                if stops.fetch_add(1, Ordering::SeqCst) == 1 {
+                    cleaned.notify_one();
+                }
+                Ok(())
+            }
+        });
+    let plugin = Plugin::new("fixture", "1.0.0")
+        .register(|ctx| {
+            ctx.register(readings)?;
+            ctx.register(observer)
+        })
+        .unwrap();
+    let mut listener = plugin.start("127.0.0.1:0").await.unwrap();
+    let mut client = InstanceClient::connect(format!("http://{}", listener.address())).await.unwrap();
+    let (first, mut first_input) = open(&mut client, "first").await;
+    let (second, mut second_input) = open(&mut client, "second").await;
+    demand(&first, &mut first_input, &["fixture.alpha"]).await;
+    demand(&second, &mut second_input, &["fixture.alpha"]).await;
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+    // Answer a Window, Then Release Each Demand Independently.
+    first.send(grant(1)).await.unwrap();
+    let frame = first_input.message().await.unwrap().unwrap();
+    assert!(matches!(frame.frame, Some(instance_samples_response::Frame::Batch(_))));
+    demand(&first, &mut first_input, &[]).await;
+    assert_eq!(stops.load(Ordering::SeqCst), 0);
+    demand(&second, &mut second_input, &[]).await;
+    assert_eq!(stops.load(Ordering::SeqCst), 1);
+
+    // A New Period Acquires Again and Carrier Closure Releases It.
+    demand(&first, &mut first_input, &["fixture.alpha"]).await;
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
+    drop(first);
+    drop(second);
+    drop(first_input);
+    drop(second_input);
+    stopping.notified().await;
+    assert_eq!(stops.load(Ordering::SeqCst), 1);
+    release.notify_one();
+    cleaned.notified().await;
+    listener.close().await.unwrap();
+    assert_eq!(stops.load(Ordering::SeqCst), 2);
+}
 
 #[tokio::test]
 async fn collections_publish_zero_and_many_rows_and_share_first_last_hooks() {

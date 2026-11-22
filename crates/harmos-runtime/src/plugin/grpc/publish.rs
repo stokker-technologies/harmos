@@ -693,7 +693,8 @@ async fn change_demand(
             && matches!(
                 response.frame,
                 Some(
-                    instance_samples_response::Frame::Collection(_)
+                    instance_samples_response::Frame::Batch(_)
+                        | instance_samples_response::Frame::Collection(_)
                         | instance_samples_response::Frame::Child(_)
                         | instance_samples_response::Frame::ChildDemand(_)
                         | instance_samples_response::Frame::ChildCancel(_)
@@ -809,19 +810,17 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
             let mut active = BTreeSet::new();
             loop {
-                if !members.is_empty() {
-                    let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
-                    if active != listened {
-                        change_demand(&input, &output, &stream, &listened).await?;
-                        active = listened;
-                    }
+                let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
+                if active != listened {
+                    change_demand(&input, &output, &stream, &listened).await?;
+                    active = listened;
                 }
                 // The Unscoped Demand Grants Only While Its Stream Is Watched and No Scope of Its Activation
                 // Samples That Stream; It Resumes From a Fresh Origin.
-                if let Some(gate) = &mut gate
-                    && !gate.open()
-                {
-                    activity.wait(gate.until(true)).await;
+                if active.is_empty() {
+                    if let Some(gate) = &mut gate {
+                        activity.wait(gate.until(true)).await;
+                    }
                     origin = clock.read();
                     granted = 0;
                     lagging = 0;
@@ -916,7 +915,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                         rows: streams::RETAINED_ROWS,
                     });
                 }
-                if !members.is_empty() {
+                {
                     let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
                     if active != listened {
                         change_demand(&input, &output, &stream, &listened).await?;

@@ -57,7 +57,11 @@ Your application defines each change; Harmos manages its accepted history.
 
 Plugin setting declarations carry their type in the default value's discriminator and
 support inclusive bounds, allowed choices and required values. Saving invalid settings
-returns an actionable InvalidArgument error naming the setting.
+returns an actionable InvalidArgument error naming the setting. Observer sampling demand
+is acknowledged separately from the sample carrier: start and stop hooks acquire and
+release resources on the first and last demand, and run again for the next sampling period.
+Rust and C++ expose `on_start` / `on_stop`, Python uses observer decorator arguments of
+the same names, and C# uses `onStart` / `onStop` registration arguments.
 
 ## Interfaces
 

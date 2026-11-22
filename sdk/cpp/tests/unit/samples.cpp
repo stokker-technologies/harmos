@@ -10,6 +10,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+#include <atomic>
 #include <future>
 
 // Third Party Imports
@@ -33,6 +34,7 @@ using grpc::ServerBidiReactor;
 using grpc::ServerBuilder;
 using grpc::Status;
 using grpc::StatusCode;
+using std::atomic;
 using std::condition_variable;
 using std::int64_t;
 using std::lock_guard;
@@ -190,6 +192,14 @@ public:
   void send(const InstanceSamplesRequest &request) {
     REQUIRE(stream->Write(request));
   }
+  void demand(bool active) {
+    InstanceSamplesRequest request;
+    auto *demand = request.mutable_demand();
+    if (active)
+      demand->add_streams("example.rows");
+    send(request);
+    REQUIRE(read().has_demand());
+  }
   InstanceSamplesResponse read() {
     InstanceSamplesResponse response;
     REQUIRE(stream->Read(&response));
@@ -241,6 +251,39 @@ public:
 /* === Templates === */
 
 /* === Public Functions === */
+
+TEST_CASE("Observer Sampling Hooks Acquire First Release Last and Restart") {
+  atomic<size_t> starts = 0;
+  atomic<size_t> stops = 0;
+  SamplesHost host([](Context &) {
+    Value row;
+    row.set_value("sample");
+    return row;
+  });
+  host.streams[0].sampling->start = [&](Context &) {
+    ++starts;
+  };
+  host.streams[0].sampling->stop = [&](Context &) {
+    ++stops;
+  };
+  Samples first(host);
+  Samples second(host);
+  first.demand(true);
+  second.demand(true);
+  REQUIRE(starts == 1);
+  first.window(1, 1);
+  REQUIRE(first.answer(1, host.message_bytes) == vector<string>{"sample"});
+  first.demand(false);
+  REQUIRE(stops == 0);
+  second.demand(false);
+  REQUIRE(stops == 1);
+  first.demand(true);
+  REQUIRE(starts == 2);
+  first.demand(false);
+  REQUIRE(stops == 2);
+  REQUIRE(first.finish().ok());
+  REQUIRE(second.finish().ok());
+}
 
 Value value(string bytes) {
   Value result;

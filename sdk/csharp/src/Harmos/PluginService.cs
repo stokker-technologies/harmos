@@ -191,6 +191,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     Task<Columns>? observing = null;
     Context? windowContext = null;
     CancellationTokenSource? windowStopped = null;
+    var active = false;
     try
     {
       if (publication.Observer is not null)
@@ -199,6 +200,23 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         reading = input.MoveNext(readingStopped.Token);
         while (await reading)
         {
+          if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.Demand)
+          {
+            var selected = input.Current.Demand.Streams;
+            if (selected.Count > 1 || (selected.Count == 1 && selected[0] != open.Stream))
+              throw Invalid("Change Sampling Demand: Select This Observer's Stream Once or Release It");
+            var wanted = selected.Count != 0;
+            if (active != wanted)
+            {
+              if (!wanted)
+                active = false;
+              await publication.Change(context, wanted);
+              active = wanted;
+            }
+            await output.WriteAsync(new InstanceSamplesResponse { Demand = new CollectionDemandResponse() }, call.CancellationToken);
+            reading = input.MoveNext(readingStopped.Token);
+            continue;
+          }
           if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.WindDown && input.Current.WindDown)
           {
             context.RequestWindDown();
@@ -328,6 +346,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         catch (Exception) when (stopped.IsCancellationRequested) { }
       }
       windowStopped?.Dispose();
+      if (active)
+        await publication.Change(context, false);
     }
   }
 

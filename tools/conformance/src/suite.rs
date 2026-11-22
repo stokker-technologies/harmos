@@ -42,7 +42,8 @@ use harmos_protocol::model::{
 };
 use harmos_protocol::model::{RetryPolicy, StorageTransferSettings, TransferFraming};
 use harmos_protocol::plugin::{
-    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request, Response, Sample, SampleBatch, SamplesSelection, Window,
+    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, CollectionDemand, Request, Response, Sample, SampleBatch,
+    SamplesSelection, Window,
 };
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
@@ -952,6 +953,21 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         10 => {
             // A Far Window Answers Only Its Granted Samples, Without Catch-Up.
             let (send, mut input) = open(&mut client, "conformance.interval").await?;
+            for active in [true, false, true] {
+                send.send(InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Demand(CollectionDemand {
+                        streams: if active { vec!["conformance.interval".into()] } else { vec![] },
+                    })),
+                })
+                .await
+                .map_err(|_| Error::Invalid("Sampling Demand Closed".into()))?;
+                let acknowledgement =
+                    input.message().await?.ok_or_else(|| Error::Invalid("Missing Sampling Demand Acknowledgement".into()))?;
+                require(
+                    matches!(acknowledgement.frame, Some(instance_samples_response::Frame::Demand(_))),
+                    "Sampling Demand Was Not Acknowledged",
+                )?;
+            }
             sequences(&send, &mut input, 1, 3, 1_700_000_000).await?;
             sequences(&send, &mut input, 4, 3, 1_700_000_003).await?;
             sequences(&send, &mut input, 7, 2, 1_700_003_600).await?;

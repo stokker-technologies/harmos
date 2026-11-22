@@ -47,6 +47,7 @@ use harmos_protocol::plugin;
 use harmos_protocol::plugin::ChildCancel;
 use harmos_protocol::plugin::ChildDemand;
 use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::CollectionDemandResponse;
 use harmos_protocol::plugin::InstanceSamplesResponse;
 use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::instance_samples_request;
@@ -306,6 +307,16 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
             }
             let mut sequence = 0;
             while let Some(next) = input.message().await.unwrap() {
+                if matches!(next.frame, Some(instance_samples_request::Frame::Demand(_))) {
+                    output
+                        .send(Ok(InstanceSamplesResponse {
+                            samples: vec![],
+                            frame: Some(instance_samples_response::Frame::Demand(CollectionDemandResponse {})),
+                        }))
+                        .await
+                        .unwrap();
+                    continue;
+                }
                 let Some(instance_samples_request::Frame::Window(window)) = next.frame else {
                     panic!("Expected a Window");
                 };

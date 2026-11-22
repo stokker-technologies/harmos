@@ -441,12 +441,13 @@ async fn samples(
             frame = input.message() => {
                 let Some(frame) = frame? else { return Ok(()); };
                 match frame.frame {
-                    Some(instance_samples_request::Frame::Demand(demand)) if collection => {
-                        let observer = observer.as_ref().expect("collection observer");
+                    Some(instance_samples_request::Frame::Demand(demand)) if observer.is_some() => {
+                        let observer = observer.as_ref().expect("sampling observer");
                         let members = observer.members.lock().expect("collection members lock is healthy").clone();
                         let mut selected = BTreeSet::new();
                         for stream in &demand.streams {
-                            if !members.contains_key(stream) || !selected.insert(stream) {
+                            let declared = if collection { members.contains_key(stream) } else { stream == &observer.stream };
+                            if !declared || !selected.insert(stream) {
                                 return Err(Status::invalid_argument("Change Collection Demand: select each declared member at most once"));
                             }
                         }
@@ -618,7 +619,8 @@ async fn transition(
         let result = tokio::select! {
             biased;
             result = &mut complete => Some(result),
-            () = output.closed() => None,
+            // Cleanup Retains Its Work Until the Hook Has Completed Its Effect.
+            () = output.closed(), if start || lifecycle.completed.load(Ordering::Acquire) => None,
             () = closing => None,
         };
         let Some(result) = result else {
