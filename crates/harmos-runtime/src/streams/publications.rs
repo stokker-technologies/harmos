@@ -58,6 +58,7 @@ pub struct StreamWriter {
     pub(super) active: Arc<Mutex<bool>>,
     pub(super) applied: watch::Receiver<Position>,
     pub(super) sequence: AtomicU64,
+    pub(super) admission: tokio::sync::Mutex<()>,
 }
 
 /* === Enums === */
@@ -192,10 +193,24 @@ impl StreamWriter {
         self.admit(row, Some(wire_sequence), missed, None)
     }
 
-    /// Admit a Row Whose Delivery Holds Every Given Clock Until All Feeds Have Drained It.
-    pub(crate) fn admit_clocked_row(&self, row: PublicationRow, clocks: &[&crate::clock::Clock]) -> Result<u64, StreamPublicationError> {
-        let activities = clocks.iter().map(|clock| clock.activity("stream storage delivery")).collect();
-        self.admit_at(row, None, 0, Some(activities)).map(|(_, cursor)| cursor)
+    /// Wait for Ingest Room and Admit a Row Holding Every Clock Until All Feeds Have Drained It.
+    pub(crate) async fn admit_clocked_row(
+        &self, row: PublicationRow, clocks: &[&crate::clock::Clock],
+    ) -> Result<u64, StreamPublicationError> {
+        // Serialize Shared Scoped Writers While Ingest Makes Room.
+        let _admission = self.admission.lock().await;
+        let mut progress = self.stream.ingest.watch();
+        let mut row = Some(row);
+        loop {
+            progress.borrow_and_update();
+            let activities = clocks.iter().map(|clock| clock.activity("stream storage delivery")).collect();
+            match self.admit_at(&mut row, None, 0, Some(activities)) {
+                Ok((_, cursor)) => return Ok(cursor),
+                Err(StreamPublicationError::Backlog) => {}
+                Err(error) => return Err(error),
+            }
+            progress.changed().await.map_err(|_| StreamPublicationError::Revoked)?;
+        }
     }
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
@@ -250,7 +265,8 @@ impl StreamWriter {
                     stamped = Some(stamp);
                 }
                 let missed = if offset == 0 { missed } else { 0 };
-                let (publication, dropped) = match self.admit_locked(row, sequence, missed, ready) {
+                let mut row = Some(row);
+                let (publication, dropped) = match self.admit_locked(&mut row, sequence, missed, ready) {
                     Ok(admitted) => admitted,
                     Err(error) => return Ok((receipts, ready, Some(error))),
                 };
@@ -283,11 +299,12 @@ impl StreamWriter {
     fn admit(
         &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
-        self.admit_at(row, sequence, missed, activity).map(|(publication, _)| publication)
+        let mut row = Some(row);
+        self.admit_at(&mut row, sequence, missed, activity).map(|(publication, _)| publication)
     }
 
     fn admit_at(
-        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
+        &self, row: &mut Option<PublicationRow>, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
     ) -> Result<(super::ManagedPublication, u64), StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
@@ -321,7 +338,7 @@ impl StreamWriter {
 
     // Visibility and original scope phase precede writer and row-state locks.
     fn admit_locked(
-        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, live: bool,
+        &self, row: &mut Option<PublicationRow>, sequence: Option<u64>, missed: u64, live: bool,
     ) -> Result<(super::ManagedPublication, Option<super::window::Row>), StreamPublicationError> {
         let active = self.active.lock().expect("stream lease poisoned");
         if !*active || self.stream.closed.load(Ordering::Acquire) {
@@ -336,7 +353,8 @@ impl StreamWriter {
         if sequence.is_some_and(|sequence| sequence != next) {
             return Err(StreamPublicationError::Sequence);
         }
-        self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(&row.payload)?;
+        let payload = &row.as_ref().expect("unadmitted row").payload;
+        self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(payload)?;
         if live && !self.stream.wired.window.can_advance(missed.checked_add(1).ok_or(StreamPublicationError::Sequence)?) {
             return Err(StreamPublicationError::Sequence);
         }
@@ -344,10 +362,11 @@ impl StreamWriter {
         if live && self.stream.wired.window.evicts_unread(taken) {
             return Err(StreamPublicationError::Backlog);
         }
+        // A Backlog Refusal Leaves the Row Owned by the Waiting Publisher.
         let publication = self.stream.pool.retain(
             &self.stream.wired.definition,
             self.stream.wired.generation,
-            row,
+            row.take().expect("unadmitted row"),
             next,
             missed,
             live.then_some((self.stream.wired.window.as_ref(), taken)),

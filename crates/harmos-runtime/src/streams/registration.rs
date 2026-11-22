@@ -200,6 +200,7 @@ impl<A: Application> StreamManager<A> {
                     active,
                     applied: self.applied.clone(),
                     sequence: std::sync::atomic::AtomicU64::new(0),
+                    admission: tokio::sync::Mutex::new(()),
                 }));
             }
             #[cfg(feature = "plugin-guest")]

@@ -782,6 +782,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                             },
                             &[clock, &host],
                         )
+                        .await
                         .map_err(|error| admission(&stream, error))?;
                     ingested_through = Some(receipt);
                     lease.ingested_at(receipt).await.map_err(invalid)?;
@@ -968,15 +969,13 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                             }
                         }
                     }
-                    let mut receipts = BTreeMap::new();
                     for (writer, row) in staged {
                         let id = writer.stream().definition().id().to_owned();
-                        let receipt = writer.admit_clocked_row(row, &[clock, &host]).map_err(|error| admission(&id, error))?;
-                        receipts.insert(id, (writer, receipt));
+                        let receipt = writer.admit_clocked_row(row, &[clock, &host]).await.map_err(|error| admission(&id, error))?;
+                        ingested_members.insert(id, (writer, receipt));
                     }
-                    for (_, (writer, receipt)) in receipts {
-                        ingested_members.insert(writer.stream().definition().id().to_owned(), (writer.clone(), receipt));
-                        writer.ingested_at(receipt).await.map_err(invalid)?;
+                    for (writer, receipt) in ingested_members.values() {
+                        writer.ingested_at(*receipt).await.map_err(invalid)?;
                     }
                 } else if let super::samples::Answer::Columns(parts) = parts {
                     let row = row.as_ref().expect("ordinary observer row");
@@ -999,12 +998,13 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                                         },
                                         &[clock, &host],
                                     )
+                                    .await
                                     .map_err(|error| admission(&stream, error))?,
                             );
+                            ingested_through = receipt;
                         }
                     }
                     let receipt = receipt.expect("an answered window has at least one part");
-                    ingested_through = Some(receipt);
                     lease.ingested_at(receipt).await.map_err(invalid)?;
                 }
                 granted = through;

@@ -17,6 +17,8 @@
 
 // Standard Library Imports
 use std::iter;
+use std::num::NonZeroUsize;
+use std::sync::atomic::Ordering;
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -34,7 +36,7 @@ use tonic::{Code, Status};
 
 // Local Imports
 use super::{
-    invoke_support::HostFixture,
+    invoke_support::{HostFixture, pending},
     support::{self, Remote},
 };
 use harmos_protocol::{
@@ -379,6 +381,118 @@ async fn collection_rows_preserve_submicrosecond_tick_times() {
         }
     }
     drop(watches);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn collection_backpressure() {
+    // Both Scopes Share the Same Publication Writers and the Real Storage Feed.
+    let host = HostFixture::new().await;
+    let fixture = Fixture::start(false, false, 0).await;
+    let settings = PlacementSettings {
+        stream_window: NonZeroUsize::new(1).unwrap(),
+        ..settings()
+    };
+    let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings).await.unwrap();
+    let (first_clock, first_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let (second_clock, second_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let activation = attached.activation().unwrap();
+    let first = host.runtime.bind_grpc(&activation, "first", first_clock, &CallContext::default()).await.unwrap();
+    let second = host.runtime.bind_grpc(&activation, "second", second_clock, &CallContext::default()).await.unwrap();
+    first.start_samples(["alpha", "beta"]).await.unwrap();
+    second.start_samples(["alpha", "beta"]).await.unwrap();
+
+    // Hold Ingest Before Letting Each Burst Exceed the Retained Window.
+    for window in 1..=2 {
+        host.signals.storage_hold.store(true, Ordering::SeqCst);
+        let advancing = async {
+            tokio::join!(first_time.advance_by(Duration::from_secs(4)), second_time.advance_by(Duration::from_secs(4)));
+        };
+        tokio::pin!(advancing);
+        tokio::select! {
+            () = &mut advancing => panic!("Keep the Burst Pending Until Ingest Advances"),
+            () = host.signals.storage_entered.notified() => {},
+        }
+        assert!(pending(advancing.as_mut()).await);
+        assert!(attached.status().borrow().failure.is_none());
+        host.signals.storage_release.notify_one();
+        advancing.await;
+        assert_eq!(host.rows().len(), window * 32);
+    }
+
+    // Every Stream Retains Its Per-Scope Order Across Both Windows, Including Every Row of Each Burst.
+    let values = host.values();
+    {
+        let rows = host.stored.lock().unwrap();
+        for scope in ["first", "second"] {
+            for id in ["alpha", "beta"] {
+                let actual = rows
+                    .iter()
+                    .zip(&values)
+                    .filter(|((definition, row), _)| {
+                        let context = serde_json::from_str::<Value>(row.context.as_ref().unwrap()).unwrap();
+                        definition.id() == id && context["scope"] == scope
+                    })
+                    .map(|(_, value)| value["now"]["seconds"].as_i64().unwrap())
+                    .collect::<Vec<_>>();
+                let expected = if id == "alpha" {
+                    (1..=8).collect::<Vec<_>>()
+                } else {
+                    (1..=8).flat_map(|tick| (0..3).map(move |index| tick * 10 + index)).collect::<Vec<_>>()
+                };
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    // Successful Settlement Proves Neither Publication Ended on Transient Backlog.
+    first.stop_samples().await.unwrap();
+    second.stop_samples().await.unwrap();
+    first.close().await.unwrap();
+    second.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancel_backpressured_collection() {
+    // A One-Row Window Cannot Admit the Whole Collection While Storage Is Held.
+    let host = HostFixture::new().await;
+    let fixture = Fixture::start(false, false, 0).await;
+    let settings = PlacementSettings {
+        stream_window: NonZeroUsize::new(1).unwrap(),
+        ..settings()
+    };
+    let stop_deadline = host.clock.read().instant + settings.stop_grace;
+    let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings).await.unwrap();
+    let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = host.runtime.bind_grpc(&attached.activation().unwrap(), "first", clock, &CallContext::default()).await.unwrap();
+    binding.start_samples(["alpha", "beta"]).await.unwrap();
+    host.signals.storage_hold.store(true, Ordering::SeqCst);
+    let advancing = time.advance_by(Duration::from_secs(4));
+    tokio::pin!(advancing);
+    tokio::select! {
+        () = &mut advancing => panic!("Hold Accepted Rows Until Ingest Advances"),
+        () = host.signals.storage_entered.notified() => {},
+    }
+
+    // Cancellation Drains Accepted Receipts Without Waiting for the Rest of the Burst.
+    let stopping = binding.close();
+    tokio::pin!(stopping);
+    tokio::select! {
+        result = &mut stopping => panic!("Drain Accepted Rows Before Settling: {result:?}"),
+        () = host.clock.registered_at(stop_deadline) => {},
+    }
+    assert!(pending(stopping.as_mut()).await);
+    host.signals.storage_release.notify_one();
+    stopping.await.unwrap();
+    advancing.await;
+    let values = host.values();
+    assert!(!values.is_empty());
+    assert!(values.len() < 16, "Cancel the Unadmitted Rows");
+    assert_eq!(values[0]["now"]["seconds"], 1);
+    assert!(attached.status().borrow().failure.is_none());
     attached.stop("Story Complete").await.unwrap();
     host.runtime.stop().await.unwrap();
 }
