@@ -24,6 +24,7 @@ from harmos._wire.model.v1.invocation_pb2 import InstanceState
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
 from harmos._wire.model.v1.position_pb2 import ReadCut
+from harmos._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest, SubscriptionsSubscribeResponse
 
 if TYPE_CHECKING:
     from harmos._invocation import Context
@@ -38,6 +39,7 @@ class HostOperation(Enum):
     PLUGINS_SETTINGS_LIST = "harmos.plugin.v1.plugins.Settings/List"
     PLUGINS_STATE_GET = "harmos.plugin.v1.plugins.State/Get"
     PLUGINS_STATE_PUT = "harmos.plugin.v1.plugins.State/Put"
+    SUBSCRIPTIONS_SUBSCRIBE = "harmos.plugin.v1.Subscriptions/Subscribe"
     TIME_GET = "harmos.plugin.v1.Time/Get"
     TIME_SLEEP = "harmos.plugin.v1.Time/Sleep"
 
@@ -66,6 +68,13 @@ _PLUGINS_STATE_GET = Operation(
 _PLUGINS_STATE_PUT = Operation(
     HostOperation.PLUGINS_STATE_PUT.value, StatePutRequest, StatePutResponse, visibility=VISIBILITY_PUBLIC, watch=False
 )
+_SUBSCRIPTIONS_SUBSCRIBE = Operation(
+    HostOperation.SUBSCRIPTIONS_SUBSCRIBE.value,
+    SubscriptionsSubscribeRequest,
+    SubscriptionsSubscribeResponse,
+    visibility=VISIBILITY_PUBLIC,
+    watch=True,
+)
 _TIME_GET = Operation(HostOperation.TIME_GET.value, TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC, watch=False)
 _TIME_SLEEP = Operation(HostOperation.TIME_SLEEP.value, TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC, watch=False)
 
@@ -88,6 +97,8 @@ def host_requirement(operation: HostOperation) -> Operation[Message, Message]:
             return cast(Operation[Message, Message], _PLUGINS_STATE_GET)
         case HostOperation.PLUGINS_STATE_PUT:
             return cast(Operation[Message, Message], _PLUGINS_STATE_PUT)
+        case HostOperation.SUBSCRIPTIONS_SUBSCRIBE:
+            return cast(Operation[Message, Message], _SUBSCRIPTIONS_SUBSCRIBE)
         case HostOperation.TIME_GET:
             return cast(Operation[Message, Message], _TIME_GET)
         case HostOperation.TIME_SLEEP:

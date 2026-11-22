@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Subscriptions
+//
+// Independent Live Stream Demand
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+import "google/protobuf/timestamp.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Live demand carried by an admitted child invocation in its inherited scope.
+service Subscriptions {
+  // Read the configured live window independently; cancel this child to close only its demand.
+  rpc Subscribe(SubscriptionsSubscribeRequest) returns (stream SubscriptionsSubscribeResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+}
+
+// === Requests and Responses === //
+
+// Select a stream and the protobuf row type the subscriber was built against.
+message SubscriptionsSubscribeRequest {
+  string stream = 1;
+  string row = 2;
+  // FileDescriptorSet containing the row and its reachable message definitions.
+  bytes types = 3;
+}
+
+// One typed row or an explicit count of rows overwritten before this reader reached them.
+message SubscriptionsSubscribeResponse {
+  oneof item {
+    SubscriptionRow row = 1;
+    uint64 missed = 2;
+    // Sent once after admission and cursor capture, before any rows or gaps.
+    bool opened = 3;
+  }
+}
+
+// === Resources === //
+
+// One row; interval columns are expanded on their source grid.
+message SubscriptionRow {
+  bytes payload = 1;
+  google.protobuf.Timestamp source = 2;
+  google.protobuf.Timestamp received = 3;
+}
+
+// === Enums === //

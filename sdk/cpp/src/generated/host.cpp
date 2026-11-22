@@ -4,6 +4,7 @@
 #include "harmos/plugin/v1/operations.pb.h"
 #include "harmos/plugin/v1/plugins/settings.pb.h"
 #include "harmos/plugin/v1/plugins/state.pb.h"
+#include "harmos/plugin/v1/subscriptions.pb.h"
 #include "harmos/plugin/v1/time.pb.h"
 using ::google::protobuf::Duration;
 using ::google::protobuf::Timestamp;
@@ -29,6 +30,8 @@ using ::harmos::host::v1::plugins::StateGetRequest;
 using ::harmos::host::v1::plugins::StateGetResponse;
 using ::harmos::host::v1::plugins::StatePutRequest;
 using ::harmos::host::v1::plugins::StatePutResponse;
+using ::harmos::plugin::v1::SubscriptionsSubscribeRequest;
+using ::harmos::plugin::v1::SubscriptionsSubscribeResponse;
 using std::invalid_argument;
 using std::optional;
 using std::runtime_error;
@@ -160,6 +163,10 @@ Registrar &Registrar::add(HostOperation operation) {
     return add(Dependency{Operation<StateGetRequest, StateGetResponse>("harmos.plugin.v1.plugins.State/Get", VISIBILITY_PUBLIC)});
   case HostOperation::PluginsStatePut:
     return add(Dependency{Operation<StatePutRequest, StatePutResponse>("harmos.plugin.v1.plugins.State/Put", VISIBILITY_PUBLIC)});
+  case HostOperation::SubscriptionsSubscribe:
+    return add(Dependency{Operation<SubscriptionsSubscribeRequest, SubscriptionsSubscribeResponse>(
+                              "harmos.plugin.v1.Subscriptions/Subscribe", VISIBILITY_PUBLIC)
+                              .watch()});
   case HostOperation::TimeGet:
     return add(Dependency{Operation<TimeGetRequest, TimeGetResponse>("harmos.plugin.v1.Time/Get", VISIBILITY_PUBLIC)});
   case HostOperation::TimeSleep:

@@ -70,8 +70,8 @@ pub(crate) struct Wired {
     pub(super) staged: Option<super::registration::Staged>,
 }
 
-#[derive(Debug)]
 pub(crate) struct Table {
+    pub(super) clock: crate::clock::Clock,
     pub(super) windows: RwLock<Windows>,
     pub(super) sequence: Arc<AtomicU64>,
     drained: AtomicU64,
@@ -116,16 +116,25 @@ impl Contract {
     }
 }
 
+impl std::fmt::Debug for Table {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("Table").finish_non_exhaustive()
+    }
+}
+
 impl Table {
-    pub(crate) fn resuming(definitions: impl IntoIterator<Item = Definition>, floor: Position, resume: Cursor) -> Result<Self, Refused> {
+    pub(crate) fn resuming(
+        definitions: impl IntoIterator<Item = Definition>, floor: Position, resume: Cursor, clock: crate::clock::Clock,
+    ) -> Result<Self, Refused> {
         let (pump, _) = watch::channel(());
         let table = Self {
+            clock: clock.clone(),
             windows: RwLock::new(HashMap::new()),
             sequence: Arc::new(AtomicU64::new(resume.0)),
             drained: AtomicU64::new(resume.0),
             pump,
             visibility: Arc::new(RwLock::new(())),
-            publications: Arc::new(super::publication::Pool::new()),
+            publications: Arc::new(super::publication::Pool::new(clock)),
             ingest: Arc::new(super::ingest::Ingest::new(resume.0)),
             #[cfg(feature = "plugin-guest")]
             listeners: Mutex::new(BTreeMap::new()),
@@ -150,7 +159,8 @@ impl Table {
         }
 
         let window = Arc::new(
-            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone()).visible_with(self.visibility.clone()),
+            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone(), self.clock.clone())
+                .visible_with(self.visibility.clone()),
         );
         let wired = Arc::new(Wired {
             validation: None,

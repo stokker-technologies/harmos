@@ -1150,6 +1150,13 @@ must establish whether its isolated timeout recurs under hosted load.
 
 ### Typed Live Subscriptions
 
+Assumption: the admitted `Subscriptions/Subscribe` requirement authorizes live
+stream selection; existing admission middleware may restrict it. No separate
+per-stream access registry is introduced. Native row schema projection uses the
+runtime `grpc` feature, enabled by default; without it, native subscriptions
+refuse with an instruction to enable that feature. This new gRPC capability does
+not add another schema projector.
+
 The private `harmos.plugin.v1.Subscriptions/Subscribe` carrier is an ordinary
 admitted server-streaming child. Its operation inherits the original caller's
 scope, resources and admission ancestry. An opening acknowledgement follows

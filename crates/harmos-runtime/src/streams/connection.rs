@@ -89,6 +89,7 @@ impl<A: Application> StreamManager<A> {
                             Position::ORIGIN,
                             self.windows.sequence.clone(),
                             self.windows.pump.clone(),
+                            self.windows.clock.clone(),
                         )
                         .visible_with(self.windows.visibility.clone()),
                     )

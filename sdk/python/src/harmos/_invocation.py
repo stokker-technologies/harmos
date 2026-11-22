@@ -13,6 +13,7 @@
 # Standard Library Imports
 import asyncio
 import copy
+from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine
 from typing import TYPE_CHECKING, Protocol
 
@@ -36,18 +37,17 @@ from harmos._wire.plugin.v1.invocation_pb2 import ChildCancel, ChildDemand, Chil
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 
 # Local Imports
-from ._contracts import Operation
+from ._contracts import Operation, message_types
+from ._generated.host import _SUBSCRIPTIONS_SUBSCRIBE, HostPluginsStateResource, HostRoot
+from ._subscription import Subscription
+from ._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest
 
 # Type Checking Imports
 if TYPE_CHECKING:
     from ._authoring import _FaultError
 
-from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
-
 from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
-
-from ._generated.host import HostPluginsStateResource, HostRoot
 
 # === Public Exports === #
 
@@ -79,6 +79,53 @@ class ProtocolError(Exception):
 
 class _Output(Protocol):
     async def put(self, frame: "InstanceInvokeResponse | _FaultError", /) -> None: ...
+
+
+class _Watching[R: Message]:
+    def __init__(self, context: "Context", row: type[R], output: _Output, call: int, queue: Queue[ChildResponse]) -> None:
+        self.context = context
+        self.row = row
+        self.output = output
+        self.call = call
+        self.queue = queue
+        self.closed = False
+        self.reading = False
+
+    def __aiter__(self) -> "_Watching[R]":
+        return self
+
+    async def __anext__(self) -> R:
+        if self.closed:
+            raise StopAsyncIteration
+        if self.reading:
+            raise ValueError("Read Watch: Await the Outstanding Read Before Reading Again")
+        self.reading = True
+        try:
+            if self.call in self.context._watches:
+                await self.output.put(InstanceInvokeResponse(child_demand=ChildDemand(call=self.call)))
+            reply = await self.queue.get()
+            if self.closed:
+                raise StopAsyncIteration
+            kind = reply.WhichOneof("result")
+            if kind == "failure":
+                await self.aclose()
+                raise FailureError(reply.failure)
+            if kind == "payload":
+                await self.aclose()
+                raise StopAsyncIteration
+            return self.row.FromString(reply.item)
+        finally:
+            self.reading = False
+
+    async def aclose(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        if self.context._watches.pop(self.call, None) is not None:
+            self.context._retired.add(self.call)
+            await self.output.put(InstanceInvokeResponse(child_cancel=ChildCancel(call=self.call)))
+        if self.queue.empty():
+            self.queue.put_nowait(ChildResponse(call=self.call, payload=b""))
 
 
 class Context:
@@ -186,7 +233,29 @@ class Context:
                 await self._output.put(InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
             raise
 
+    async def subscribe[R: Message](self, stream: str, row: type[R], *, max_item_bytes: int) -> Subscription[R]:
+        request = SubscriptionsSubscribeRequest(stream=stream, row=row.DESCRIPTOR.full_name, types=message_types(row).SerializeToString())
+        incoming = await self._open_watch(_SUBSCRIPTIONS_SUBSCRIBE, request, max_item_bytes=max_item_bytes)
+        try:
+            opened = await anext(incoming)
+            if opened.WhichOneof("item") != "opened" or not opened.opened:
+                raise ValueError("Subscribe to Stream: Host Must Acknowledge the Admitted Demand")
+        except BaseException:
+            await incoming.aclose()
+            raise
+        return Subscription(incoming, row)
+
     async def watch[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, max_item_bytes: int) -> AsyncGenerator[R]:
+        incoming = await self._open_watch(operation, request, max_item_bytes=max_item_bytes)
+        try:
+            async for item in incoming:
+                yield item
+        finally:
+            await incoming.aclose()
+
+    async def _open_watch[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, max_item_bytes: int) -> "_Watching[R]":
+        if self._cancelled.is_set():
+            raise self._cancel_failure()
         output = self._output
         if output is None or self._requires.get(operation.id) != operation.fingerprint:
             raise ValueError(f"Watch {operation.id}: Undeclared Requirement or Missing Invocation")
@@ -213,23 +282,7 @@ class Context:
             )
         )
 
-        async def items() -> AsyncIterator[R]:
-            while True:
-                await output.put(InstanceInvokeResponse(child_demand=ChildDemand(call=call)))
-                reply = await queue.get()
-                kind = reply.WhichOneof("result")
-                if kind == "failure":
-                    raise FailureError(reply.failure)
-                if kind == "payload":
-                    return
-                yield operation.response.FromString(reply.item)
-
-        try:
-            async for item in items():
-                yield item
-        finally:
-            if self._watches.pop(call, None) is not None:
-                await output.put(InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
+        return _Watching(self, operation.response, output, call, queue)
 
     async def _invoke_local[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, override: OperationPolicy | None) -> R:
         definition, handler = self._local[operation.id]
@@ -410,7 +463,12 @@ class Context:
         complete.set_result(reply)
 
     def _has_pending(self, call: int) -> bool:
-        return call in self._pending or call in self._watches or any(child._has_pending(call) for child in self._children)
+        return (
+            call in self._pending
+            or call in self._watches
+            or call in self._retired
+            or any(child._has_pending(call) for child in self._children)
+        )
 
     async def _cancel(self, reason: str) -> None:
         if self._cancelled.is_set():

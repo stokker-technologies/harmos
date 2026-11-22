@@ -59,7 +59,7 @@ bench = false
 
 [[bin]]
 name = "harmos-stream-consumer-fixture"
-path = "../../crates/harmos-runtime/tests/fixtures/stream_consumer.rs"
+path = "../../crates/harmos-runtime/tests/support/stream_consumer_fixture.rs"
 test = false
 bench = false
 

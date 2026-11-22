@@ -129,6 +129,13 @@ impl<T: Message> Prepared<T> {
 
 /* === Public Functions === */
 
+/// Project an Already Encoded Canonical Value Through Its Authored Shape.
+pub fn encode_postcard(
+    definition: &harmos_domain::schema::declaration::Definition, postcard: &[u8], bytes: &mut Vec<u8>,
+) -> Result<(), MessageError> {
+    transcode::encode_admitted(definition, postcard, bytes, 0, &mut |_| Ok(()))
+}
+
 // These Read And Write `T`'s Message Bytes As Its Canonical Postcard Value; Host
 
 // Adapters Whose Message Bytes Are Opaque Payloads Forward Them Instead.

@@ -22,6 +22,8 @@ use harmos_protocol::host::plugins::StatePutRequest;
 use harmos_protocol::host::plugins::StatePutResponse;
 use harmos_protocol::model::SettingDeclaration;
 use harmos_protocol::model::SettingsDeclarations;
+use harmos_protocol::plugin::SubscriptionsSubscribeRequest;
+use harmos_protocol::plugin::SubscriptionsSubscribeResponse;
 use prost_types::FileDescriptorSet;
 impl Message for InvocationsCancelRequest {
     fn name() -> String {
@@ -221,6 +223,24 @@ impl Message for SettingsDeclarations {
             .expect("generated context wrapper")
     }
 }
+impl Message for SubscriptionsSubscribeRequest {
+    fn name() -> String {
+        "harmos.plugin.v1.SubscriptionsSubscribeRequest".into()
+    }
+    fn types() -> FileDescriptorSet {
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.plugin.v1.SubscriptionsSubscribeRequest.bin")[..])
+            .expect("generated context wrapper")
+    }
+}
+impl Message for SubscriptionsSubscribeResponse {
+    fn name() -> String {
+        "harmos.plugin.v1.SubscriptionsSubscribeResponse".into()
+    }
+    fn types() -> FileDescriptorSet {
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.plugin.v1.SubscriptionsSubscribeResponse.bin")[..])
+            .expect("generated context wrapper")
+    }
+}
 impl OperationRequest for InvocationsGetRequest {
     type Response = InvocationsGetResponse;
     const ID: &'static str = "harmos.plugin.v1.Invocations/Get";
@@ -260,6 +280,11 @@ impl OperationRequest for StatePutRequest {
     type Response = StatePutResponse;
     const ID: &'static str = "harmos.plugin.v1.plugins.State/Put";
     const WATCH: bool = false;
+}
+impl OperationRequest for SubscriptionsSubscribeRequest {
+    type Response = SubscriptionsSubscribeResponse;
+    const ID: &'static str = "harmos.plugin.v1.Subscriptions/Subscribe";
+    const WATCH: bool = true;
 }
 impl OperationRequest for TimeGetRequest {
     type Response = TimeGetResponse;

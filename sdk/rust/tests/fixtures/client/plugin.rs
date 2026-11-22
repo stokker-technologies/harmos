@@ -36,11 +36,12 @@ pub enum HostOperation {
     PluginsSettingsList,
     PluginsStateGet,
     PluginsStatePut,
+    SubscriptionsSubscribe,
     TimeGet,
     TimeSleep,
 }
 impl HostOperation {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::InvocationsGet,
         Self::InvocationsCancel,
         Self::InvocationsWatch,
@@ -49,6 +50,7 @@ impl HostOperation {
         Self::PluginsSettingsList,
         Self::PluginsStateGet,
         Self::PluginsStatePut,
+        Self::SubscriptionsSubscribe,
         Self::TimeGet,
         Self::TimeSleep,
     ];

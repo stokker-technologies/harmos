@@ -16,12 +16,14 @@ mod contracts;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_output;
 mod state;
+mod subscription;
 #[cfg(target_arch = "wasm32")]
 mod wasm_output;
 
 /* === Re-Exports === */
 
 pub use state::StateHandle;
+pub use subscription::{Subscription, SubscriptionItem, SubscriptionRow};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use native_output::ChildOutput;
@@ -561,12 +563,27 @@ pub struct Watching<R: message::Message> {
     response: PhantomData<fn() -> R>,
 }
 impl<R: message::Message> Watching<R> {
+    pub fn close(&mut self) {
+        self.closed = true;
+        let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
+        if let Some(watch) = calls.watches.remove(&self.call)
+            && watch.sent
+        {
+            calls.cancelled.insert(self.call);
+            calls.cancel_queue.insert(self.call);
+            self.context.call_changes.notify_one();
+        }
+    }
+
     pub async fn next(&mut self) -> Result<Option<R>> {
         if self.closed {
             return Ok(None);
         }
         let output = self.context.output.as_ref().expect("Native Watch");
-        output.send(instance_invoke_response::Frame::ChildDemand(ChildDemand { call: self.call })).await?;
+        let active = self.context.calls.lock().expect("Child Calls Poisoned").watches.contains_key(&self.call);
+        if active {
+            output.send(instance_invoke_response::Frame::ChildDemand(ChildDemand { call: self.call })).await?;
+        }
         match self.receiver.recv().await {
             Some(Ok(Some(bytes))) => R::decode(bytes.as_slice()).map(Some).map_err(|error| Error::Invalid(format!("Watch: {error}"))),
             Some(Ok(None)) => {
@@ -583,14 +600,7 @@ impl<R: message::Message> Watching<R> {
 }
 impl<R: message::Message> Drop for Watching<R> {
     fn drop(&mut self) {
-        let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
-        if let Some(watch) = calls.watches.remove(&self.call)
-            && watch.sent
-        {
-            calls.cancelled.insert(self.call);
-            calls.cancel_queue.insert(self.call);
-            self.context.call_changes.notify_one();
-        }
+        self.close();
     }
 }
 

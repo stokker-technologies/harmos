@@ -194,6 +194,23 @@ columns) at its first sample's host time, and device evidence at host arrival ti
 canonical storage encoding and the schema projected from the admitted protobuf row;
 this conversion does not change the protobuf-only transport contract.
 
+Typed live demand uses `harmos.plugin.v1.Subscriptions/Subscribe` on the existing
+child Watch carrier. The requirement admits the stream selection under the
+caller's inherited scope, resources and admission ancestry. The first response
+acknowledges cursor capture; SDK subscription calls await it before returning.
+Each subsequent child demand permits one typed row or explicit gap. Host rows
+use publication time for both timestamps; device rows preserve `source_time`
+when supplied; interval batches expand into individual rows on their source grid.
+Receipt time is recorded when the host accepts the publication and survives a
+deferred commit.
+
+Subscribers read the configured bounded live window independently. Publication
+never waits on them. An overrun yields one gap counting missed individual rows
+(including samples in overwritten interval parts), then continues at the oldest
+retained row. Closing cancels only that child demand; ending its calling scope
+also ends it. Storage ingestion keeps its distinct feed and backpressure; this
+facility neither reads stored history nor resumes a subscription from storage.
+
 ## Schema Fingerprints
 
 The following general rule preserves the original minimal Value fixture hashes.

@@ -15,11 +15,13 @@ from .._generated.plugin_types import (
     TimeSleepResponse,
 )
 from .._invocation import Context, Publisher
+from .._subscription import Gap, StreamRow, Subscription
 
 __all__ = [
     "Catalog",
     "Context",
     "Endpoint",
+    "Gap",
     "HostOperation",
     "InvocationsCancelResponse",
     "InvocationsGetResponse",
@@ -36,6 +38,8 @@ __all__ = [
     "StateGetResponse",
     "StatePutResponse",
     "Stream",
+    "StreamRow",
+    "Subscription",
     "TimeGetResponse",
     "TimeSleepResponse",
     "Window",

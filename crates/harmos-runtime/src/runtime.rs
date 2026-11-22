@@ -860,7 +860,7 @@ impl<A: Application> Builder<A> {
         let simulation = self.simulation;
         let Self {
             origin,
-            resources,
+            mut resources,
             inverses,
             catalog,
             definitions,
@@ -912,7 +912,7 @@ impl<A: Application> Builder<A> {
                 snapshots,
             });
         }
-        let windows = Table::resuming(definitions, state.position, resume).map_err(Incompatible::dishonored)?;
+        let windows = Table::resuming(definitions, state.position, resume, self.clock.clone()).map_err(Incompatible::dishonored)?;
         let demand = windows.hold(selections).map_err(Incompatible::dishonored)?;
         consumers.redelivering(recovered.clone(), stored, state.position);
 
@@ -941,6 +941,7 @@ impl<A: Application> Builder<A> {
         // attached below never misses a row published in the gap between the
         // two.
         let streams = StreamManager::wired(windows, journal.progress(), schema_settings.clone());
+        resources.replace(Arc::new(crate::streams::subscription::Source::new(&streams)));
         let delivery = streams.delivery();
         operation_settings.validate().map_err(|source| Incompatible {
             cause: Cause::Operations(source),

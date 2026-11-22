@@ -454,11 +454,13 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "i64")
         return f"std::collections::HashMap<String, {value}>" if field["map"] else f"Vec<{value}>" if field["repeated"] else value
 
-    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods if method["surface"] for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     used = set()
     for used_method in methods:
         for used_key in ("request", "response"):
+            if used_key == "response" and not used_method["surface"]:
+                continue
             used.add(used_method[used_key])
 
     used.update(
@@ -478,7 +480,17 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         "use crate::plugin::{Dependency, Registrar, Registration};",
         "use std::num::NonZeroUsize;",
     ]
-    lines += [f"use {message(full)};" for full in sorted(used) if "::" not in message_names[full]]
+    surface_types = {method[key] for method in methods if method["surface"] for key in ("request", "response")}
+    surface_types.update(
+        field["type"]
+        for method in methods
+        if method["surface"]
+        for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
+        if field["type"]
+    )
+    lines += [
+        f"use {message(full)};" for full in sorted(used) if "::" not in message_names[full] and (target is None or full in surface_types)
+    ]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
     lines += ["}", "impl HostOperation {", f"    pub const ALL: [Self; {len(methods)}] = ["]
@@ -520,6 +532,8 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
     lines += lines_items
     lines += ["        }", "    }", "}"]
     for method in methods:
+        if not method["surface"]:
+            continue
         name = "".join(title(part) for part in method["path"])
         lines += ["#[derive(Default)]", f"pub struct Host{name}Options {{"]
         lines_items = []
@@ -669,6 +683,8 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     exports = ["HostOperation", "HostRoot", *names.values()]
     for method in methods:
+        if not method["surface"]:
+            continue
         name = "".join(title(part) for part in method["path"])
         exports += [f"Host{name}Options"]
         if method["server_streaming"]:

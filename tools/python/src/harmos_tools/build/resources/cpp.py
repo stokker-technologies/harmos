@@ -186,7 +186,7 @@ def host(
         value = message(field["type"], type_names) if field["type"] else SCALARS.get(field["kind"], "std::int64_t")
         return f"std::map<std::string, {value}>" if field["map"] else f"std::vector<{value}>" if field["repeated"] else value
 
-    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods if method["surface"] for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     header = [
         "// @generated from protocol descriptors; do not edit.",
@@ -222,6 +222,8 @@ def host(
     if configuration.namespace != "harmos":
         source += ["using ::harmos::plugin::Operation;", "using ::harmos::plugin::Watching;", "using ::harmos::VISIBILITY_PUBLIC;"]
     for method in methods:
+        if not method["surface"]:
+            continue
         name = "".join(title(part) for part in method["path"])
         header += [f"struct Host{name}Options {{"]
         header_items = []

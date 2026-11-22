@@ -28,6 +28,7 @@ mod registration;
 
 #[cfg(feature = "plugin-guest")]
 mod staging;
+pub(crate) mod subscription;
 mod window;
 
 /* === Re-Exports === */

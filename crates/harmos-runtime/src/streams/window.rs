@@ -48,10 +48,11 @@ pub(crate) struct Window {
     doorbell: watch::Sender<u64>,
     pump: watch::Sender<()>,
     demand: watch::Sender<usize>,
+    clock: crate::clock::Clock,
 }
 
 struct Ring {
-    rows: VecDeque<(u64, u64, Position, Row)>,
+    rows: VecDeque<(u64, u64, Position, Row, Observation)>,
     capacity: usize,
     next: u64,
     last: u64,
@@ -61,6 +62,7 @@ struct Ring {
     missed: u64,
     floor: Position,
     standing: bool,
+    units: u64,
 }
 
 #[cfg(feature = "plugin-guest")]
@@ -78,8 +80,18 @@ pub(crate) struct Retained {
 
 pub(crate) struct Advanced {
     pub(crate) missed: u64,
-    pub(crate) rows: Vec<(Position, Row)>,
+    pub(crate) row: Option<(Position, Row, Observation)>,
     pub(crate) frontier: u64,
+    units: u64,
+    missed_units: u64,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Observation {
+    pub(crate) received: prost_types::Timestamp,
+    pub(crate) encode: Option<fn(&Row) -> Result<Vec<u8>, harmos_domain::MessageError>>,
+    first_unit: u64,
+    through_unit: u64,
 }
 
 struct Parts {
@@ -90,13 +102,16 @@ struct Parts {
 
     #[allow(dead_code, reason = "held for its drop, which releases the demand count")]
     held: Holding,
+    units: u64,
+    weighted: bool,
 }
 
 struct Following<S> {
     parts: Option<Parts>,
     step: Option<Step>,
     gap: u64,
-    pending: VecDeque<(Position, Row)>,
+    pending: Option<(Position, Row, Observation)>,
+    project: fn(&Row, &Observation) -> S,
     done: bool,
     marker: PhantomData<fn() -> S>,
 }
@@ -125,7 +140,9 @@ enum Turn {
 /* === Implementations === */
 
 impl Window {
-    pub(crate) fn wired(capacity: usize, floor: Position, sequence: Arc<AtomicU64>, pump: watch::Sender<()>) -> Self {
+    pub(crate) fn wired(
+        capacity: usize, floor: Position, sequence: Arc<AtomicU64>, pump: watch::Sender<()>, clock: crate::clock::Clock,
+    ) -> Self {
         let (doorbell, _) = watch::channel(0);
         let (demand, _) = watch::channel(0);
 
@@ -140,11 +157,13 @@ impl Window {
                 missed: 0,
                 floor,
                 standing: false,
+                units: 0,
             }),
             sequence,
             doorbell,
             pump,
             demand,
+            clock,
         }
     }
 
@@ -153,27 +172,45 @@ impl Window {
         self
     }
 
-    pub(crate) fn publish(&self, at: Position, row: Row) {
-        self.append(at, row, 0).expect("native stream cursor exhausted");
-    }
-
-    pub(super) fn append(&self, at: Position, row: Row, missed: u64) -> Result<(), super::StreamPublicationError> {
+    pub(crate) fn publish<S: super::StreamRow>(&self, at: Position, row: S) {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        let evicted = self.append_locked(at, row, missed)?;
+        let observation = Observation {
+            received: self.clock.date().into(),
+            encode: Some(super::subscription::encode_native::<S>),
+            first_unit: 0,
+            through_unit: 0,
+        };
+        let evicted = self.append_observed(at, Arc::new(row), 0, observation).expect("native stream cursor exhausted");
         drop(_visibility);
         drop(evicted);
         self.knock();
         self.pump.send_modify(|()| {});
-        Ok(())
     }
 
     // Caller holds the facility visibility fence. Notifications follow scope commit.
     pub(super) fn append_locked(&self, at: Position, row: Row, missed: u64) -> Result<Option<Row>, super::StreamPublicationError> {
+        let received =
+            row.downcast_ref::<super::ManagedPublication>().map_or_else(|| self.clock.date().into(), super::ManagedPublication::received);
+        let observation = Observation {
+            received,
+            encode: None,
+            first_unit: 0,
+            through_unit: 0,
+        };
+        self.append_observed(at, row, missed, observation)
+    }
+
+    fn append_observed(
+        &self, at: Position, row: Row, missed: u64, mut observation: Observation,
+    ) -> Result<Option<Row>, super::StreamPublicationError> {
         let evicted;
         {
             let mut ring = self.ring.write().expect("the ring is never poisoned");
             let advance = missed.checked_add(1).ok_or(super::StreamPublicationError::Sequence)?;
             let next = ring.next.checked_add(advance).ok_or(super::StreamPublicationError::Sequence)?;
+            observation.first_unit = ring.units.checked_add(missed).ok_or(super::StreamPublicationError::Sequence)?;
+            let units = row.downcast_ref::<super::ManagedPublication>().map_or(1, super::ManagedPublication::units);
+            observation.through_unit = observation.first_unit.checked_add(units).ok_or(super::StreamPublicationError::Sequence)?;
             let previous = self
                 .sequence
                 .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| cursor.checked_add(advance))
@@ -183,7 +220,7 @@ impl Window {
                 ring.missed = cursor - 1;
             }
             evicted = if ring.rows.len() == ring.capacity {
-                let (lost, _, stamp, row) = ring.rows.pop_front().expect("full ring");
+                let (lost, _, stamp, row, _) = ring.rows.pop_front().expect("full ring");
                 ring.evicted = lost;
                 ring.floor = stamp;
                 ring.standing = true;
@@ -195,9 +232,10 @@ impl Window {
             if let Some(publication) = row.downcast_ref::<super::ManagedPublication>() {
                 publication.assign_sequence(next);
             }
-            ring.rows.push_back((cursor, next, at, row));
+            ring.rows.push_back((cursor, next, at, row, observation));
             ring.next = next;
             ring.last = cursor;
+            ring.units = observation.through_unit;
         }
         Ok(evicted)
     }
@@ -215,7 +253,7 @@ impl Window {
         let mut bytes = 0usize;
         let mut rows = 0usize;
         let mut prefix = 0usize;
-        for (cursor, _, _, row) in &ring.rows {
+        for (cursor, _, _, row, _) in &ring.rows {
             if *cursor > taken {
                 break;
             }
@@ -235,7 +273,7 @@ impl Window {
             return None;
         }
         for _ in 0..prefix {
-            let (cursor, _, position, row) = ring.rows.pop_front().expect("validated retention prefix");
+            let (cursor, _, position, row, _) = ring.rows.pop_front().expect("validated retention prefix");
             ring.evicted = cursor;
             ring.floor = position;
             ring.standing = true;
@@ -273,26 +311,32 @@ impl Window {
             rows: ring
                 .rows
                 .iter()
-                .filter(|(_, _, stamp, _)| !beneath || *stamp > ring.floor)
-                .filter(|(_, _, stamp, _)| admitted(start, end, *stamp))
-                .filter(|(_, _, stamp, _)| as_of.is_none_or(|cutoff| *stamp <= cutoff))
-                .map(|(_, _, stamp, row)| (*stamp, Arc::clone(row)))
+                .filter(|(_, _, stamp, ..)| !beneath || *stamp > ring.floor)
+                .filter(|(_, _, stamp, ..)| admitted(start, end, *stamp))
+                .filter(|(_, _, stamp, ..)| as_of.is_none_or(|cutoff| *stamp <= cutoff))
+                .map(|(_, _, stamp, row, _)| (*stamp, Arc::clone(row)))
                 .collect(),
             floor: ring.floor,
             beneath,
         }
     }
 
-    pub(crate) fn since(&self, frontier: u64) -> Advanced {
+    pub(crate) fn since(&self, frontier: u64, units: u64) -> Advanced {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let ring = self.ring.read().expect("the ring is never poisoned");
-        let rows: Vec<_> =
-            ring.rows.iter().filter(|(_, sequence, ..)| *sequence > frontier).map(|(_, _, stamp, row)| (*stamp, Arc::clone(row))).collect();
-        let missed = ring.next.saturating_sub(frontier).saturating_sub(rows.len() as u64);
+        let next = ring.rows.iter().find(|(_, sequence, ..)| *sequence > frontier);
+        let reached = next.map_or(ring.next.max(frontier), |(_, sequence, ..)| *sequence);
+        let missed = reached.saturating_sub(frontier).saturating_sub(u64::from(next.is_some()));
+        let first_unit = next.map_or(ring.units, |(_, _, _, _, observation)| observation.first_unit);
+        let missed_units = first_unit.saturating_sub(units);
+        let through_unit = next.map_or(ring.units, |(_, _, _, _, observation)| observation.through_unit);
+        let row = next.filter(|_| missed == 0).map(|(_, _, stamp, row, observation)| (*stamp, Arc::clone(row), *observation));
         Advanced {
             missed,
-            rows,
-            frontier: ring.next.max(frontier),
+            row,
+            frontier: reached.saturating_sub(u64::from(missed > 0 && next.is_some())),
+            units: if missed > 0 { first_unit } else { through_unit },
+            missed_units,
         }
     }
 
@@ -306,7 +350,7 @@ impl Window {
             .rows
             .iter()
             .filter(|(cursor, ..)| *cursor > resume && *cursor <= reaches)
-            .map(|(cursor, _, stamp, row)| (*cursor, *stamp, Arc::clone(row)))
+            .map(|(cursor, _, stamp, row, _)| (*cursor, *stamp, Arc::clone(row)))
             .collect();
         // Under this same lock: evicting a row after cloning it cannot later
         // turn this delivery into a gap. A cut overtaken before this lock is
@@ -407,8 +451,8 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
                 let missed = std::mem::take(&mut following.gap);
                 return Poll::Ready(Some(Item::Gap { missed }));
             }
-            if let Some((position, row)) = following.pending.pop_front() {
-                let value = super::row_value::<S>(row.as_ref()).expect("a window holds only its own stream's rows").clone();
+            if let Some((position, row, observation)) = following.pending.take() {
+                let value = (following.project)(&row, &observation);
                 return Poll::Ready(Some(Item::Row(At { value, position })));
             }
             if following.done {
@@ -432,9 +476,9 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
                     return Poll::Pending;
                 }
                 Poll::Ready((parts, Turn::Advanced(advanced))) => {
+                    following.gap = if parts.weighted { advanced.missed_units } else { advanced.missed };
                     following.parts = Some(parts);
-                    following.gap = advanced.missed;
-                    following.pending = advanced.rows.into();
+                    following.pending = advanced.row;
                 }
                 Poll::Ready((parts, Turn::Ended)) => {
                     following.parts = Some(parts);
@@ -450,19 +494,37 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
 pub(crate) fn following<S: Clone + 'static>(
     window: Arc<Window>, closed: Arc<AtomicBool>, held: Holding,
 ) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin {
+    projected(window, closed, held, false, |row, _| {
+        super::row_value::<S>(row.as_ref()).expect("a window holds only its own stream's rows").clone()
+    })
+}
+
+pub(crate) fn projected<S: Clone + 'static>(
+    window: Arc<Window>, closed: Arc<AtomicBool>, held: Holding, weighted: bool, project: fn(&Row, &Observation) -> S,
+) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin {
     let doorbell = window.doorbell.subscribe();
-    let frontier = {
+    let (frontier, units) = {
         let _visibility = window.visibility.read().expect("stream visibility poisoned");
-        window.ring.read().expect("the ring is never poisoned").next
+        let ring = window.ring.read().expect("the ring is never poisoned");
+        (ring.next, ring.units)
     };
 
     Following {
-        parts: Some(Parts { window, doorbell, frontier, closed, held }),
+        parts: Some(Parts {
+            window,
+            doorbell,
+            frontier,
+            closed,
+            held,
+            units,
+            weighted,
+        }),
         step: None,
         gap: 0,
-        pending: VecDeque::new(),
+        pending: None,
         done: false,
         marker: PhantomData,
+        project,
     }
 }
 
@@ -494,10 +556,11 @@ fn admitted(start: Bound<Position>, end: Bound<Position>, at: Position) -> bool 
 async fn turn(mut parts: Parts) -> (Parts, Turn) {
     loop {
         let was_closed = parts.closed.load(Ordering::Acquire);
-        let advanced = parts.window.since(parts.frontier);
+        let advanced = parts.window.since(parts.frontier, parts.units);
         parts.frontier = advanced.frontier;
+        parts.units = advanced.units;
 
-        if advanced.missed > 0 || !advanced.rows.is_empty() {
+        if advanced.missed > 0 || advanced.row.is_some() {
             return (parts, Turn::Advanced(advanced));
         }
         if was_closed || parts.doorbell.changed().await.is_err() {
