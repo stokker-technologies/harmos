@@ -34,6 +34,10 @@ pub use harmos_protocol::model::Protobuf;
 pub use harmos_protocol::policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy};
 pub use harmos_protocol::service::{RestartPolicy, ServicePolicy};
 pub use protobuf::ProtobufExt;
+
+#[cfg(feature = "grpc")]
+pub(crate) use protobuf::message_schema;
+
 pub use specification::{OperationSpec, RequestShape};
 
 /* === Imports === */
