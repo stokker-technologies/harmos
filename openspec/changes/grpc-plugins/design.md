@@ -34,12 +34,19 @@ shared codec and runtime batch slicing; README claims remain accurate.
 The retired runtime encoder/reader had no dedicated unit tests; retain stream
 behaviour tests and add descriptor contract tests at the shared codec owner.
 
-A further overlap requires an owner decision: `execution/grpc/validator.rs`
-compiles and walks wire shapes for `harmos-runtime/src/grpc/dynamic.rs`, while
-`execution/grpc/transcode.rs::check` validates the same wire kinds for native and
-dynamic decoding. Prefer retiring the standalone validator traversal after the
-shared codec exposes allocation-free validation preserving its admission and
-construction budgets. This consolidation does not delete either validator path.
+The owner chose `execution/grpc/transcode.rs::check` as the sole protobuf field
+validation traversal. Dynamic operations reuse their checked contract schema and
+the descriptor-backed codec view for allocation-free validation before reflection
+decoding. Delete `execution/grpc/validator.rs`, its compiled tables, public exports
+and redundant tests. Preserve schema preparation budgets, every wire occurrence,
+UTF-8, packed scalars, unknown-field framing and message/group nesting checks.
+
+Schema projection still overlaps: `operations/protobuf.rs::ProtobufExt::schema`
+builds operation contract graphs, while `execution/grpc/transcode.rs::Dynamic::schema`
+builds stream codec graphs from the same descriptor field kinds. Prefer the shared
+codec projection; changing the operation direction catalog needs an owner decision.
+Owner documentation in `docs/project/architecture.md:1100` should also identify
+the shared allocation-free validator used by dynamic gRPC operations.
 
 Rust `harmos_protocol::columns::derive` is the chosen owner of observer column
 descriptors, including optional-field presence. Python must consume those

@@ -16,7 +16,10 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::any::TypeId;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::mem::size_of;
 use std::num::NonZeroUsize;
 
 // Third Party Imports
@@ -24,9 +27,10 @@ use std::num::NonZeroUsize;
 // Local Imports
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::Cardinality;
-use harmos_domain::schema::Described;
 use harmos_domain::schema::declaration::{self, Definition};
 use harmos_domain::schema::graph::{Error, Field, Kind, Schema};
+use harmos_domain::schema::{Described, Validator};
+use harmos_domain::{MemorySize, Message};
 use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Constants === */
@@ -47,7 +51,7 @@ struct RecursiveDeclaration;
 
 /* === Implementations === */
 
-impl harmos_domain::schema::Described for RecursiveDeclaration {
+impl Described for RecursiveDeclaration {
     const NAME: &'static str = "recursive.test";
     const FIELDS: &'static [Field<Definition>] = &[Field {
         name: Cow::Borrowed("children"),
@@ -75,10 +79,7 @@ fn typed_recursive_declaration() {
     };
     let declarations = declaration::markers(alias, &SchemaSettings::default()).unwrap();
     assert_eq!(declarations.len(), 1);
-    let conflicting = Definition {
-        identity: std::any::TypeId::of::<()>,
-        ..root
-    };
+    let conflicting = Definition { identity: TypeId::of::<()>, ..root };
     assert!(matches!(
         Schema::from_declaration(conflicting, &SchemaSettings::default()),
         Err(Error::Field {
@@ -91,7 +92,7 @@ fn typed_recursive_declaration() {
     assert_eq!(prepared.definitions, 1);
     assert_eq!(prepared.fields, 1);
     wire_round_trip(&schema);
-    let validator = harmos_domain::schema::Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
+    let validator = Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
     validator.validate(&[1, 1, 0]).unwrap();
     let combined = Schema::from_declarations(&[("request", root), ("response", alias)], &SchemaSettings::default()).unwrap();
     assert_eq!(combined.definitions.len(), 2);
@@ -103,12 +104,9 @@ fn typed_recursive_declaration() {
     assert!(combined.view(combined.definitions.len()).is_err());
 
     let Kind::Message { definition } = directions[0].kind else { unreachable!() };
-    let prepared = harmos_domain::schema::Validator::from_schema(&combined, &SchemaSettings::default()).unwrap();
+    let prepared = Validator::from_schema(&combined, &SchemaSettings::default()).unwrap();
     prepared.at(definition).unwrap().validate(&[1, 1, 0]).unwrap();
     assert!(prepared.at(combined.definitions.len()).is_err());
-    let protobuf = grpc::Validator::from_schema(&combined, &SchemaSettings::default()).unwrap();
-    protobuf.at(definition).unwrap().validate(&[10, 0]).unwrap();
-    assert!(protobuf.at(combined.definitions.len()).is_err());
     let descriptor =
         harmos_packaging::proto::reflection::descriptor_root(&combined, definition, "harmos.direction", &SchemaSettings::default())
             .unwrap();
@@ -142,7 +140,7 @@ fn typed_recursive_declaration() {
     assert_eq!(resolved_directions.root, combined.root);
     assert!(combined.equivalent(definition, &resolved, resolved.root, &SchemaSettings::default()).unwrap());
     let mut mutual = Schema {
-        representations: ::std::collections::BTreeMap::new(),
+        representations: BTreeMap::new(),
         root: 0,
         definitions: vec![schema.definitions[0].clone(), schema.definitions[0].clone()],
     };
@@ -217,10 +215,8 @@ fn shared_checkpoint_schema() {
     let preparation = schema.prepare(&SchemaSettings::default()).unwrap();
     wire_round_trip(&schema);
     assert!(preparation.bytes < 128 * 1024);
-    let validator = harmos_domain::schema::Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
-    assert!(harmos_domain::MemorySize::memory_size(&validator) < 64 * 1024);
-    let protobuf = grpc::Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
-    assert!(harmos_domain::MemorySize::memory_size(&protobuf) < 32 * 1024);
+    let validator = Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
+    assert!(MemorySize::memory_size(&validator) < 64 * 1024);
     harmos_packaging::proto::reflection::descriptor_schema(&schema, "checkpoint", &SchemaSettings::default()).unwrap();
     let bounded = SchemaSettings {
         preparation_bytes: NonZeroUsize::new(preparation.bytes - 1).unwrap(),
@@ -237,7 +233,7 @@ fn shared_checkpoint_schema() {
 #[test]
 fn large_schema_preparation() {
     let schema = Schema {
-        representations: ::std::collections::BTreeMap::new(),
+        representations: BTreeMap::new(),
         root: 0,
         definitions: vec![
             (0..6000)
@@ -253,7 +249,7 @@ fn large_schema_preparation() {
     let encoded = serde_json::to_vec(&schema).unwrap();
     let restored: Schema = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(restored.prepare(&SchemaSettings::default()).unwrap().fields, 6000);
-    let validator = harmos_domain::schema::Validator::from_schema(&restored, &SchemaSettings::default()).unwrap();
+    let validator = Validator::from_schema(&restored, &SchemaSettings::default()).unwrap();
     validator.validate(&vec![0; 6000]).unwrap();
 }
 
@@ -262,7 +258,7 @@ fn recursive_schema_validation() {
     assert!(serde_json::from_str::<Kind>(r#"{"type":"bool","definition":0}"#).is_err());
     assert!(serde_json::from_str::<Kind>(r#"{"type":"message","definition":0,"fields":[]}"#).is_err());
     let mut schema = Schema {
-        representations: ::std::collections::BTreeMap::new(),
+        representations: BTreeMap::new(),
         root: 0,
         definitions: vec![vec![Field {
             name: "children".into(),
@@ -274,24 +270,7 @@ fn recursive_schema_validation() {
     let prepared = schema.prepare(&SchemaSettings::default()).unwrap();
     assert_eq!(prepared.definitions, 1);
     assert_eq!(prepared.fields, 1);
-    let validator = harmos_domain::schema::Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
-    let protobuf = grpc::Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
-    protobuf.validate(&[]).unwrap();
-    protobuf.validate(&[10, 2, 10, 0]).unwrap();
-    assert!(protobuf.validate(&[10, 1]).is_err());
-    let mut payload = Vec::new();
-    for _ in 0..64 {
-        let mut parent = vec![10];
-        let mut length = payload.len();
-        while length >= 128 {
-            parent.push((length as u8 & 127) | 128);
-            length >>= 7;
-        }
-        parent.push(length as u8);
-        parent.extend_from_slice(&payload);
-        payload = parent;
-    }
-    assert!(matches!(protobuf.validate(&payload), Err(grpc::PayloadError::Depth)));
+    let validator = Validator::from_schema(&schema, &SchemaSettings::default()).unwrap();
     validator.validate(&[0]).unwrap();
     validator.validate(&[1, 1, 0]).unwrap();
     assert!(validator.validate(&[1]).is_err());
@@ -326,14 +305,12 @@ fn recursive_schema_validation() {
 /* === Private Functions === */
 
 fn wire_round_trip(schema: &Schema) {
-    let postcard = harmos_domain::Message::encode(schema);
-    assert_eq!(postcard.len(), harmos_domain::Message::encoded_size(schema));
-    assert!(<Schema as harmos_domain::Message>::decoding_memory(&postcard).unwrap() >= std::mem::size_of::<Schema>());
-    assert_eq!(&<Schema as harmos_domain::Message>::decode(&postcard).unwrap(), schema);
+    let postcard = Message::encode(schema);
+    assert_eq!(postcard.len(), Message::encoded_size(schema));
+    assert!(<Schema as Message>::decoding_memory(&postcard).unwrap() >= size_of::<Schema>());
+    assert_eq!(&<Schema as Message>::decode(&postcard).unwrap(), schema);
     let protobuf = crate::encode(schema);
-    assert!(
-        grpc::prepare::<Schema>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).unwrap() >= std::mem::size_of::<Schema>()
-    );
+    assert!(grpc::prepare::<Schema>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).unwrap() >= size_of::<Schema>());
     assert_eq!(&grpc::decode::<Schema>(DecodeInput::new(&protobuf)).unwrap(), schema);
 }
 

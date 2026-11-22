@@ -38,7 +38,7 @@ use harmos_domain::MessageError;
 use harmos_domain::schema::Cardinality;
 use harmos_domain::schema::{
     declaration::Definition,
-    graph::{Field, Kind, Schema},
+    graph::{Field, Kind, Schema, View},
 };
 
 /* === Constants === */
@@ -207,6 +207,15 @@ impl<'a> Dynamic<'a> {
         }
     }
 
+    pub fn from_view(descriptor: MessageDescriptor, view: View<'a>) -> Self {
+        Self {
+            descriptor,
+            schema: view.schema(),
+            root: view.index(),
+            depth: 0,
+        }
+    }
+
     pub fn schema(descriptor: &MessageDescriptor) -> Result<Schema, MessageError> {
         let mut messages = vec![descriptor.clone()];
         let mut indices = BTreeMap::from([(descriptor.full_name().to_owned(), 0)]);
@@ -268,6 +277,11 @@ impl<'a> Dynamic<'a> {
 
     pub fn decode(&self, input: DecodeInput<'_>) -> Result<Vec<u8>, MessageError> {
         decode(self, input)
+    }
+
+    /// Check Every Wire Occurrence Without Allocating a Decoded Value.
+    pub fn validate(&self, input: DecodeInput<'_>) -> Result<(), MessageError> {
+        validate(self, input, false)
     }
 }
 
@@ -707,22 +721,30 @@ fn decode_message(definition: &impl Shape, input: DecodeInput<'_>, bytes: &mut V
 }
 
 fn decode_members(definition: &impl Shape, input: DecodeInput<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
-    let fields = definition.fields();
-    // Check Every Occurrence of a Known Field Before Any Is Selected
-    input.fields(&mut |occurrence| {
-        if let Some(field) = fields.iter().find(|field| field.tag == occurrence.tag) {
-            check(definition, field, input, occurrence)?;
-        }
-        Ok(())
-    })?;
-    for field in fields {
+    validate(definition, input, true)?;
+    for field in definition.fields() {
         decode_member(definition, field, input, bytes)?;
     }
     Ok(())
 }
 
+fn validate(definition: &impl Shape, input: DecodeInput<'_>, canonical: bool) -> Result<(), MessageError> {
+    // Wire Nesting Is Checked by DecodeInput; Canonical Rows Also Bound Their Shape.
+    if canonical {
+        definition.check_depth()?;
+    }
+    let fields = definition.fields();
+    // Check Every Occurrence of a Known Field Before Any Is Selected
+    input.fields(&mut |occurrence| {
+        if let Some(field) = fields.iter().find(|field| field.tag == occurrence.tag) {
+            check(definition, field, input, occurrence, canonical)?;
+        }
+        Ok(())
+    })
+}
+
 fn check<'a, S: Shape>(
-    definition: &S, field: &Field<S::Reference>, input: DecodeInput<'a>, occurrence: DecodeField<'a>,
+    definition: &S, field: &Field<S::Reference>, input: DecodeInput<'a>, occurrence: DecodeField<'a>, canonical: bool,
 ) -> Result<(), MessageError> {
     let format = definition.format(field.tag);
     match (&field.kind, field.cardinality) {
@@ -730,14 +752,8 @@ fn check<'a, S: Shape>(
         (Kind::Bytes, _) => occurrence.bytes().map(drop),
         (Kind::Message { .. }, _) => {
             let definition = definition.child(field)?;
-            definition.check_depth()?;
             let input = input.child(occurrence.bytes()?)?;
-            input.fields(&mut |occurrence| {
-                if let Some(field) = definition.fields().iter().find(|field| field.tag == occurrence.tag) {
-                    check(&definition, field, input, occurrence)?;
-                }
-                Ok(())
-            })
+            validate(&definition, input, canonical)
         }
         (kind, Cardinality::Repeated) => occurrence.scalars(decode_scalar(kind, &format), &mut |_| Ok(())),
         (kind, _) => occurrence.scalar(decode_scalar(kind, &format)).map(drop),
@@ -1019,6 +1035,12 @@ mod tests {
             type_name: Some(".codec.Leaf".into()),
             ..field("leaf", 16, Type::Message)
         });
+        for (name, tag, kind) in [("fixed32s", 17, Type::Fixed32), ("fixed64s", 18, Type::Fixed64)] {
+            fields.push(FieldDescriptorProto {
+                label: Some(Label::Repeated as i32),
+                ..field(name, tag, kind)
+            });
+        }
         let file = FileDescriptorProto {
             name: Some("codec.proto".into()),
             package: Some("codec".into()),
@@ -1185,7 +1207,7 @@ mod tests {
         let descriptor = pool.get_message_by_name("codec.Node").unwrap();
         let schema = Dynamic::schema(&descriptor).unwrap();
         let codec = Dynamic::new(descriptor, &schema);
-        for nested in [harmos_domain::schema::MAX_DEPTH - 1, harmos_domain::schema::MAX_DEPTH] {
+        for nested in [harmos_domain::schema::MAX_DEPTH - 1, harmos_domain::schema::MAX_DEPTH, harmos_domain::schema::MAX_DEPTH + 1] {
             let mut wire = Vec::new();
             for _ in 0..nested {
                 let mut parent = vec![0x1a];
@@ -1196,9 +1218,10 @@ mod tests {
             let mut canonical = vec![1; nested];
             canonical.push(0);
             let decoded = codec.decode(DecodeInput::new(&wire));
+            assert_eq!(codec.validate(DecodeInput::new(&wire)).is_ok(), nested <= harmos_domain::schema::MAX_DEPTH);
             let mut output = Vec::new();
             let encoded = codec.encode(&canonical, &mut output);
-            if nested == harmos_domain::schema::MAX_DEPTH {
+            if nested >= harmos_domain::schema::MAX_DEPTH {
                 assert!(decoded.is_err());
                 assert!(encoded.is_err());
             } else {
@@ -1222,7 +1245,82 @@ mod tests {
             vec![0x82, 1, 3, 10, 1, 0, 0x58, 0],
             vec![0x6a, 7, 8, 1, 18, 3, 10, 1, 0, 0x6a, 2, 8, 1],
         ] {
+            assert!(codec.validate(DecodeInput::new(&wire)).is_err());
             assert!(codec.decode(DecodeInput::new(&wire)).is_err());
+        }
+    }
+
+    #[test]
+    fn dynamic_validation_checks_scalar_framing_and_unknown_fields() {
+        let descriptor = descriptor();
+        let schema = Dynamic::schema(&descriptor).unwrap();
+        let codec = Dynamic::new(descriptor, &schema);
+        for wire in [
+            &[][..],
+            &[8, 0, 0x1d, 0, 0, 0, 0, 0x21, 0, 0, 0, 0, 0, 0, 0, 0],
+            &[0x4a, 2, 0xc3, 0xa9, 0x52, 1, 255],
+            &[0x78, 1, 0x7a, 2, 0x80, 1],
+            &[0x8a, 1, 4, 0, 0, 0, 0, 0x92, 1, 8, 0, 0, 0, 0, 0, 0, 0, 0],
+            &[0xa0, 1, 1, 0xa5, 1, 0, 0, 0, 0, 0xa1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa2, 1, 1, 255],
+            &[0xa3, 1, 8, 1, 0xa4, 1],
+        ] {
+            codec.validate(DecodeInput::new(wire)).unwrap();
+        }
+        for wire in [
+            &[0][..],
+            &[0x80],
+            &[0x80, 0x80, 0x80, 0x80, 0x10],
+            &[8, 0x80],
+            &[8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 2],
+            &[0x0a, 0],
+            &[0x1d, 0, 0, 0],
+            &[0x18, 0],
+            &[0x21, 0, 0, 0, 0, 0, 0, 0],
+            &[0x20, 0],
+            &[0x4a, 1, 255],
+            &[0x4a, 2, b'a'],
+            &[0x48, 0],
+            &[0x52, 2, 1],
+            &[0x50, 0],
+            &[0x82, 1, 2, 8],
+            &[0x80, 1, 0],
+            &[0x7a, 1, 0x80],
+            &[0x8a, 1, 3, 0, 0, 0],
+            &[0x92, 1, 7, 0, 0, 0, 0, 0, 0, 0],
+            &[0xa0, 1, 0x80],
+            &[0xa5, 1, 0, 0, 0],
+            &[0xa1, 1, 0, 0, 0, 0, 0, 0, 0],
+            &[0xa2, 1, 2, 0],
+            &[0xa3, 1],
+            &[0xa3, 1, 0xac, 1],
+            &[0xa4, 1],
+            &[0xa6, 1],
+        ] {
+            assert!(codec.validate(DecodeInput::new(wire)).is_err(), "wire: {wire:?}");
+            assert!(codec.decode(DecodeInput::new(wire)).is_err(), "wire: {wire:?}");
+        }
+    }
+
+    #[test]
+    fn dynamic_validation_bounds_unknown_groups_inside_messages() {
+        let descriptor = descriptor();
+        let schema = Dynamic::schema(&descriptor).unwrap();
+        let codec = Dynamic::new(descriptor, &schema);
+        for (inside_message, groups, accepted) in [(false, 32, true), (false, 33, false), (true, 31, true), (true, 32, false)] {
+            let mut wire = Vec::new();
+            for _ in 0..groups {
+                wire.extend_from_slice(&[0xa3, 1]);
+            }
+            for _ in 0..groups {
+                wire.extend_from_slice(&[0xa4, 1]);
+            }
+            if inside_message {
+                let mut parent = vec![0x82, 1];
+                encode_varint(wire.len() as u64, &mut parent);
+                parent.extend_from_slice(&wire);
+                wire = parent;
+            }
+            assert_eq!(codec.validate(DecodeInput::new(&wire)).is_ok(), accepted);
         }
     }
 
