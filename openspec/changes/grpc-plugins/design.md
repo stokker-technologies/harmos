@@ -28,6 +28,11 @@ The Rust example uses `example` consistently with its `example.echo` operation.
 The library sidecar and guest examples use `schematic` consistently with their
 existing operations. Local lane and setting keys remain instance-local.
 
+Invoke and Samples serialize host failures through plugin/grpc/invoke.rs::failure.
+Error::operation_failure owns structured-failure retrieval, including carried
+failures and encoded transport details; the serializer has no second fallback
+lookup through Error::failure.
+
 The resource descriptor catalog owns caller-option parsing for both generation
 and source auditing. A protocol file importing the caller-option definition
 requires an annotation on every service method. Annotated plugin methods project
