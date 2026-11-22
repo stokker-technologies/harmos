@@ -24,12 +24,19 @@ mod serde;
 /* === Imports === */
 
 // Standard Library Imports
+use std::any::TypeId;
+use std::mem::size_of;
 
 // Third Party Imports
 
 // Local Imports
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::declaration::Definition;
+use harmos_domain::schema::graph::Schema;
+use harmos_domain::schema::{Cardinality, Described, Kind};
 use harmos_domain::{MemorySize, Message};
 use harmos_operations::execution::grpc::{self, DecodeInput, prost};
+use harmos_packaging::proto::reflection::{DynamicMessage, MessageDescriptor};
 
 /* === Constants === */
 
@@ -186,24 +193,23 @@ impl Default for SingleVariant {
 /* === Private Functions === */
 
 // Encode A Fixture Through The Shared Transport Adapter.
-fn encode<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
+fn encode<T: Message + Described>(value: &T) -> Vec<u8> {
     let mut bytes = Vec::new();
     grpc::encode(value, &mut bytes).unwrap();
     bytes
 }
 
-fn protobuf_fields(definition: harmos_domain::schema::declaration::Definition) -> harmos_domain::schema::graph::Schema {
-    let mut schema =
-        harmos_domain::schema::graph::Schema::from_declaration(definition, &harmos_domain::config::SchemaSettings::default()).unwrap();
+fn protobuf_fields(definition: Definition) -> Schema {
+    let mut schema = Schema::from_declaration(definition, &SchemaSettings::default()).unwrap();
     for fields in &mut schema.definitions {
         fields.sort_by_key(|field| field.tag);
     }
     schema
 }
 
-fn schema_descriptor(definition: harmos_domain::schema::declaration::Definition) -> harmos_packaging::proto::reflection::MessageDescriptor {
-    let settings = harmos_domain::config::SchemaSettings::default();
-    let graph = harmos_domain::schema::graph::Schema::from_declaration(definition, &settings).unwrap();
+fn schema_descriptor(definition: Definition) -> MessageDescriptor {
+    let settings = SchemaSettings::default();
+    let graph = Schema::from_declaration(definition, &settings).unwrap();
     harmos_packaging::proto::reflection::descriptor_schema(&graph, "harmos.stream", &settings).unwrap()
 }
 
@@ -290,11 +296,10 @@ fn bytes_packed_numbers() {
 
 #[test]
 fn schemas_preserve_wire() {
-    use harmos_domain::schema::{Cardinality, Described, Kind};
     assert_ne!(Original::FIELDS, Reordered::FIELDS);
     let left = protobuf_fields(Original::DEFINITION);
     let right = protobuf_fields(Reordered::DEFINITION);
-    assert!(left.equivalent(left.root, &right, right.root, &harmos_domain::config::SchemaSettings::default()).unwrap());
+    assert!(left.equivalent(left.root, &right, right.root, &SchemaSettings::default()).unwrap());
     let value = Original::FIELDS.iter().find(|field| field.name == "value").unwrap();
     assert_eq!(value.tag, 39_772_037);
     assert_eq!(value.kind, Kind::U64);
@@ -304,20 +309,17 @@ fn schemas_preserve_wire() {
         let field = Nested::FIELDS.iter().find(|field| field.name == name).unwrap();
         assert_eq!(field.cardinality, cardinality);
         let Kind::Message { definition } = &field.kind else { panic!("nested message descriptor") };
-        assert_eq!((definition.identity)(), std::any::TypeId::of::<Original>());
+        assert_eq!((definition.identity)(), TypeId::of::<Original>());
         assert_eq!((definition.fields)(), Original::FIELDS);
     }
-    let graph =
-        harmos_domain::schema::graph::Schema::from_declaration(Nested::DEFINITION, &harmos_domain::config::SchemaSettings::default())
-            .unwrap();
+    let graph = Schema::from_declaration(Nested::DEFINITION, &SchemaSettings::default()).unwrap();
     let encoded = serde_json::to_vec(&graph).unwrap();
-    let owned: harmos_domain::schema::graph::Schema = serde_json::from_slice(&encoded).unwrap();
+    let owned: Schema = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(owned, graph);
 }
 
 #[test]
 fn fields_keep_binary() {
-    use harmos_domain::schema::{Described, Kind};
     assert_eq!(QualifiedBytes::FIELDS[0].kind, Kind::Bytes);
     let value = QualifiedBytes { bytes: vec![0, 255] };
     assert_eq!(grpc::decode::<QualifiedBytes>(DecodeInput::new(&crate::encode(&value))).unwrap(), value);
@@ -331,7 +333,7 @@ fn sizes_count_capacity() {
     let row_heap = row.payload.capacity();
     let mut rows = Vec::with_capacity(4);
     rows.push(row.clone());
-    let rows_heap = rows.capacity() * std::mem::size_of::<Original>() + rows[0].payload.capacity();
+    let rows_heap = rows.capacity() * size_of::<Original>() + rows[0].payload.capacity();
     let mut name = String::with_capacity(80);
     name.push_str("sample");
     let mut value = Nested {
@@ -344,19 +346,18 @@ fn sizes_count_capacity() {
         r#type: name,
         ..Default::default()
     };
-    let expected = std::mem::size_of::<Nested>() + row_heap + 32 + rows_heap + 80;
+    let expected = size_of::<Nested>() + row_heap + 32 + rows_heap + 80;
     assert_eq!(value.memory_size(), expected);
-    assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
+    assert_eq!(value.encoded_size(), Message::encode(&value).len());
 
     value.optional = None;
     assert_eq!(value.memory_size(), expected - 32);
-    assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
+    assert_eq!(value.encoded_size(), Message::encode(&value).len());
     assert!(value.memory_size() > value.encoded_size());
 }
 
 #[test]
 fn enum_shapes_sizes() {
-    use harmos_domain::schema::{Cardinality, Described};
     let choices = [
         Choice::Empty,
         Choice::Text("value".to_owned()),
@@ -383,17 +384,17 @@ fn enum_shapes_sizes() {
     assert_ne!(Choice::FIELDS, ReorderedChoice::FIELDS);
     let left = protobuf_fields(Choice::DEFINITION);
     let right = protobuf_fields(ReorderedChoice::DEFINITION);
-    assert!(left.equivalent(left.root, &right, right.root, &harmos_domain::config::SchemaSettings::default()).unwrap());
+    assert!(left.equivalent(left.root, &right, right.root, &SchemaSettings::default()).unwrap());
     assert!(Choice::FIELDS.iter().all(|field| field.cardinality == Cardinality::Variant));
-    harmos_domain::schema::graph::Schema::from_declaration(Choice::DEFINITION, &harmos_domain::config::SchemaSettings::default()).unwrap();
+    Schema::from_declaration(Choice::DEFINITION, &SchemaSettings::default()).unwrap();
     assert_eq!(grpc::decode::<Choice>(DecodeInput::new(&[])).unwrap(), Choice::Empty);
     assert_eq!(grpc::decode::<ExplicitDefault>(DecodeInput::new(&[])).unwrap(), ExplicitDefault::Selected);
     assert!(grpc::decode::<Choice>(DecodeInput::new(&[0xff])).is_err());
     let mut text = String::with_capacity(77);
     text.push_str("resident");
     let value = Choice::Text(text);
-    assert_eq!(value.memory_size(), std::mem::size_of::<Choice>() + 77);
-    assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
+    assert_eq!(value.memory_size(), size_of::<Choice>() + 77);
+    assert_eq!(value.encoded_size(), Message::encode(&value).len());
 }
 
 #[test]
@@ -406,7 +407,6 @@ fn wire_uses_last() {
 
 #[test]
 fn variant_keeps_raw() {
-    use harmos_domain::schema::{Described, Kind};
     let variant = Choice::FIELDS.iter().find(|field| field.name == "Text").unwrap();
     let Kind::Message { definition } = &variant.kind else {
         panic!("variant payload");
@@ -420,7 +420,7 @@ fn variant_keeps_raw() {
     assert!(grpc::prepare::<Choice>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).is_err());
     bytes.extend(crate::encode(&Choice::Empty));
     assert_eq!(grpc::decode::<Choice>(DecodeInput::new(&bytes)).unwrap(), Choice::Empty);
-    assert!(grpc::prepare::<Choice>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).unwrap() >= std::mem::size_of::<Choice>());
+    assert!(grpc::prepare::<Choice>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).unwrap() >= size_of::<Choice>());
 
     let mut malformed = Vec::new();
     prost::encoding::bytes::encode(variant.tag, &vec![255], &mut malformed);
@@ -435,14 +435,12 @@ fn declared_unit_default() {
     let value = grpc::decode::<ExplicitDefault>(DecodeInput::new(&[])).unwrap();
     assert_eq!(value, ExplicitDefault::Selected);
     // The Transcoding Budget Bounds The Decoded Value From Above.
-    assert!(budget >= std::mem::size_of::<ExplicitDefault>());
+    assert!(budget >= size_of::<ExplicitDefault>());
     assert!(budget >= value.memory_size());
 }
 
 #[test]
 fn enums_use_oneof() {
-    use harmos_domain::schema::Described;
-    use harmos_packaging::proto::reflection::DynamicMessage;
     let schema = schema_descriptor(Choice::DEFINITION);
     assert_eq!(schema.oneofs().count(), 1);
     let value = Choice::Text("reflected".into());
@@ -453,9 +451,7 @@ fn enums_use_oneof() {
 
 #[test]
 fn composites_match_canonical() {
-    use harmos_domain::schema::Described;
-    use harmos_packaging::proto::reflection::DynamicMessage;
-    fn canonical<T: harmos_domain::Message + Described>(value: &T) {
+    fn canonical<T: Message + Described>(value: &T) {
         let encoded = crate::encode(value);
         let reflected = DynamicMessage::decode(schema_descriptor(T::DEFINITION), encoded.as_slice()).unwrap();
         assert_eq!(encoded, prost::Message::encode_to_vec(&reflected));
@@ -476,7 +472,6 @@ fn composites_match_canonical() {
 
 #[test]
 fn variant_merge_payload() {
-    use harmos_domain::schema::{Described, Kind};
     let variant = MergedChoice::FIELDS.iter().find(|field| field.name == "Pair").unwrap();
     let Kind::Message { definition } = &variant.kind else { unreachable!() };
     let fields = (definition.fields)();
@@ -501,29 +496,4 @@ fn variants_preserve_raw() {
     let value = SingleVariant::Named { r#type: "raw".into() };
     assert_eq!(grpc::decode::<SingleVariant>(DecodeInput::new(&crate::encode(&value))).unwrap(), value);
     assert_eq!(grpc::decode::<SingleVariant>(DecodeInput::new(&[])).unwrap(), SingleVariant::Named { r#type: String::new() });
-}
-
-#[test]
-fn validation_accepts_generated() {
-    use grpc::Validator;
-    use harmos_domain::schema::Described;
-    let value = Choices {
-        selected: Choice::Text("checked".into()),
-        optional: Some(Choice::Empty),
-        history: vec![Choice::Empty],
-    };
-    let validator = Validator::from_schema(
-        &harmos_domain::schema::graph::Schema::from_declaration(Choices::DEFINITION, &harmos_domain::config::SchemaSettings::default())
-            .unwrap(),
-        &harmos_domain::config::SchemaSettings::default(),
-    )
-    .unwrap();
-    validator.validate(&crate::encode(&value)).unwrap();
-    let validator = Validator::from_schema(
-        &harmos_domain::schema::graph::Schema::from_declaration(Choice::DEFINITION, &harmos_domain::config::SchemaSettings::default())
-            .unwrap(),
-        &harmos_domain::config::SchemaSettings::default(),
-    )
-    .unwrap();
-    validator.validate(&crate::encode(&Choice::Text("checked".into()))).unwrap();
 }

@@ -14,10 +14,11 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 // Third Party Imports
 // Local Imports
-use harmos_operations::execution::grpc::{self, DecodeInput};
+use harmos_domain::schema::Described;
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 use harmos_runtime::grpc::InputEnvelope;
 use harmos_runtime::grpc::dynamic::{Event, Operation};
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationFactory, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -152,4 +153,57 @@ fn dynamic_stream_interop() {
     .unwrap();
     assert!(matches!(operation.decode(&bytes).unwrap(), Event::Item(_)));
     assert!(operation.decode(&[0xff]).is_err());
+}
+
+#[test]
+fn dynamic_protobuf_contract_validates_every_occurrence() {
+    let contract = OperationFactory::protobuf::<super::generated::Echo>().unwrap().contract().unwrap();
+    let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
+    let payload = operation.request(br#"{"text":"checked","offset":"-7","samples":[1,128],"annotation":""}"#).unwrap();
+    let decoded = operation.decode(payload.as_bytes()).unwrap();
+    let Event::Completion(json) = decoded else { panic!("unary completion") };
+    assert_eq!(json["text"], "checked");
+    assert_eq!(json["offset"], "-7");
+    assert_eq!(json["samples"], serde_json::json!([1, 128]));
+    assert_eq!(json["annotation"], "");
+    for wire in [&[0x0a, 1, 255, 0x0a, 0][..], &[0x1a, 1, 128, 0x1a, 0], &[8, 0, 0x0a, 0], &[0x23, 0x2c]] {
+        assert_eq!(operation.decode(wire).unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+}
+
+#[test]
+fn dynamic_managed_stream_validates_overwritten_fragments() {
+    let policy = OperationPolicy {
+        cancellation_timeout: Duration::from_millis(100),
+        ..POLICY
+    };
+    let declaration = harmos_runtime::operations::WireDeclaration::request::<ExchangeDeclaration>("dynamic.exchange", policy)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("dynamic.host.v1", "External", "Exchange").managed());
+    let contract = declaration.contract().unwrap();
+    let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
+    assert!(operation.request(br#"{"small":7}"#).is_ok());
+    assert!(operation.input(br#"{"wide":"9"}"#).is_ok());
+    let mut value = Vec::new();
+    grpc::encode(&Value { small: 7, wide: 9, optional: None }, &mut value).unwrap();
+    let mut item = Vec::new();
+    prost::encoding::bytes::encode(1, &value, &mut item);
+    let mut completion = Vec::new();
+    prost::encoding::bytes::encode(2, &value, &mut completion);
+    assert!(matches!(operation.decode(&item).unwrap(), Event::Item(_)));
+    assert!(matches!(operation.decode(&completion).unwrap(), Event::Completion(_)));
+
+    let tag = Value::FIELDS.iter().find(|field| field.name == "small").unwrap().tag;
+    let mut wrong_type = Vec::new();
+    prost::encoding::bytes::encode(tag, &Vec::new(), &mut wrong_type);
+    let mut truncated = Vec::new();
+    prost::encoding::encode_key(tag, prost::encoding::WireType::Varint, &mut truncated);
+    for (tag, invalid, valid) in
+        [(1, &wrong_type, &completion), (2, &wrong_type, &item), (1, &truncated, &item), (2, &truncated, &completion)]
+    {
+        let mut wire = Vec::new();
+        prost::encoding::bytes::encode(tag, invalid, &mut wire);
+        wire.extend_from_slice(valid);
+        assert_eq!(operation.decode(&wire).unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
 }

@@ -17,14 +17,12 @@
 
 mod input;
 mod transcode;
-mod validator;
 
 /* === Re-Exports === */
 
 pub use input::{DecodeField, DecodeInput, DecodeScalar, DecodeValue};
 pub use prost;
 pub use transcode::Dynamic;
-pub use validator::{PayloadError, Validator};
 
 /* === Imports === */
 

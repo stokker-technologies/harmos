@@ -14,7 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::io::Write;
+use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 // Third Party Imports
@@ -23,8 +23,10 @@ use prost_reflect::{DynamicMessage, Kind, MessageDescriptor, MethodDescriptor, R
 use tonic::Status;
 use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
 // Local Imports
+use crate::MessageError;
 use crate::operations::Contract;
-use harmos_operations::execution::grpc::{DecodeInput, Validator as ProtobufValidator, prost};
+use harmos_domain::schema::graph::Schema;
+use harmos_operations::execution::grpc::{DecodeInput, Dynamic, prost};
 use prost::Message;
 
 /* === Constants === */
@@ -66,10 +68,11 @@ struct Binding {
     response: MessageDescriptor,
     input: Option<MessageDescriptor>,
     output: Option<MessageDescriptor>,
-    request_validator: ProtobufValidator,
-    response_validator: ProtobufValidator,
-    input_validator: Option<ProtobufValidator>,
-    output_validator: Option<ProtobufValidator>,
+    schema: Schema,
+    request_root: usize,
+    response_root: usize,
+    input_root: Option<usize>,
+    output_root: Option<usize>,
     limit: usize,
 }
 
@@ -104,26 +107,7 @@ impl Operation {
         let response = direction(method.output(), "response", grpc.managed)?;
         let input = contract.input().map(|_| direction(method.input(), "item", true)).transpose()?;
         let output = contract.output().map(|_| direction(method.output(), "item", grpc.managed)).transpose()?;
-        let (request_validator, response_validator, input_validator, output_validator) = if contract.protobuf().is_some() {
-            let validator = |descriptor| {
-                ProtobufValidator::from_descriptor(descriptor, &Default::default()).map_err(|error| invalid(error.to_string()))
-            };
-            (
-                validator(request.clone())?,
-                validator(response.clone())?,
-                input.clone().map(validator).transpose()?,
-                output.clone().map(validator).transpose()?,
-            )
-        } else {
-            let validators =
-                ProtobufValidator::from_schema(contract.schema(), &Default::default()).map_err(|error| invalid(error.to_string()))?;
-            (
-                validators.at(contract.request().index()).map_err(|error| invalid(error.to_string()))?,
-                validators.at(contract.response().index()).map_err(|error| invalid(error.to_string()))?,
-                contract.input().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?,
-                contract.output().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?,
-            )
-        };
+        contract.schema().prepare(&Default::default()).map_err(|error| invalid(error.to_string()))?;
         Ok(Self {
             binding: Arc::new(Binding {
                 path: grpc.path(),
@@ -133,10 +117,11 @@ impl Operation {
                 response,
                 input,
                 output,
-                request_validator,
-                response_validator,
-                input_validator,
-                output_validator,
+                schema: contract.schema().clone(),
+                request_root: contract.request().index(),
+                response_root: contract.response().index(),
+                input_root: contract.input().map(|view| view.index()),
+                output_root: contract.output().map(|view| view.index()),
                 limit,
             }),
         })
@@ -173,16 +158,16 @@ impl Operation {
     #[tracing::instrument(target = "harmos::grpc", name = "grpc.dynamic.encode", level = "trace", skip_all, fields(json_bytes = json.len(), item))]
     fn payload(&self, json: &[u8], item: bool) -> Result<Payload, Status> {
         self.binding.check(json.len())?;
-        let (descriptor, validator) = if item {
+        let (descriptor, root) = if item {
             (
                 self.binding.input.clone().ok_or_else(|| invalid("operation has no input stream"))?,
-                self.binding.input_validator.as_ref().ok_or_else(|| invalid("operation has no input validator"))?,
+                self.binding.input_root.ok_or_else(|| invalid("operation has no input stream"))?,
             )
         } else {
-            (self.binding.request.clone(), &self.binding.request_validator)
+            (self.binding.request.clone(), self.binding.request_root)
         };
         let mut deserializer = serde_json::Deserializer::from_slice(json);
-        let message = DynamicMessage::deserialize(descriptor, &mut deserializer).map_err(|error| invalid(error.to_string()))?;
+        let message = DynamicMessage::deserialize(descriptor.clone(), &mut deserializer).map_err(|error| invalid(error.to_string()))?;
         deserializer.end().map_err(|error| invalid(error.to_string()))?;
         let length = message.encoded_len();
         self.binding.check(length)?;
@@ -202,7 +187,7 @@ impl Operation {
         let mut bytes = Vec::with_capacity(total);
         bytes.extend_from_slice(&header[..prefix]);
         message.encode(&mut bytes).map_err(|error| invalid(error.to_string()))?;
-        validator.validate(&bytes[prefix..]).map_err(|error| invalid(error.to_string()))?;
+        self.binding.validate(descriptor, root, &bytes[prefix..]).map_err(|error| invalid(error.to_string()))?;
         Ok(Payload {
             binding: Arc::clone(&self.binding),
             bytes,
@@ -217,6 +202,11 @@ impl Payload {
 }
 
 impl Binding {
+    fn validate(&self, descriptor: MessageDescriptor, root: usize, bytes: &[u8]) -> Result<(), MessageError> {
+        let view = self.schema.view(root).map_err(|error| MessageError::new(error.to_string()))?;
+        Dynamic::from_view(descriptor, view).validate(DecodeInput::new(bytes))
+    }
+
     fn check(&self, length: usize) -> Result<(), Status> {
         if length > self.limit {
             return Err(Status::resource_exhausted("dynamic message exceeds byte ceiling"));
@@ -230,24 +220,21 @@ impl Binding {
         if !self.managed
             && let Some(output) = &self.output
         {
-            self.output_validator
-                .as_ref()
-                .expect("declared output validator")
-                .validate(bytes)
+            self.validate(output.clone(), self.output_root.expect("declared output root"), bytes)
                 .map_err(|error| invalid(error.to_string()))?;
             let message = DynamicMessage::decode(output.clone(), bytes).map_err(|error| invalid(error.to_string()))?;
             return self.json(&message).map(Event::Item);
         }
-        if let Some(output_validator) = &self.output_validator {
+        if let Some(output_root) = self.output_root {
             // Validate Each Wire Fragment Before The Reflection Decoder Allocates It.
             DecodeInput::new(bytes)
                 .fields(&mut |field| {
-                    let validator = match field.tag {
-                        1 => output_validator,
-                        2 => &self.response_validator,
+                    let (descriptor, root) = match field.tag {
+                        1 => (self.output.clone().expect("declared output descriptor"), output_root),
+                        2 => (self.response.clone(), self.response_root),
                         _ => return Ok(()),
                     };
-                    validator.validate(field.bytes()?).map_err(|error| crate::MessageError::new(error.to_string()))
+                    self.validate(descriptor, root, field.bytes()?)
                 })
                 .map_err(|error| invalid(error.to_string()))?;
             let envelope = DynamicMessage::decode(self.method.output(), bytes).map_err(|error| invalid(error.to_string()))?;
@@ -267,7 +254,7 @@ impl Binding {
             let json = self.json(message)?;
             return Ok(if is_item { Event::Item(json) } else { Event::Completion(json) });
         }
-        self.response_validator.validate(bytes).map_err(|error| invalid(error.to_string()))?;
+        self.validate(self.response.clone(), self.response_root, bytes).map_err(|error| invalid(error.to_string()))?;
         let message = DynamicMessage::decode(self.response.clone(), bytes).map_err(|error| invalid(error.to_string()))?;
         self.json(&message).map(Event::Completion)
     }
@@ -282,16 +269,16 @@ impl Binding {
 }
 
 impl Write for Json {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let length = self.bytes.len().checked_add(bytes.len()).ok_or_else(|| std::io::Error::other("JSON size overflow"))?;
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let length = self.bytes.len().checked_add(bytes.len()).ok_or_else(|| io::Error::other("JSON size overflow"))?;
         if length > self.limit {
-            return Err(std::io::Error::other("JSON byte ceiling"));
+            return Err(io::Error::other("JSON byte ceiling"));
         }
-        self.bytes.try_reserve(bytes.len()).map_err(std::io::Error::other)?;
+        self.bytes.try_reserve(bytes.len()).map_err(io::Error::other)?;
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }

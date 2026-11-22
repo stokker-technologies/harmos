@@ -201,6 +201,10 @@
   - [x] 21.1.2 Prove native transcoding and descriptor formats, runtime publications/subscriptions/gaps/optional presence, workspace test-target and unoptimized stream benchmark compilation, format, repository policy and strict OpenSpec validation on Windows. Native Linux and measured throughput remain outside this worker's proof.
 - [x] 21.2 Make generation and caller auditing consume one annotation-driven catalog; delete the callback service-name and file-suffix lists.
 - [x] 21.3 Replace the C++ protocol hand list with sorted recursive discovery matching Rust codegen and prove the SDK build and focused tests on the available native toolchain.
+- [x] 21.4 Consolidate dynamic operation validation into the shared transcode traversal. Own operations execution/grpc, runtime grpc/dynamic.rs and affected tests; delete the standalone validator, its exports and redundant domain test assertions. Preserve all wire and preparation bounds without touching stream or plugin owners.
+- [x] 21.5 Prove shared validation rules and runtime dynamic operations with focused tests, workspace test-target compilation, format, repository checks and strict OpenSpec validation on Windows. Native Linux proof remains under 8.1–8.2.
+- [ ] 21.6 Owner Decision: consolidate descriptor field projection in operations/protobuf.rs::ProtobufExt::schema (operation contracts) and execution/grpc/transcode.rs::Dynamic::schema (stream codecs); prefer deleting the former projection after deciding direction-catalog ownership.
+- [ ] 21.7 Owner Documentation: docs/project/architecture.md:1100 should identify allocation-free transcode validation for dynamic gRPC operations; README claims remain accurate.
 
 ## 22. Connection Sessions
 
