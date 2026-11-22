@@ -40,7 +40,7 @@ use crate::streams::protobuf::Row;
 use crate::{
     Application, Identifier, Metadata, Scope,
     clock::{Activity, Clock},
-    streams::{self, ConnectionStreams, PublicationRow, StreamManager, StreamPublicationError, StreamWriter},
+    streams::{self, PublicationRow, StreamManager, StreamPublicationError, StreamRegistration, StreamWriter},
 };
 use harmos_protocol::columns::{self, batch};
 use harmos_protocol::plugin::instance_samples_request::Frame;
@@ -62,13 +62,13 @@ pub(super) struct Publications {
     jobs: JoinSet<Result<(), Error>>,
     /// Failures of Unscoped Demands, Which Their Attachment Reports.
     failures: mpsc::UnboundedReceiver<Arc<Error>>,
-    registration: Arc<ConnectionStreams>,
+    registration: Arc<StreamRegistration>,
     parent: Option<watch::Receiver<bool>>,
     source: Option<Arc<OnceLock<ScopeSource>>>,
 }
 
 pub(super) struct ScopeSource {
-    pub(super) registration: Arc<ConnectionStreams>,
+    pub(super) registration: Arc<StreamRegistration>,
     pub(super) close: watch::Receiver<bool>,
     pub(super) settings: PlacementSettings,
     pub(super) operations: Manager,
@@ -246,7 +246,18 @@ impl Publications {
                 (stream.id.clone(), count.clone())
             })
             .collect();
-        let registration = Arc::new(streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?);
+        let registration = Arc::new(
+            streams
+                .register_plugin(
+                    activation.owner(),
+                    activation.number,
+                    prepared.declarations,
+                    replace,
+                    #[cfg(feature = "plugin-guest")]
+                    None,
+                )
+                .map_err(invalid)?,
+        );
         let mut publications =
             Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None, Some(&sampling));
         activation
@@ -277,7 +288,7 @@ impl Publications {
 
     #[allow(clippy::too_many_arguments)]
     fn start(
-        demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock, host: &Clock,
+        demands: Vec<PreparedDemand>, registration: Arc<StreamRegistration>, activation: &Activation, clock: &Clock, host: &Clock,
         operations: &Manager, parent: Option<watch::Receiver<bool>>, sampling: Option<&BTreeMap<String, watch::Sender<usize>>>,
     ) -> Self {
         let close = watch::channel(false).0;

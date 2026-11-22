@@ -337,16 +337,6 @@ impl StreamWriter {
             return Err(StreamPublicationError::Sequence);
         }
         self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(&row.payload)?;
-        let generation = {
-            #[cfg(not(feature = "plugin-guest"))]
-            {
-                None
-            }
-            #[cfg(feature = "plugin-guest")]
-            {
-                self.stream.wired.staged.as_ref().map(|staged| staged.scope.generation().get())
-            }
-        };
         if live && !self.stream.wired.window.can_advance(missed.checked_add(1).ok_or(StreamPublicationError::Sequence)?) {
             return Err(StreamPublicationError::Sequence);
         }
@@ -356,7 +346,7 @@ impl StreamWriter {
         }
         let publication = self.stream.pool.retain(
             &self.stream.wired.definition,
-            generation,
+            self.stream.wired.generation,
             row,
             next,
             missed,

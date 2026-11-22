@@ -15,15 +15,12 @@ mod definition;
 mod demand;
 mod ingest;
 
-mod connection;
 #[cfg(feature = "plugin-guest")]
 mod listeners;
 mod manager;
 mod publication;
 mod publications;
-pub(crate) use connection::ConnectionStreams;
 
-#[cfg(feature = "plugin-guest")]
 mod registration;
 
 #[cfg(feature = "plugin-guest")]
@@ -42,7 +39,6 @@ pub use publication::ManagedPublication;
 pub(crate) use publication::{RETAINED_BYTES, RETAINED_ROWS, claim, row_value};
 pub use publications::{PublicationRow, PublishedStream, StreamPublicationError, StreamRegistrationError, StreamWriter};
 
-#[cfg(feature = "plugin-guest")]
 pub use registration::StreamRegistration;
 
 #[cfg(feature = "plugin-guest")]

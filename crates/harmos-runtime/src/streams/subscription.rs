@@ -532,7 +532,17 @@ mod tests {
                     metadata: harmos_domain::Metadata::new(harmos_domain::Identifier::new(id).unwrap(), label, None),
                 },
             );
-        let connection = runtime.streams.connect_publications("fixture", declarations, false).unwrap();
+        let connection = runtime
+            .streams
+            .register_plugin(
+                "fixture",
+                1,
+                declarations,
+                false,
+                #[cfg(feature = "plugin-guest")]
+                None,
+            )
+            .unwrap();
         let types = prost_types::FileDescriptorSet {
             file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
         }
