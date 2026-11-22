@@ -18,7 +18,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::__private::decoding_add as add;
+use harmos_domain::__private::decoding_add;
 use harmos_domain::MessageError;
 
 /* === Constants === */
@@ -89,20 +89,32 @@ impl<'a> DecodeInput<'a> {
     // length-delimited tag is a variant this build does not know and refuses
     // the whole body. Other wire types can never be variants and stay ignored.
     pub fn variant(&self, tags: &[u32]) -> Result<Option<(u32, DecodeInput<'_>)>, MessageError> {
+        self.select(
+            |tag| tags.contains(&tag),
+            |field| {
+                if tags.contains(&field.tag) {
+                    self.child(field.bytes()?)?.fields(&mut |_| Ok(()))?;
+                } else if matches!(field.value, DecodeValue::Bytes(_)) {
+                    return Err(MessageError::borrowed("unknown protobuf enum variant"));
+                }
+                Ok(())
+            },
+        )
+    }
+
+    pub(super) fn select(
+        &self, contains: impl Fn(u32) -> bool, validate: impl Fn(DecodeField<'a>) -> Result<(), MessageError>,
+    ) -> Result<Option<(u32, DecodeInput<'_>)>, MessageError> {
         let mut selected = None;
         let mut after = 0;
         let mut ordinal = 0usize;
         self.fields(&mut |field| {
-            if tags.contains(&field.tag) {
-                self.child(field.bytes()?)?.fields(&mut |_| Ok(()))?;
-                if selected != Some(field.tag) {
-                    selected = Some(field.tag);
-                    after = ordinal;
-                }
-            } else if matches!(field.value, DecodeValue::Bytes(_)) {
-                return Err(MessageError::borrowed("unknown protobuf enum variant"));
+            validate(field)?;
+            if contains(field.tag) && selected != Some(field.tag) {
+                selected = Some(field.tag);
+                after = ordinal;
             }
-            ordinal = add(ordinal, 1)?;
+            ordinal = decoding_add(ordinal, 1)?;
             Ok(())
         })?;
         let Some(tag) = selected else {
@@ -116,7 +128,7 @@ impl<'a> DecodeInput<'a> {
     pub fn encoded_len(&self) -> Result<usize, MessageError> {
         let mut total = 0usize;
         self.parts(&mut |bytes| {
-            total = add(total, bytes.len())?;
+            total = decoding_add(total, bytes.len())?;
             Ok(())
         })?;
         Ok(total)
@@ -144,7 +156,7 @@ impl<'a> DecodeInput<'a> {
     }
 
     fn at<'b>(&self, source: Source<'b>) -> Result<DecodeInput<'b>, MessageError> {
-        let depth = add(self.depth, 1)?;
+        let depth = decoding_add(self.depth, 1)?;
         if depth > DEPTH {
             return Err(MessageError::borrowed("protobuf decode exceeds 32 nested levels"));
         }
@@ -160,7 +172,7 @@ impl<'a> DecodeInput<'a> {
                     if ordinal >= after && field.tag == tag {
                         visit(field.bytes()?)?;
                     }
-                    ordinal = add(ordinal, 1)?;
+                    ordinal = decoding_add(ordinal, 1)?;
                     Ok(())
                 })
             }

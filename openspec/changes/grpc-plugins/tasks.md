@@ -196,6 +196,8 @@
 
 ## 21. Single Owners
 
-- [ ] 21.1 Generalize the lower operation protobuf codec for dynamic stream rows, preserve both contracts and delete the runtime's duplicate traversal. Keep runtime batch slicing and the crate graph acyclic.
+- [x] 21.1 Generalize the lower operation protobuf codec for dynamic stream rows, preserve both contracts and delete the runtime's duplicate traversal. Keep runtime batch slicing and the crate graph acyclic.
+  - [x] 21.1.1 Share schema projection and both traversal directions in the operations codec; delete runtime row traversal and deliver ordinary subscription wire buffers directly.
+  - [x] 21.1.2 Prove native transcoding and descriptor formats, runtime publications/subscriptions/gaps/optional presence, workspace test-target and unoptimized stream benchmark compilation, format, repository policy and strict OpenSpec validation on Windows. Native Linux and measured throughput remain outside this worker's proof.
 - [x] 21.2 Make generation and caller auditing consume one annotation-driven catalog; delete the callback service-name and file-suffix lists.
 - [x] 21.3 Replace the C++ protocol hand list with sorted recursive discovery matching Rust codegen and prove the SDK build and focused tests on the available native toolchain.
