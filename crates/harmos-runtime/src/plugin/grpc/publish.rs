@@ -250,7 +250,7 @@ impl Publications {
             streams
                 .register_plugin(
                     activation.owner(),
-                    activation.number,
+                    activation.generation,
                     prepared.declarations,
                     replace,
                     #[cfg(feature = "plugin-guest")]

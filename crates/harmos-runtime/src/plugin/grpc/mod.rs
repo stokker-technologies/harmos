@@ -86,7 +86,10 @@ pub struct Activation {
     pub entry_name: Option<String>,
     provider: String,
     pub settings: SettingValues,
+    // Connection Count Within This Attachment for Persisted Reconnect Reporting.
     pub number: u64,
+    // Admission Identity Retained by Every Publication from This Activation.
+    pub generation: u64,
     pub description: InstanceGetResponse,
     pub previous_started_at: Option<Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
@@ -816,8 +819,11 @@ async fn connect(
     }
     validate_description(&description)?;
     catalog::verify(description.declarations.as_ref().expect("description catalog was checked"))?;
+    let generation = super::fresh_generation()
+        .map_err(|error| Error::Invalid(format!("Admit Plugin: {error}; restart the host before admitting another plugin")))?;
     Ok(Activation {
         number,
+        generation,
         settings: crate::plugin::manager::settings::select(description.declarations.as_ref().expect("admitted description"), None)
             .map_err(|error| Error::Invalid(error.to_string()))?,
         entry_name: None,

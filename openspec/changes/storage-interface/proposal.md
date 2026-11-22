@@ -14,6 +14,7 @@ Applications need these generic facilities without exposing concrete backend API
 - Add `Transform::TimeBuckets` with late-sample replacement and changed-key visibility.
 - Add atomic conditional object updates.
 - Expose original publication owner, admitted plugin generation and schema through existing storage batches.
+- Allocate guest and gRPC publication generations through one admission allocator; retain attachment counts only for reconnect reporting.
 - Define backend obligations, a memory reference backend and conformance kit, retaining existing row, file,
   recovery and durability contracts. Prove correctness and measure before/after performance,
   including multi-day data; no performance improvement is assumed.
