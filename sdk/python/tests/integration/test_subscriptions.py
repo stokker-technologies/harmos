@@ -63,9 +63,7 @@ class Subscriptions(IsolatedAsyncioTestCase):
         self.assertEqual((await self.output.get()).child_demand.call, first_call)
         row = SubscriptionRow(payload=TimeGetResponse(now=source).SerializeToString(), source=source, received=received)
         await self.context._reply(ChildResponse(call=first_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
-        item = await reading
-        self.assertIsInstance(item, StreamRow)
-        self.assertEqual((item.value.now, item.source, item.received), (source, source, received))
+        self.assertEqual(await reading, StreamRow(TimeGetResponse(now=source), source, received))
         reading = create_task(anext(first))
         await self.output.get()
         await self.context._reply(ChildResponse(call=first_call, item=SubscriptionsSubscribeResponse(missed=17).SerializeToString()))
@@ -80,7 +78,7 @@ class Subscriptions(IsolatedAsyncioTestCase):
         reading = create_task(anext(second))
         self.assertEqual((await self.output.get()).child_demand.call, second_call)
         await self.context._reply(ChildResponse(call=second_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
-        self.assertEqual((await reading).value.now, source)
+        self.assertEqual(await reading, StreamRow(TimeGetResponse(now=source), source, received))
         await second.close()
 
     async def test_scope_cancellation_ends_the_outstanding_read(self) -> None:
