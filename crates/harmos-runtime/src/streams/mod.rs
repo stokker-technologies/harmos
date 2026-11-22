@@ -35,7 +35,8 @@ pub use harmos_domain::streams::{Definition, StreamEntry, StreamRow};
 #[cfg(feature = "plugin-guest")]
 pub use listeners::{PluginListenerBindings, PluginListenerRegistration};
 pub use manager::{Query, StreamFeed, StreamManager};
-pub use publication::ManagedPublication;
+pub(crate) use publication::Missed;
+pub use publication::{Gap, ManagedPublication};
 pub(crate) use publication::{RETAINED_BYTES, RETAINED_ROWS, claim, row_value};
 pub use publications::{PublicationRow, PublishedStream, StreamPublicationError, StreamRegistrationError, StreamWriter};
 

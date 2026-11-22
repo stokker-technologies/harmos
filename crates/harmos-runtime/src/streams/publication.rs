@@ -15,7 +15,9 @@
 
 // Standard Library Imports
 use std::any::Any;
+use std::ops::Range;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::SystemTime;
 // Third Party Imports
 use harmos_domain::message::postcard::{Reader, Value};
 use harmos_protocol::columns::batch;
@@ -45,6 +47,14 @@ const OWNER_BYTES: usize = 1024;
 #[derive(Clone, Debug)]
 pub struct ManagedPublication(Arc<Owned>);
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Gap {
+    // Deliberately Skipped Sample Ticks, Including Across Empty Collector Windows.
+    pub missed: u64,
+    // From the First Skipped Tick Until One Period Past the Last, Including Any Intervening Empty Windows.
+    pub time: Range<SystemTime>,
+}
+
 #[derive(Debug)]
 struct Owned {
     stream: Arc<str>,
@@ -53,7 +63,7 @@ struct Owned {
     generation: Option<u64>,
     wire_sequence: u64,
     logical_sequence: OnceLock<u64>,
-    missed: u64,
+    missed: Missed,
     units: u64,
     row: PublicationRow,
     received: Timestamp,
@@ -70,6 +80,12 @@ pub(super) struct Pool {
 
 /* === Enums === */
 
+#[derive(Clone, Debug)]
+pub(crate) enum Missed {
+    Rows(u64),
+    Gap(Gap),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -85,7 +101,7 @@ impl Pool {
     }
 
     pub(super) fn retain(
-        &self, definition: &Definition, generation: Option<u64>, row: PublicationRow, wire_sequence: u64, missed: u64,
+        &self, definition: &Definition, generation: Option<u64>, row: PublicationRow, wire_sequence: u64, missed: Missed,
         window: Option<(&Window, u64)>,
     ) -> Result<ManagedPublication, StreamPublicationError> {
         let received = self.clock.date().into();
@@ -178,7 +194,14 @@ impl ManagedPublication {
     }
 
     pub fn missed(&self) -> u64 {
-        self.0.missed
+        self.0.missed.count()
+    }
+
+    pub fn gaps(&self) -> &[Gap] {
+        match &self.0.missed {
+            Missed::Rows(_) => &[],
+            Missed::Gap(gap) => std::slice::from_ref(gap),
+        }
     }
 
     pub fn payload(&self) -> &[u8] {
@@ -195,6 +218,15 @@ impl ManagedPublication {
 
     pub fn row(&self) -> &PublicationRow {
         &self.0.row
+    }
+}
+
+impl Missed {
+    pub(crate) fn count(&self) -> u64 {
+        match self {
+            Self::Rows(count) => *count,
+            Self::Gap(gap) => gap.missed,
+        }
     }
 }
 

@@ -140,6 +140,18 @@ async fn lag_recovery() {
         [0, 13, 13],
         "Storage Receives the Same Gap Extent as Live Watchers"
     );
+    assert!(host.signals.incomplete.lock().unwrap().is_empty());
+    {
+        let gaps = host.signals.gaps.lock().unwrap();
+        assert_eq!(gaps.len(), 2);
+        for ((definition, gap), ticks) in gaps.iter().zip([13..26, 29..42]) {
+            assert_eq!(definition.id(), "fixture.interval");
+            let start = reading.date + Duration::from_secs(ticks.start);
+            let end = reading.date + Duration::from_secs(ticks.end);
+            assert_eq!(gap.time, start..end);
+            assert_eq!(gap.missed, ticks.end - ticks.start);
+        }
+    }
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.stop().await.unwrap();

@@ -655,7 +655,7 @@ mod tests {
                     context: None,
                 },
                 1,
-                0,
+                super::super::Missed::Rows(0),
                 None,
             )
             .unwrap();

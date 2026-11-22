@@ -40,7 +40,7 @@ use crate::streams::protobuf::Row;
 use crate::{
     Application, Identifier, Metadata, Scope,
     clock::{Activity, Clock},
-    streams::{self, PublicationRow, StreamManager, StreamPublicationError, StreamRegistration, StreamWriter},
+    streams::{self, Gap, PublicationRow, StreamManager, StreamPublicationError, StreamRegistration, StreamWriter},
 };
 use harmos_protocol::columns::{self, batch};
 use harmos_protocol::plugin::instance_samples_request::Frame;
@@ -788,7 +788,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                                 published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
                                 context: row_context(&operations, sample.at),
                             },
-                            0,
+                            None,
                             &[clock, &host],
                         )
                         .await
@@ -805,7 +805,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
             let mut granted = 0_u128;
             let mut sequence = 0_u64;
             let mut lagging = 0_u32;
-            let mut missed = BTreeMap::<String, u64>::new();
+            let mut gaps = BTreeMap::<String, Gap>::new();
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
             let mut active = BTreeSet::new();
             loop {
@@ -871,11 +871,27 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                             consecutive_windows: lagging,
                         });
                     }
-                    let skipped = u64::try_from(through - granted).map_err(|_| invalid("Skip Sample Windows: too many samples are due"))?;
+                    let start = u64::try_from(granted + 1)
+                        .map_err(|_| invalid("Skip Sample Windows: reduce elapsed time or the sample rate to fit the sample count"))?;
+                    let end = u64::try_from(through + 1)
+                        .map_err(|_| invalid("Skip Sample Windows: reduce elapsed time or the sample rate to fit the sample count"))?;
+                    let start_time = origin
+                        .date
+                        .checked_add(span(u128::from(start) * period_nanos)?)
+                        .ok_or_else(|| invalid("Skip Sample Windows: choose a clock origin and period whose dates fit the clock range"))?;
+                    let end_time = origin
+                        .date
+                        .checked_add(span(u128::from(end) * period_nanos)?)
+                        .ok_or_else(|| invalid("Skip Sample Windows: choose a clock origin and period whose dates fit the clock range"))?;
+                    let skipped = end - start;
                     let affected = if members.is_empty() { BTreeSet::from([stream.clone()]) } else { active.clone() };
                     for id in affected {
-                        let pending = missed.entry(id).or_default();
-                        *pending = pending.checked_add(skipped).ok_or_else(|| invalid("Skip Sample Windows: gap extent overflow"))?;
+                        let pending = gaps.entry(id).or_insert(Gap { missed: 0, time: start_time..end_time });
+                        pending.missed = pending
+                            .missed
+                            .checked_add(skipped)
+                            .ok_or_else(|| invalid("Skip Sample Windows: reduce the lag to fit the gap extent"))?;
+                        pending.time.end = end_time;
                     }
                     granted = through;
                     if let Some(schedule) = &schedule {
@@ -1001,10 +1017,9 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     for (writer, row) in staged {
                         let id = writer.stream().definition().id().to_owned();
                         let receipt = writer
-                            .admit_clocked_row(row, missed.get(&id).copied().unwrap_or_default(), &[clock, &host])
+                            .admit_clocked_row(row, gaps.remove(&id), &[clock, &host])
                             .await
                             .map_err(|error| admission(&id, error))?;
-                        missed.remove(&id);
                         ingested_members.insert(id, (writer, receipt));
                     }
                     for (writer, receipt) in ingested_members.values() {
@@ -1029,14 +1044,13 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                                             published_unix_micros: Some(first.div_euclid(1000)),
                                             context: context.clone(),
                                         },
-                                        missed.get(&stream).copied().unwrap_or_default(),
+                                        gaps.remove(&stream),
                                         &[clock, &host],
                                     )
                                     .await
                                     .map_err(|error| admission(&stream, error))?,
                             );
                             ingested_through = receipt;
-                            missed.remove(&stream);
                         }
                     }
                     let receipt = receipt.expect("an answered window has at least one part");

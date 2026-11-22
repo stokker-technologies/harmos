@@ -258,6 +258,16 @@ async fn collection_lag_recovery() {
         }
     }
     assert!(attached.status().borrow().failure.is_none());
+    assert!(host.signals.incomplete.lock().unwrap().is_empty());
+    {
+        let gaps = host.signals.gaps.lock().unwrap();
+        assert_eq!(gaps.len(), 2);
+        for id in ["fixture.alpha", "fixture.beta"] {
+            let (_, gap) = gaps.iter().find(|(definition, _)| definition.id() == id).unwrap();
+            assert_eq!(gap.missed, 13);
+            assert_eq!(gap.time, reading.date + Duration::from_secs(1)..reading.date + Duration::from_secs(14));
+        }
+    }
     drop((alpha, beta));
     attached.stop("Story Complete").await.unwrap();
     host.runtime.stop().await.unwrap();
