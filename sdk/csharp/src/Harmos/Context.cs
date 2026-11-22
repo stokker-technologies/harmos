@@ -118,7 +118,7 @@ public sealed class Context
   {
     lock (resources)
       return resources.TryGetValue(typeof(T), out var value) ? (T)value
-          : throw new InvalidPluginFailureException($"Missing Invocation Resource: {typeof(T).Name}");
+          : throw new InvalidOperationException($"Missing Invocation Resource: {typeof(T).Name}");
   }
 
   public async Task<TResponse> Operation<TRequest, TResponse>(Operation<TRequest, TResponse> operation, TRequest request,
@@ -127,10 +127,10 @@ public sealed class Context
       where TResponse : IMessage<TResponse>, new()
   {
     if (output is null)
-      throw new InvalidPluginFailureException($"Call {operation.Contract.Id}: Call Only While a Window or Invocation Is Unanswered");
+      throw new InvalidOperationException($"Call {operation.Contract.Id}: Call Only While a Window or Invocation Is Unanswered");
     var contract = operation.Contract;
     if (operation.IsWatch)
-      throw new InvalidPluginFailureException($"Call {contract.Id}: Use Watch for a Streaming Contract");
+      throw new InvalidOperationException($"Call {contract.Id}: Use Watch for a Streaming Contract");
     var child = new ChildRequest { Operation = contract.Id, Payload = request.ToByteString(), Fingerprint = contract.Fingerprint, Policy = policy?.Clone() };
     var payload = await SendAsync(child, cancellationToken);
     try
@@ -154,7 +154,7 @@ public sealed class Context
   private async Task<ByteString> SendAsync(ChildRequest child, CancellationToken cancellationToken)
   {
     if (output is null)
-      throw new InvalidPluginFailureException($"Call {child.Operation}: Call Only While a Window or Invocation Is Unanswered");
+      throw new InvalidOperationException($"Call {child.Operation}: Call Only While a Window or Invocation Is Unanswered");
     TaskCompletionSource<ByteString> completion;
     ulong call;
     lock (pending)
@@ -197,7 +197,7 @@ public sealed class Context
   {
     var contract = operation.Contract;
     if (!operation.IsWatch || output is null || !requires.TryGetValue(contract.Id, out var fingerprint) || fingerprint != contract.Fingerprint || maxItemBytes == 0)
-      throw new InvalidPluginFailureException($"Watch {contract.Id}: Declared Requirement and Positive Item Limit Required");
+      throw new InvalidOperationException($"Watch {contract.Id}: Declared Requirement and Positive Item Limit Required");
     var channel = Channel.CreateBounded<ChildResponse>(1);
     ulong call;
     lock (pending)

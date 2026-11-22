@@ -269,9 +269,9 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     var endpoint = Environment.GetEnvironmentVariable("HARMOS_HOST_ENDPOINT");
     var token = Environment.GetEnvironmentVariable("HARMOS_LAUNCH_TOKEN");
     if (endpoint is not null && token is null)
-      throw new InvalidPluginFailureException("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
+      throw new InvalidOperationException("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
     if (endpoint is null && token is not null)
-      throw new InvalidPluginFailureException("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
+      throw new InvalidOperationException("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
     await using var listener = await StartAsync(address, remote, cancellationToken);
     if (endpoint is not null && token is not null)
     {
@@ -283,7 +283,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
       }
       catch (RpcException error)
       {
-        throw new InvalidPluginFailureException($"Announce Plugin Launch: {error.Status.Detail}", error);
+        throw new InvalidOperationException($"Announce Plugin Launch: {error.Status.Detail}", error);
       }
     }
     await listener.WaitAsync(cancellationToken);

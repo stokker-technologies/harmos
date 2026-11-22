@@ -136,7 +136,7 @@ public sealed class Fixture
         throw;
       return new Value { Value_ = error.Failure.ToByteString() };
     }
-    throw new InvalidPluginFailureException("Create Invocation: Client-Only Operation Was Admitted");
+    throw new InvalidOperationException("Create Invocation: Client-Only Operation Was Admitted");
   }
 
   private static async Task<Value> ReadSettings(global::Harmos.Plugins.Context context, Value request)
@@ -240,13 +240,13 @@ public sealed class Fixture
     if (request.Value_ == ByteString.CopyFromUtf8("wind_down"))
     {
       if (context.WindDownRequested)
-        throw new InvalidPluginFailureException("Wind Down Was Requested Before the Host Signal");
+        throw new InvalidOperationException("Wind Down Was Requested Before the Host Signal");
       await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
       if (!context.WindDownRequested)
-        throw new InvalidPluginFailureException("Wind Down Signal Was Not Observed");
+        throw new InvalidOperationException("Wind Down Signal Was Not Observed");
       await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
       if (!context.WindDownRequested)
-        throw new InvalidPluginFailureException("Wind Down State Was Lost");
+        throw new InvalidOperationException("Wind Down State Was Lost");
       return new Value { Value_ = ByteString.CopyFromUtf8("wound down") };
     }
     var before = await context.Host.Time.Get();
