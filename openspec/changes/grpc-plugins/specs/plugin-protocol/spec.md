@@ -219,7 +219,7 @@ that clock virtually in a test.
 
 
 ### Requirement: Typed Live Stream Demand
-Plugin contexts MUST expose typed live rows under their inherited scope through the existing child carrier. Delivery is bounded and backpressured; rows retain source and receipt times.
+Plugin contexts MUST expose typed live rows under their inherited scope through the existing child carrier and live watch path. Each subscriber reads the configured bounded window independently; publication never waits on a subscriber. An overrun delivers one explicit gap counting missed rows, then continues from the oldest retained row. Rows retain source and receipt times.
 
 #### Scenario: Close Demand Independently
 - **WHEN** a context subscribes to a compatible declared stream and then closes or cancels its demand

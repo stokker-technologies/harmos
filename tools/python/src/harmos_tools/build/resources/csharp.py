@@ -294,7 +294,7 @@ def host(
             value = SCALARS.get(field["kind"], "long")
         return f"IReadOnlyDictionary<string, {value}>" if field["map"] else f"IReadOnlyList<{value}>" if field["repeated"] else value
 
-    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods if method["surface"] for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     namespaces = {
         "System",

@@ -10,6 +10,7 @@ enum class HostOperation {
   PluginsSettingsList,
   PluginsStateGet,
   PluginsStatePut,
+  SubscriptionsSubscribe,
   TimeGet,
   TimeSleep,
 };

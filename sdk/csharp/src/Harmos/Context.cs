@@ -54,6 +54,14 @@ public sealed class Context
   public HostRoot Host => new(this);
   public HostPluginsStateResource State => Host.Plugins.State;
 
+  public async Task<Subscription<T>> SubscribeAsync<T>(string stream, ulong maxItemBytes, CancellationToken cancellationToken = default)
+      where T : IMessage<T>, new()
+  {
+    var subscription = new Subscription<T>(this, stream, maxItemBytes, cancellationToken);
+    await subscription.OpenAsync();
+    return subscription;
+  }
+
   public string Operation
   {
     get;
@@ -211,8 +219,20 @@ public sealed class Context
       }, cancellationToken);
       while (true)
       {
-        await output.WriteAsync(new InstanceInvokeResponse { ChildDemand = new ChildDemand { Call = call } }, cancellationToken);
-        var reply = await channel.Reader.ReadAsync(cancellationToken);
+        bool active;
+        lock (pending)
+          active = root.watches.ContainsKey(call);
+        if (active)
+          await output.WriteAsync(new InstanceInvokeResponse { ChildDemand = new ChildDemand { Call = call } }, cancellationToken);
+        ChildResponse reply;
+        try
+        {
+          reply = await channel.Reader.ReadAsync(cancellationToken);
+        }
+        catch (ChannelClosedException error) when (error.InnerException is PluginFailureException failure)
+        {
+          throw failure;
+        }
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Failure)
           throw new PluginFailureException(reply.Failure);
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Payload)

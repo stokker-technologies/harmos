@@ -999,3 +999,21 @@ impl ReflectMessage for crate::plugin::LaunchesAnnounceResponse {
         pool().get_message_by_name("harmos.plugin.v1.LaunchesAnnounceResponse").expect("generated message")
     }
 }
+
+impl ReflectMessage for crate::plugin::SubscriptionsSubscribeRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.SubscriptionsSubscribeRequest").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::plugin::SubscriptionsSubscribeResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.SubscriptionsSubscribeResponse").expect("generated message")
+    }
+}
+
+impl ReflectMessage for crate::plugin::SubscriptionRow {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.SubscriptionRow").expect("generated message")
+    }
+}

@@ -18,6 +18,7 @@ public enum HostOperation
   PluginsSettingsList,
   PluginsStateGet,
   PluginsStatePut,
+  SubscriptionsSubscribe,
   TimeGet,
   TimeSleep,
 }
@@ -31,6 +32,7 @@ internal static class HostContracts
   internal static readonly Operation<global::Harmos.Clients.SettingsListRequest, global::Harmos.Clients.SettingsListResponse> PluginsSettingsList = new("harmos.plugin.v1.plugins.Settings/List", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.StateGetRequest, global::Harmos.Clients.StateGetResponse> PluginsStateGet = new("harmos.plugin.v1.plugins.State/Get", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.StatePutRequest, global::Harmos.Clients.StatePutResponse> PluginsStatePut = new("harmos.plugin.v1.plugins.State/Put", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Internal.Plugin.SubscriptionsSubscribeRequest, global::Harmos.Internal.Plugin.SubscriptionsSubscribeResponse> SubscriptionsSubscribe = new("harmos.plugin.v1.Subscriptions/Subscribe", Visibility.Public, watch: true);
   internal static readonly Operation<global::Harmos.Clients.TimeGetRequest, global::Harmos.Clients.TimeGetResponse> TimeGet = new("harmos.plugin.v1.Time/Get", Visibility.Public, watch: false);
   internal static readonly Operation<global::Harmos.Clients.TimeSleepRequest, global::Harmos.Clients.TimeSleepResponse> TimeSleep = new("harmos.plugin.v1.Time/Sleep", Visibility.Public, watch: false);
 }
@@ -46,6 +48,7 @@ public static class HostRequirements
     HostOperation.PluginsSettingsList => ctx.Register(HostContracts.PluginsSettingsList),
     HostOperation.PluginsStateGet => ctx.Register(HostContracts.PluginsStateGet),
     HostOperation.PluginsStatePut => ctx.Register(HostContracts.PluginsStatePut),
+    HostOperation.SubscriptionsSubscribe => ctx.Register(HostContracts.SubscriptionsSubscribe),
     HostOperation.TimeGet => ctx.Register(HostContracts.TimeGet),
     HostOperation.TimeSleep => ctx.Register(HostContracts.TimeSleep),
     _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")

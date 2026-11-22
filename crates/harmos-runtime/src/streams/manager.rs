@@ -115,7 +115,7 @@ impl<A: Application> StreamManager<A> {
 
     pub fn publish<S: StreamRow>(&self, row: S) {
         let at = *self.applied.borrow();
-        self.stream::<S>().window.publish(at, Arc::new(row));
+        self.stream::<S>().window.publish(at, row);
     }
 
     pub fn query<S: StreamRow>(&self, range: impl RangeBounds<Position>) -> Query<S> {

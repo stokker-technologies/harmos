@@ -17,6 +17,8 @@
 use std::any::Any;
 use std::sync::{Arc, Mutex, OnceLock};
 // Third Party Imports
+use harmos_domain::message::postcard::{Reader, Value};
+use harmos_protocol::columns::batch;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 // Local Imports
 use super::{PublicationRow, StreamPublicationError};
@@ -49,16 +51,18 @@ struct Owned {
     wire_sequence: u64,
     logical_sequence: OnceLock<u64>,
     missed: u64,
+    units: u64,
     row: PublicationRow,
+    received: prost_types::Timestamp,
     _bytes: OwnedSemaphorePermit,
     _slot: OwnedSemaphorePermit,
 }
 
-#[derive(Debug)]
 pub(super) struct Pool {
     bytes: Arc<Semaphore>,
     rows: Arc<Semaphore>,
     admission: Mutex<()>,
+    clock: crate::clock::Clock,
 }
 
 /* === Enums === */
@@ -68,11 +72,12 @@ pub(super) struct Pool {
 /* === Implementations === */
 
 impl Pool {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(clock: crate::clock::Clock) -> Self {
         Self {
             bytes: Arc::new(Semaphore::new(RETAINED_BYTES)),
             rows: Arc::new(Semaphore::new(RETAINED_ROWS)),
             admission: Mutex::new(()),
+            clock,
         }
     }
 
@@ -80,6 +85,21 @@ impl Pool {
         &self, definition: &crate::streams::Definition, generation: Option<u64>, row: PublicationRow, wire_sequence: u64, missed: u64,
         window: Option<(&super::window::Window, u64)>,
     ) -> Result<ManagedPublication, StreamPublicationError> {
+        let received = self.clock.date().into();
+        let fields = &definition.schema().definitions[definition.schema().root];
+        let interval = fields.len() == 4
+            && fields.iter().any(|field| field.tag == batch::START_UNIX_NANOS && field.name == "start_unix_nanos")
+            && fields.iter().any(|field| field.tag == batch::PERIOD_NANOS && field.name == "period_nanos")
+            && fields.iter().any(|field| field.tag == batch::COUNT && field.name == "count")
+            && fields.iter().any(|field| field.tag == batch::COLUMNS && field.name == "columns");
+        let units = if interval {
+            let mut reader = Reader::new(&row.payload);
+            i64::read(&mut reader).map_err(|_| StreamPublicationError::Sequence)?;
+            u64::read(&mut reader).map_err(|_| StreamPublicationError::Sequence)?;
+            u64::read(&mut reader).map_err(|_| StreamPublicationError::Sequence)?
+        } else {
+            1
+        };
         let bytes = row
             .payload
             .capacity()
@@ -104,7 +124,9 @@ impl Pool {
             wire_sequence,
             logical_sequence: OnceLock::new(),
             missed,
+            units,
             row,
+            received,
             _bytes: bytes,
             _slot: slot,
         })))
@@ -112,6 +134,14 @@ impl Pool {
 }
 
 impl ManagedPublication {
+    pub(super) fn received(&self) -> prost_types::Timestamp {
+        self.0.received
+    }
+
+    pub(super) fn units(&self) -> u64 {
+        self.0.units
+    }
+
     pub fn stream(&self) -> &str {
         &self.0.stream
     }

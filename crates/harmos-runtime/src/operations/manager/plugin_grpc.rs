@@ -215,7 +215,11 @@ impl Manager {
             OperationFactory::protobuf::<harmos_operations::clock::Get>()
                 .and_then(OperationFactory::with_native::<harmos_operations::host::declarations::clock::Get>),
         ];
-        for factory in factories.into_iter().chain(harmos_operations::facilities::factories()) {
+        for factory in factories
+            .into_iter()
+            .chain(harmos_operations::facilities::factories())
+            .chain([OperationFactory::protobuf::<crate::streams::subscription::Subscribe>()])
+        {
             let factory = factory.map_err(|source| Error::OperationFailed {
                 operation: "Time".into(),
                 source: Arc::new(source),

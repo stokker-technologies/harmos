@@ -39,7 +39,8 @@ set(HARMOS_PROTOCOLS
     harmos/plugin/v1/plugins/settings.proto
     harmos/plugin/v1/plugins/state.proto
     harmos/plugin/v1/operation.proto
-    harmos/plugin/v1/stream.proto)
+    harmos/plugin/v1/stream.proto
+    harmos/plugin/v1/subscriptions.proto)
 
 function(harmos_protocol target root output)
     cmake_parse_arguments(PROTOCOL "SYNC_SERVER" "" "IMPORT_DIRS" ${ARGN})

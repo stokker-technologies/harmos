@@ -9,11 +9,10 @@
 
 /* === Modules === */
 
-#[path = "../support/native_streams/plugin.rs"]
-mod plugin;
+mod stream_consumer;
 
 /* === Public Functions === */
 
 fn main() -> harmos::Result<()> {
-    plugin::plugin().run()
+    stream_consumer::plugin().run()
 }

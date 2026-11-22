@@ -220,6 +220,7 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
         "_authoring": ["Catalog", "Endpoint", "Plugin", "Registrar", "Registration"],
         "_contracts": ["Lane", "Operation", "Stream", "Window", "observer", "operation", "publisher", "window_observer"],
         "_invocation": ["Context", "Publisher"],
+        "_subscription": ["Subscription", "StreamRow", "Gap"],
         "_generated.host": ["HostOperation"],
     }
     imports = [f"from ..{module} import {name}" for module, names in authored.items() for name in names]
@@ -478,7 +479,7 @@ def host(
         value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "int")
         return f"dict[str, {value}]" if field["map"] else f"list[{value}]" if field["repeated"] else value
 
-    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods if method["surface"] for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
     lines = [
         "# @generated from protocol descriptors; do not edit.",

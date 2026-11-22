@@ -1146,3 +1146,47 @@ policy and the virtual clock; store destruction acknowledges guest exit. Inspect
 found no unbounded guest loop or machine-speed-dependent wait in these paths.
 The existing 120-second story hang guard remains unchanged; native Linux Nightly
 must establish whether its isolated timeout recurs under hosted load.
+
+
+### Typed Live Subscriptions
+
+Assumption: the admitted `Subscriptions/Subscribe` requirement authorizes live
+stream selection; existing admission middleware may restrict it. No separate
+per-stream access registry is introduced. Native row schema projection uses the
+runtime `grpc` feature, enabled by default; without it, native subscriptions
+refuse with an instruction to enable that feature. This new gRPC capability does
+not add another schema projector.
+
+The private `harmos.plugin.v1.Subscriptions/Subscribe` carrier is an ordinary
+admitted server-streaming child. Its operation inherits the original caller's
+scope, resources and admission ancestry. An opening acknowledgement follows
+cursor capture; the typed SDK call awaits it before returning. Generic resource
+renderers retain the requirement registration without exposing a second public
+carrier API.
+
+Subscriptions project the existing `streams/window.rs::Following` cursor.
+`StreamFeed` and `Intake` continue to own ingestion and storage backpressure.
+A cursor reads at most one retained entry at a time and never holds a copied
+window. The operation waits for the carrier's next read before advancing its
+cursor, so a stalled subscriber cannot consume rows into a hidden queue. Provider
+publication never waits on subscriber demand. Overruns yield one explicit gap,
+then continue at the oldest retained entry. Interval entries retain cumulative
+sample ordinals so their gaps count individual missed samples, not batch chunks.
+The existing stream window configuration determines retention; stored-row resume
+is out of scope.
+
+The live window records receipt time on its runtime clock at publication. Host
+rows use that instant as source time too. Device rows retain their validated
+source timestamp, falling back to receipt time when absent. Interval rows expand
+lazily on the stored source grid and share their batch's receipt timestamp.
+Closing a subscription cancels only its child invocation; inherited scope
+cancellation ends it through the same operation lifecycle. Native waits on demand,
+rows and output park operation activity so controlled clocks can advance.
+
+Rust exposes `Context::subscribe`, `Subscription::next` and `close`; Python exposes
+`Context.subscribe`, async iteration and `close` without a context manager. C#
+uses `SubscribeAsync`, `NextAsync`, async enumeration and `CloseAsync`/disposal;
+C++ uses `subscribe`, `next` and `close`/destruction. Every surface yields a typed
+row with source and receipt timestamps or an explicit gap. The native-stream
+fixture now reads this subscription directly instead of forwarding each row
+through a unary operation.

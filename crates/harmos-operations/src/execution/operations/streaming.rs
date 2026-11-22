@@ -44,6 +44,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub(crate) struct Progress {
     transferred: AtomicBool,
     moved: watch::Sender<Option<tokio::time::Instant>>,
+    requested: watch::Sender<u64>,
 }
 
 pub struct StreamOutput<T, E = Error> {
@@ -285,7 +286,9 @@ impl<T> StreamInput<T> {
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.recv", level = "trace", skip_all)]
     pub async fn recv(&self) -> Option<StreamItem<T>> {
-        let item = self.receiver.lock().await.recv().await?;
+        let mut receiver = self.receiver.lock().await;
+        self.transferred.requested.send_modify(|requested| *requested = requested.checked_add(1).expect("stream request cursor exhausted"));
+        let item = receiver.recv().await?;
         self.transferred.record();
         Some(item)
     }
@@ -326,6 +329,21 @@ impl<T, E> Clone for StreamOutput<T, E> {
 }
 
 impl<T, E: From<Error>> StreamOutput<T, E> {
+    /// Wait for a Consumer Read After the Last Request This Producer Served.
+    pub async fn requested_after(&self, after: u64) -> Result<u64, E> {
+        let mut requested = self.transferred.requested.subscribe();
+        loop {
+            let current = *requested.borrow_and_update();
+            if current > after {
+                return Ok(current);
+            }
+            tokio::select! {
+                _ = self.sender.closed() => return Err(Error::Closed.into()),
+                result = requested.changed() => result.map_err(|_| Error::Closed)?,
+            }
+        }
+    }
+
     pub fn is_closed(&self) -> bool {
         self.sender.is_closed()
     }
@@ -456,6 +474,7 @@ pub fn channel<T, E: From<Error>>(settings: StreamSettings) -> Result<(StreamOut
     let transferred = Arc::new(Progress {
         transferred: AtomicBool::new(false),
         moved: watch::channel(None).0,
+        requested: watch::channel(0).0,
     });
     Ok((
         StreamOutput {

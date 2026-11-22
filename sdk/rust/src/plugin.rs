@@ -20,7 +20,7 @@ include!("plugin/host_exports.rs");
 
 pub use registration::{Contribution, Dependency, Descriptor, Registrar, Registration};
 
-pub use crate::context::{Context, StateHandle, Watching};
+pub use crate::context::{Context, StateHandle, Subscription, SubscriptionItem, SubscriptionRow, Watching};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::native::Listener;

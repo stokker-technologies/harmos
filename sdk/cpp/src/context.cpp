@@ -15,6 +15,7 @@
 
 // Local Imports
 #include "harmos/host/v1/time.pb.h"
+#include "harmos/plugin/v1/subscriptions.pb.h"
 #include "invocation.hpp"
 #include <absl/numeric/int128.h>
 #include <google/protobuf/util/time_util.h>
@@ -58,24 +59,30 @@ public:
   shared_ptr<detail::Invocation> state;
   shared_ptr<detail::WatchState> watch;
   uint64_t call;
-  bool closed = false;
+  std::atomic<bool> closed = false;
   optional<string> next() override {
     if (closed)
       return {};
+    bool active;
     {
       lock_guard lock(state->mutex);
       if (watch->demanded)
         throw std::logic_error("Watch: Concurrent Next Is Not Allowed");
-      watch->demanded = true;
+      active = !watch->terminal && !state->closed;
+      watch->demanded = active;
     }
-    plugin::v1::InstanceInvokeResponse demand;
-    demand.mutable_child_demand()->set_call(call);
-    state->emit(std::move(demand));
-    state->start_reading();
+    if (active) {
+      plugin::v1::InstanceInvokeResponse demand;
+      demand.mutable_child_demand()->set_call(call);
+      state->emit(std::move(demand));
+      state->start_reading();
+    }
     unique_lock lock(state->mutex);
     state->changed.wait(lock, [&] {
-      return watch->item || watch->terminal || state->closed;
+      return watch->item || watch->terminal || state->closed || closed;
     });
+    if (closed)
+      return {};
     if (watch->item) {
       auto item = std::move(*watch->item);
       watch->item.reset();
@@ -142,6 +149,34 @@ shared_ptr<detail::Watch> Context::open_watch(const detail::OperationDefinition 
   *frame.mutable_child() = std::move(request);
   root->emit(std::move(frame));
   return result;
+}
+
+detail::WatchHandle Context::open_subscription(const string &stream, const google::protobuf::Descriptor *row, std::size_t max_item_bytes) {
+  plugin::v1::SubscriptionsSubscribeRequest request;
+  request.set_stream(stream);
+  request.set_row(row->full_name());
+  request.set_types(detail::encode(detail::types(row)));
+  Operation<plugin::v1::SubscriptionsSubscribeRequest, plugin::v1::SubscriptionsSubscribeResponse> operation(
+      "harmos.plugin.v1.Subscriptions/Subscribe", VISIBILITY_PUBLIC);
+  operation.watch();
+  detail::WatchHandle incoming(open_watch(operation.definition, detail::encode(request), max_item_bytes));
+  auto payload = incoming.next();
+  if (!payload)
+    throw invalid_argument("Subscribe to Stream: Host Must Acknowledge the Admitted Demand");
+  const auto opened = decode<plugin::v1::SubscriptionsSubscribeResponse>(*payload);
+  if (!opened.has_opened() || !opened.opened())
+    throw invalid_argument("Subscribe to Stream: Host Must Acknowledge the Admitted Demand");
+  return incoming;
+}
+
+std::variant<detail::SubscriptionRow, Gap> detail::subscription_item(const string &payload) {
+  const auto response = decode<plugin::v1::SubscriptionsSubscribeResponse>(payload);
+  if (response.has_missed())
+    return Gap{response.missed()};
+  if (!response.has_row() || !response.row().has_source() || !response.row().has_received())
+    throw invalid_argument("Read Subscription: Supply a Row With Both Timestamps or a Gap");
+  const auto &row = response.row();
+  return detail::SubscriptionRow{row.payload(), row.source(), row.received()};
 }
 
 Context::Context(shared_ptr<detail::Invocation> state) : state_(std::move(state)) {

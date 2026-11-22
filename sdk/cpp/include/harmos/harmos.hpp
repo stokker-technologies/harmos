@@ -13,6 +13,7 @@
 
 // Standard Library Imports
 #include <any>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <future>
@@ -24,6 +25,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // Third Party Imports
@@ -51,6 +53,7 @@ class Registrar;
 template <class Q, class R> class Operation;
 template <class R> class Call;
 template <class R> class Watching;
+template <class R> class Subscription;
 template <class R> class Stream;
 template <class R> class Observer;
 
@@ -60,6 +63,10 @@ struct Window {
   google::protobuf::Duration period;
   std::uint64_t count = 0;
   std::uint64_t sequence = 0;
+};
+
+struct Gap {
+  std::uint64_t missed;
 };
 
 namespace detail {
@@ -92,6 +99,34 @@ struct Watch {
   virtual std::optional<std::string> next() = 0;
   virtual void cancel() = 0;
 };
+class WatchHandle {
+public:
+  explicit WatchHandle(std::shared_ptr<Watch> state) : state_(std::move(state)) {}
+  WatchHandle(const WatchHandle &) = delete;
+  WatchHandle &operator=(const WatchHandle &) = delete;
+  WatchHandle(WatchHandle &&other) : state_(other.state_.exchange(nullptr)) {}
+  ~WatchHandle() {
+    close();
+  }
+  std::optional<std::string> next() {
+    auto state = state_.load();
+    return state ? state->next() : std::nullopt;
+  }
+  void close() {
+    auto state = state_.exchange(nullptr);
+    if (state)
+      state->cancel();
+  }
+
+private:
+  std::atomic<std::shared_ptr<Watch>> state_;
+};
+struct SubscriptionRow {
+  std::string payload;
+  google::protobuf::Timestamp source;
+  google::protobuf::Timestamp received;
+};
+std::variant<SubscriptionRow, Gap> subscription_item(const std::string &payload);
 } // namespace detail
 
 /* === Classes === */
@@ -124,6 +159,7 @@ public:
   explicit Context(std::shared_ptr<detail::Invocation> state);
   template <class Q, class R> Call<R> call(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
   template <class Q, class R> Watching<R> watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes);
+  template <class R> Subscription<R> subscribe(const std::string &stream, std::size_t max_item_bytes);
   void sleep(const google::protobuf::Duration &duration);
   google::protobuf::Timestamp now();
   SettingsListResponse settings();
@@ -136,6 +172,7 @@ public:
   }
 
 private:
+  detail::WatchHandle open_subscription(const std::string &stream, const google::protobuf::Descriptor *row, std::size_t max_item_bytes);
   std::string scope_;
   std::shared_ptr<detail::Invocation> state_;
   std::unordered_map<std::type_index, std::any> resources_;
@@ -388,23 +425,53 @@ public:
   Watching(const Watching &) = delete;
   Watching &operator=(const Watching &) = delete;
   Watching(Watching &&) = default;
-  ~Watching() {
-    if (state_)
-      state_->cancel();
-  }
   std::optional<R> next() {
-    auto value = state_->next();
+    auto value = state_.next();
     return value ? std::optional<R>(decode<R>(*value)) : std::nullopt;
+  }
+  void close() {
+    state_.close();
   }
 
 private:
-  std::shared_ptr<detail::Watch> state_;
+  detail::WatchHandle state_;
 };
 
 template <class Q, class R> Watching<R> Context::watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes) {
   if (!operation.definition.watch)
     throw std::invalid_argument("Watch " + operation.definition.contract.id() + ": Server-Streaming Contract Required");
   return Watching<R>(open_watch(operation.definition, detail::encode(request), max_item_bytes));
+}
+
+template <class R> struct StreamRow {
+  R value;
+  google::protobuf::Timestamp source;
+  google::protobuf::Timestamp received;
+};
+
+template <class R> class Subscription {
+public:
+  explicit Subscription(detail::WatchHandle incoming) : incoming_(std::move(incoming)) {}
+  std::optional<std::variant<StreamRow<R>, Gap>> next() {
+    auto payload = incoming_.next();
+    if (!payload)
+      return {};
+    auto item = detail::subscription_item(*payload);
+    if (const auto *gap = std::get_if<Gap>(&item))
+      return *gap;
+    const auto &row = std::get<detail::SubscriptionRow>(item);
+    return StreamRow<R>{decode<R>(row.payload), row.source, row.received};
+  }
+  void close() {
+    incoming_.close();
+  }
+
+private:
+  detail::WatchHandle incoming_;
+};
+
+template <class R> Subscription<R> Context::subscribe(const std::string &stream, std::size_t max_item_bytes) {
+  return Subscription<R>(open_subscription(stream, R::descriptor(), max_item_bytes));
 }
 
 template <class Q, class R>

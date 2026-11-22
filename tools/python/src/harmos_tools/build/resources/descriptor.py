@@ -51,6 +51,7 @@ class Field(TypedDict):
 
 
 class Method(TypedDict):
+    surface: bool
     owner: str
     face: str
     version: str
@@ -141,7 +142,7 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                 faces = (
                     ["context"]
                     if file.package.startswith("harmos.plugin.v1")
-                    and service.name in {"Time", "Operations", "Invocations", "Settings", "State"}
+                    and service.name in {"Time", "Operations", "Invocations", "Settings", "State", "Subscriptions"}
                     else ["plugin"]
                     if executor == "plugin"
                     else [
@@ -163,6 +164,7 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                     leaves.add(leaf)
                     methods.append(
                         Method(
+                            surface=identity != "harmos.plugin.v1.Subscriptions/Subscribe",
                             owner=owner,
                             face=face,
                             version=parts[version],
