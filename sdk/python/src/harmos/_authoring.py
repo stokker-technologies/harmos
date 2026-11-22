@@ -460,8 +460,7 @@ class _Service:
                 if frame.WhichOneof("frame") == "response":
                     return
         finally:
-            execution._output = None
-            await _release(running, reading)
+            await _release(execution, running, reading)
 
     async def samples(self, request_iterator: AsyncIterator[InstanceSamplesRequest], context: ServicerContext) -> None:
         first = await anext(request_iterator, None)
@@ -497,10 +496,7 @@ class _Service:
                 frame.sequence = sequence
                 await context.write(InstanceSamplesResponse(samples=[frame]))
         finally:
-            if scope.context is not None:
-                scope.context._output = None
-                await scope.context._cancel("Samples Demand Closed")
-            await _release(running, reading)
+            await _release(scope.context, running, reading)
 
 
 # === Public Functions === #
@@ -562,7 +558,10 @@ def _merge(files: dict[str, FileDescriptorProto], *messages: type[Message]) -> N
                         entries.add().CopyFrom(item)
 
 
-async def _release(*tasks: Task) -> None:
+async def _release(execution: Context | None, *tasks: Task) -> None:
+    if execution is not None:
+        execution._output = None
+        await execution._cancel("Scope Ended")
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -682,6 +681,7 @@ async def _produce(
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
             execution._local = scope.local
             execution._instance = scope.instance
+            scope.context = execution
             await cast(Producer, handler)(execution, Publisher(definition.row, output))
             return
         while True:
