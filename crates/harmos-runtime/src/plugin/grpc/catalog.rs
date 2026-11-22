@@ -99,7 +99,8 @@ fn verify_identifiers(plugin: &str, declarations: &Declarations) -> Result<(), E
         .operations
         .iter()
         .map(|operation| operation.id.as_str())
-        .chain(declarations.streams.iter().flat_map(|stream| [stream.id.as_str(), stream.row.as_str()]));
+        // Row Types Are Shared Message Names, Not Identifiers the Plugin Registers.
+        .chain(declarations.streams.iter().map(|stream| stream.id.as_str()));
     for identifier in identifiers {
         let qualified = identifier.strip_prefix(plugin).and_then(|local| local.strip_prefix('.')).is_some_and(|local| !local.is_empty());
         if !qualified {
@@ -144,10 +145,9 @@ mod tests {
             let mut invalid = declarations.clone();
             invalid.streams[0].id = identifier.into();
             assert!(matches!(verify_identifiers("conformance", &invalid), Err(Error::Invalid(_))));
-
-            let mut invalid = declarations.clone();
-            invalid.streams[0].row = identifier.into();
-            assert!(matches!(verify_identifiers("conformance", &invalid), Err(Error::Invalid(_))));
         }
+        let mut shared = declarations.clone();
+        shared.streams[0].row = "google.protobuf.Int64Value".into();
+        assert!(verify_identifiers("conformance", &shared).is_ok());
     }
 }
