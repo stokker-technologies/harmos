@@ -11,19 +11,26 @@
 # === Imports === #
 
 # Standard Library Imports
-from asyncio import Queue, create_task
+from asyncio import Event, Queue, Task, create_task, shield
 from unittest import IsolatedAsyncioTestCase
 
 # Third Party Imports
+import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
+from grpc.aio import EOF
 
 # Local Imports
+from harmos import CLASSIFICATION_CANCELLED, VISIBILITY_PUBLIC
 from harmos._generated.host import _SUBSCRIPTIONS_SUBSCRIBE
 from harmos._invocation import Context, FailureError
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse
-from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse, Request
+from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceSamplesRequest
+from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._wire.plugin.v1.invocation_pb2 import Cancel, ChildResponse, Request
+from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection
 from harmos._wire.plugin.v1.subscriptions_pb2 import SubscriptionRow, SubscriptionsSubscribeResponse
-from harmos.plugin import Gap, StreamRow, Subscription
+from harmos.plugin import Catalog, Gap, Plugin, Publisher, StreamRow, Subscription, operation, publisher
+from tests.support import calls
 
 # Type Checking Imports
 
@@ -102,6 +109,105 @@ class Subscriptions(IsolatedAsyncioTestCase):
             await reading
         await subscription.close()
         self.assertTrue(self.output.empty())
+
+    async def test_invocation_scope_ends(self) -> None:
+        class Reader:
+            def __init__(self) -> None:
+                self.reading: Task[StreamRow[TimeGetResponse] | Gap] | None = None
+                self.context: Context | None = None
+                self.settle = Event()
+                self.stopped = Event()
+
+            @operation("fixture.read", request=TimeGetResponse, response=TimeGetResponse, visibility=VISIBILITY_PUBLIC)
+            async def read(self, ctx: Context, request: TimeGetResponse) -> TimeGetResponse:
+                self.context = ctx
+                subscription = await ctx.subscribe("fixture.samples", TimeGetResponse, max_item_bytes=4096)
+                self.reading = create_task(anext(subscription))
+                try:
+                    if request.now.seconds:
+                        await self.settle.wait()
+                    else:
+                        await shield(self.reading)
+                    return TimeGetResponse()
+                finally:
+                    self.stopped.set()
+
+        for ending in ("cancel", "disconnect", "settle"):
+            with self.subTest(ending=ending):
+                # Serve the Real SDK Invocation Runtime and Admit Its Subscription.
+                reader = Reader()
+                endpoint = await Plugin(
+                    id="fixture",
+                    version="1.0.0",
+                    register=lambda ctx, reader=reader: ctx.register(Catalog(reader, requires=[_SUBSCRIPTIONS_SUBSCRIBE])),
+                ).start("127.0.0.1:0")
+                self.addAsyncCleanup(endpoint.stop)
+                channel = grpc.aio.insecure_channel(endpoint.address)
+                self.addAsyncCleanup(channel.close)
+                call = await calls.invoke(
+                    InstanceStub(channel), "fixture.read", TimeGetResponse(now=Timestamp(seconds=int(ending == "settle")))
+                )
+                self.addCleanup(call.cancel)
+                child = (await call.read()).child
+                self.assertEqual(child.operation, _SUBSCRIPTIONS_SUBSCRIBE.id)
+                self.assertEqual((await call.read()).child_demand.call, child.call)
+                await call.write(
+                    InstanceInvokeRequest(
+                        child=ChildResponse(call=child.call, item=SubscriptionsSubscribeResponse(opened=True).SerializeToString())
+                    )
+                )
+                self.assertEqual((await call.read()).child_demand.call, child.call)
+
+                # End the Scope While a Subscription Read Remains Outstanding.
+                if ending == "settle":
+                    reader.settle.set()
+                    self.assertEqual((await call.read()).WhichOneof("frame"), "response")
+                    self.assertIs(await call.read(), EOF)
+                elif ending == "cancel":
+                    await call.write(InstanceInvokeRequest(cancel=Cancel(reason="Scope Ended")))
+                    self.assertEqual((await call.read()).child_cancel.call, child.call)
+                    self.assertEqual((await call.read()).response.failure.classification, CLASSIFICATION_CANCELLED)
+                    self.assertIs(await call.read(), EOF)
+                else:
+                    call.cancel()
+                await reader.stopped.wait()
+                assert reader.reading is not None
+                with self.assertRaises(FailureError) as failure:
+                    await reader.reading
+                self.assertEqual(failure.exception.value.classification, CLASSIFICATION_CANCELLED)
+                assert reader.context is not None
+                self.assertEqual(reader.context._watches, {})
+                self.assertTrue(reader.context._cancelled.is_set())
+
+    async def test_producer_scope_ends(self) -> None:
+        class Device:
+            def __init__(self) -> None:
+                self.started = Event()
+                self.stopped = Event()
+                self.context: Context | None = None
+
+            @publisher("fixture.samples", row=TimeGetResponse)
+            async def produce(self, ctx: Context, output: Publisher) -> None:
+                self.context = ctx
+                self.started.set()
+                try:
+                    await ctx.cancelled()
+                finally:
+                    self.stopped.set()
+
+        device = Device()
+        endpoint = await Plugin(id="fixture", version="1.0.0", register=lambda ctx: ctx.register(Catalog(device))).start("127.0.0.1:0")
+        self.addAsyncCleanup(endpoint.stop)
+        channel = grpc.aio.insecure_channel(endpoint.address)
+        self.addAsyncCleanup(channel.close)
+        demand = InstanceStub(channel).Samples()
+        self.addCleanup(demand.cancel)
+        await demand.write(InstanceSamplesRequest(open=SamplesSelection(stream="fixture.samples")))
+        await device.started.wait()
+        demand.cancel()
+        await device.stopped.wait()
+        assert device.context is not None
+        self.assertTrue(device.context._cancelled.is_set())
 
 
 # === Public Functions === #

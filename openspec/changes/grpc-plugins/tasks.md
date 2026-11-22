@@ -222,3 +222,10 @@
 - [x] 23.3 Give native and generated operation adapters one admitted clock-wait registration implementation without changing admission timing or resource ownership. Resolve the resumed edit's endpoint-trait ambiguity by naming EndpointSet at each forwarding call.
 - [x] 23.4 Prove focused operation registration and runtime clock behavior on Windows: 16 scoped-sleep tests, three clock tests and two generated-registration tests pass. The operations compile check, guarded workspace test-target compilation (24 executables, declared feature selection), format, repository checks and diff name scan pass. The unavailable --changed selector uses the existing build.cargo focused test --workspace --no-run entry documented in design.md. Native Linux proof remains with the owner.
 - [ ] 23.5 Owner Documentation: docs/project/architecture.md:1342 and docs/sdks/python.md:93 should distinguish refused real oneofs from legal proto3-optional synthetic oneofs; repeated and map fields remain refused. README claims remain accurate.
+
+## 24. Python Invocation Teardown
+
+- [x] 24.1 Cancel invocation contexts before handler tasks through one teardown owner shared with samples; retain device-producer contexts for that cleanup. Own sdk/python/src/harmos/_authoring.py.
+- [x] 24.2 Add deterministic real SDK server regression coverage for host cancellation, transport cancellation and normal settlement with an outstanding subscription read; assert SDK cancellation and demand retirement. Own sdk/python/tests/integration/test_subscriptions.py.
+- [ ] 24.3 Prove subscription demand release through the native runtime. The reference host has no subscription teardown journey; its fixture extension is outside this worker's ownership.
+- [x] 24.4 Prove the Windows SDK subset: all 35 SDK tests (five subscription tests), SDK Ruff/ty, dev and release wheel builds, release wheel packaging, format, repository checks and the diff name scan pass. The SDK has no separate unit leaf. Native runtime subscription proof remains under 24.3; native Linux proof remains with the owner.
