@@ -80,7 +80,10 @@ Install `harmos-sdk` (import `harmos`) for plugin carrier helpers. Products own 
 Applications generate their own protobuf messages and own connection and authentication.
 
 gRPC plugin contexts call operations by identifier with a JSON object. The host resolves the
-served Protobuf contract, rejects unknown fields and returns the reply's standard JSON mapping.
+served Protobuf contract and rejects unknown fields. Replies use Protobuf field names
+(snake_case), include default-valued fields and represent absent optional fields as null.
+Requests and replies are JSON objects; a message with a scalar JSON mapping uses
+`{"value": ...}` instead of a scalar root.
 The same invocation owns admission, retries, cancellation and deadlines:
 
 ```python
@@ -93,7 +96,7 @@ Rust keeps typed request values and accepts `ctx.operation(harmos::untyped(id, p
 for `serde_json::Value` replies. C# offers `ctx.Operation(id, payload)` returning `JsonNode`
 alongside typed declarations; the invocation's identifier is `OperationId`.
 C++ offers `ctx.operation(id, harmos::json(text))` with Protobuf `Struct` objects.
-Python and C++ calls take and return JSON objects; Rust and C# also represent scalar roots.
+All four SDKs take and return JSON objects for identifier-based calls.
 Typed Rust and C++ calls retain `call`; typed C# calls retain `CallAsync`.
 
 

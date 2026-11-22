@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 // Third Party Imports
 use prost::Message;
-use prost_reflect::{Cardinality, DynamicMessage, Kind, MessageDescriptor, ReflectMessage, Value};
+use prost_reflect::{Cardinality, DynamicMessage, Kind, MessageDescriptor, ReflectMessage, SerializeOptions, Value};
 
 // Local Imports
 use crate::{Error, Result};
@@ -44,15 +44,22 @@ use harmos_protocol::model::{self, Classification};
 /* === Public Functions === */
 
 pub(super) fn decode(operation: &str, descriptor: MessageDescriptor, json: &str) -> Result<Vec<u8>> {
-    let mut deserializer = serde_json::Deserializer::from_str(json);
-    let message = DynamicMessage::deserialize(descriptor.clone(), &mut deserializer).map_err(|error| {
-        let reason = serde_json::from_str::<serde_json::Value>(json)
-            .ok()
-            .and_then(|value| diagnose(&descriptor, &value, ""))
-            .unwrap_or_else(|| format!("Request Must Match {}: {error}", descriptor.full_name()));
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|error| invalid(operation, format!("Request Must Contain One JSON Object: {error}")))?;
+    let object = value.as_object().ok_or_else(|| invalid(operation, "Supply a JSON Object for the Request".into()))?;
+    let payload = if scalar_mapping(&descriptor) {
+        if object.len() != 1 || !object.contains_key("value") {
+            return Err(invalid(operation, "Supply the Scalar Request in an Object With One value Field".into()));
+        }
+        &object["value"]
+    } else {
+        &value
+    };
+    let message = DynamicMessage::deserialize(descriptor.clone(), payload).map_err(|error| {
+        let reason =
+            diagnose(&descriptor, payload, "").unwrap_or_else(|| format!("Request Must Match {}: {error}", descriptor.full_name()));
         invalid(operation, reason)
     })?;
-    deserializer.end().map_err(|error| invalid(operation, format!("Request Must Contain One JSON Value: {error}")))?;
     required(operation, &message, "")?;
     Ok(message.encode_to_vec())
 }
@@ -60,7 +67,15 @@ pub(super) fn decode(operation: &str, descriptor: MessageDescriptor, json: &str)
 pub(super) fn encode(operation: &str, descriptor: MessageDescriptor, payload: &[u8]) -> Result<Vec<u8>> {
     let message = DynamicMessage::decode(descriptor, payload)
         .map_err(|error| invalid(operation, format!("Reply Must Match Its Served Contract: {error}")))?;
-    serde_json::to_vec(&message).map_err(|error| invalid(operation, format!("Reply Must Encode as Protobuf JSON: {error}")))
+    let options = SerializeOptions::new().use_proto_field_name(true).skip_default_fields(false);
+    let mut value = message
+        .serialize_with_options(serde_json::value::Serializer, &options)
+        .map_err(|error| invalid(operation, format!("Reply Must Encode as Protobuf JSON: {error}")))?;
+    complete_fields(&message.descriptor(), &mut value);
+    if scalar_mapping(&message.descriptor()) || !value.is_object() {
+        value = serde_json::json!({"value": value});
+    }
+    serde_json::to_vec(&value).map_err(|error| invalid(operation, format!("Reply Must Encode as a JSON Object: {error}")))
 }
 
 pub(super) fn unserved(operation: &str) -> Error {
@@ -68,6 +83,54 @@ pub(super) fn unserved(operation: &str) -> Error {
 }
 
 /* === Private Functions === */
+
+fn scalar_mapping(descriptor: &MessageDescriptor) -> bool {
+    matches!(
+        descriptor.full_name(),
+        "google.protobuf.DoubleValue"
+            | "google.protobuf.FloatValue"
+            | "google.protobuf.Int64Value"
+            | "google.protobuf.UInt64Value"
+            | "google.protobuf.Int32Value"
+            | "google.protobuf.UInt32Value"
+            | "google.protobuf.BoolValue"
+            | "google.protobuf.StringValue"
+            | "google.protobuf.BytesValue"
+            | "google.protobuf.Timestamp"
+            | "google.protobuf.Duration"
+            | "google.protobuf.FieldMask"
+            | "google.protobuf.Value"
+            | "google.protobuf.ListValue"
+    )
+}
+
+fn complete_fields(descriptor: &MessageDescriptor, value: &mut serde_json::Value) {
+    if descriptor.full_name().starts_with("google.protobuf.") {
+        return;
+    }
+    let Some(object) = value.as_object_mut() else { return };
+    for field in descriptor.fields() {
+        let value = object.entry(field.name()).or_insert(serde_json::Value::Null);
+        let Kind::Message(nested) = field.kind() else { continue };
+        if field.is_map() {
+            if let Kind::Message(mapped) = nested.get_field(2).expect("Map Value Field").kind()
+                && let Some(values) = value.as_object_mut()
+            {
+                for value in values.values_mut() {
+                    complete_fields(&mapped, value);
+                }
+            }
+        } else if field.is_list() {
+            if let Some(values) = value.as_array_mut() {
+                for value in values {
+                    complete_fields(&nested, value);
+                }
+            }
+        } else {
+            complete_fields(&nested, value);
+        }
+    }
+}
 
 fn invalid(operation: &str, reason: String) -> Error {
     failure(operation, Classification::Invalid, reason)
@@ -123,10 +186,8 @@ fn diagnose(descriptor: &MessageDescriptor, value: &serde_json::Value, prefix: &
                         }
                     }
                 }
-            } else {
-                if let Some(reason) = diagnose(&nested, value, &path) {
-                    return Some(reason);
-                }
+            } else if let Some(reason) = diagnose(&nested, value, &path) {
+                return Some(reason);
             }
         }
         let kind = match field.kind() {
@@ -227,12 +288,21 @@ mod tests {
     }
 
     #[test]
-    fn json_round_trip_uses_standard_field_mapping_and_presence() {
+    fn json_replies_use_proto_field_names_and_include_defaults() {
         for text in [r#"{"radio":"wifi","sample_count":0}"#, r#"{"radio":"wifi","sampleCount":0}"#] {
             let payload = decode("fixture.call", descriptor(), text).unwrap();
             let reply = encode("fixture.call", descriptor(), &payload).unwrap();
-            assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), json!({"radio":"wifi", "sampleCount":0}));
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), json!({"radio":"wifi", "sample_count":0}));
         }
+        let payload = decode("fixture.call", descriptor(), r#"{"sample_count":0}"#).unwrap();
+        let reply = encode("fixture.call", descriptor(), &payload).unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), json!({"radio":null, "sample_count":0}));
+        let mut file = descriptor().parent_file().file_descriptor_proto().clone();
+        file.syntax = Some("proto3".into());
+        file.message_type[0].field[1].label = Some(1);
+        let pool = DescriptorPool::from_file_descriptor_set(FileDescriptorSet { file: vec![file] }).unwrap();
+        let reply = encode("fixture.call", pool.get_message_by_name("fixture.Request").unwrap(), &[]).unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), json!({"radio":"", "sample_count":0}));
     }
 
     #[test]
@@ -254,12 +324,48 @@ mod tests {
     }
 
     #[test]
-    fn json_rejects_trailing_values_and_preserves_well_known_types() {
+    fn json_requires_object_roots_and_wraps_scalar_mappings() {
         assert!(decode("fixture.call", descriptor(), r#"{"sampleCount":1} {}"#).is_err());
-        let duration = model::SettingValue::default().descriptor().parent_pool().get_message_by_name("google.protobuf.Duration").unwrap();
-        let payload = decode("fixture.duration", duration.clone(), r#""1.500s""#).unwrap();
-        let reply = encode("fixture.duration", duration, &payload).unwrap();
-        assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), json!("1.500s"));
+        let pool = model::SettingValue::default().descriptor().parent_pool().clone();
+        for (name, value) in [("Duration", json!("1.500s")), ("Timestamp", json!("1970-01-01T00:00:00Z"))] {
+            let descriptor = pool.get_message_by_name(&format!("google.protobuf.{name}")).unwrap();
+            let wrapped = json!({"value":value});
+            let payload = decode("fixture.scalar", descriptor.clone(), &wrapped.to_string()).unwrap();
+            let reply = encode("fixture.scalar", descriptor.clone(), &payload).unwrap();
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), wrapped);
+            assert!(decode("fixture.scalar", descriptor.clone(), &value.to_string()).is_err());
+            assert!(decode("fixture.scalar", descriptor.clone(), r#"{"value":"1s","extra":true}"#).is_err());
+        }
+        for text in ["null", "false", "0", "[]", r#""wifi""#] {
+            assert!(decode("fixture.call", descriptor(), text).is_err());
+        }
+        let types = FileDescriptorSet {
+            file: vec![FileDescriptorProto {
+                name: Some("google/protobuf/wrappers.proto".into()),
+                package: Some("google.protobuf".into()),
+                syntax: Some("proto3".into()),
+                message_type: vec![DescriptorProto {
+                    name: Some("BoolValue".into()),
+                    field: vec![FieldDescriptorProto {
+                        name: Some("value".into()),
+                        number: Some(1),
+                        label: Some(1),
+                        r#type: Some(8),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+        let pool = DescriptorPool::from_file_descriptor_set(types).unwrap();
+        let descriptor = pool.get_message_by_name("google.protobuf.BoolValue").unwrap();
+        for value in [false, true] {
+            let wrapped = json!({"value":value});
+            let payload = decode("fixture.scalar", descriptor.clone(), &wrapped.to_string()).unwrap();
+            let reply = encode("fixture.scalar", descriptor.clone(), &payload).unwrap();
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), wrapped);
+        }
     }
 
     #[test]

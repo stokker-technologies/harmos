@@ -24,6 +24,7 @@ use std::{
 // Third Party Imports
 use futures_util::stream;
 use prost::Message;
+use prost_reflect::{MessageDescriptor, ReflectMessage};
 use tokio::sync::mpsc;
 
 // Local Imports
@@ -36,7 +37,7 @@ use harmos_operations::execution::operations::{
 };
 use harmos_operations::host::declarations::host;
 use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse};
-use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
+use harmos_protocol::model::{Callers, Classification, Declarations, InstanceState, Requirement, StreamDeclaration};
 use harmos_protocol::plugin::{ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request, instance_samples_response};
 use harmos_runtime::{OperationPolicy, clock::Clock, operations::HostContext, plugin::grpc::Placement};
 
@@ -234,17 +235,45 @@ async fn harmos_host_operations_are_unreachable_on_the_wire() {
 }
 
 struct JsonEcho;
+struct JsonScalar;
+
+#[derive(Clone, PartialEq, Message)]
+struct DurationValue {
+    #[prost(int64, tag = "1")]
+    seconds: i64,
+
+    #[prost(int32, tag = "2")]
+    nanos: i32,
+}
+
+impl ReflectMessage for DurationValue {
+    fn descriptor(&self) -> MessageDescriptor {
+        InstanceState::default().descriptor().parent_pool().get_message_by_name("google.protobuf.Duration").unwrap()
+    }
+}
 
 impl ProtobufOperation for JsonEcho {
-    type Request = OperationsGetRequest;
-    type Response = OperationsGetRequest;
+    type Request = InstanceState;
+    type Response = InstanceState;
     type Endpoints = ();
     const ID: &'static str = "fixture.json";
     const POLICY: OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
 
     async fn run(_: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        assert_eq!(request.id, "wifi");
+        Ok(request)
+    }
+}
+
+impl ProtobufOperation for JsonScalar {
+    type Request = DurationValue;
+    type Response = DurationValue;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.scalar";
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+
+    async fn run(_: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         Ok(request)
     }
 }
@@ -256,7 +285,9 @@ async fn untyped_children_use_the_served_contract_and_typed_invocation() {
     let host = HostFixture::configured(Some(clock), NonZeroUsize::new(1024 * 1024).unwrap(), None).await;
     host.runtime
         .register_batch(
-            harmos_runtime::operations::Registration::new(Default::default()).entry(OperationFactory::protobuf::<JsonEcho>().unwrap()),
+            harmos_runtime::operations::Registration::new(Default::default())
+                .entry(OperationFactory::protobuf::<JsonEcho>().unwrap())
+                .entry(OperationFactory::protobuf::<JsonScalar>().unwrap()),
         )
         .await
         .unwrap();
@@ -288,9 +319,12 @@ async fn untyped_children_use_the_served_contract_and_typed_invocation() {
                 panic!("Expected a Window")
             };
             for (index, (operation, text)) in [
-                ("fixture.json", r#"{"id":"wifi"}"#),
+                ("fixture.json", r#"{"phase":"wifi","cancellation_requested":true}"#),
+                ("fixture.json", "{}"),
+                ("fixture.scalar", r#"{"value":"1.500s"}"#),
                 ("fixture.json", r#"{"extra":true}"#),
-                ("fixture.json", r#"{"id":false}"#),
+                ("fixture.json", r#"{"phase":false}"#),
+                ("fixture.json", "false"),
                 ("fixture.absent", "{}"),
             ]
             .into_iter()
@@ -319,15 +353,37 @@ async fn untyped_children_use_the_served_contract_and_typed_invocation() {
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
 
-    // Invoke Through the Host and Compare Standard JSON Replies and Exact Failures.
+    // Invoke Through the Host and Preserve Proto Names and Default Fields.
     let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
     let _watching = host.runtime.streams.current_publication("fixture.json_probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || complete.load(Ordering::SeqCst)).await.unwrap();
     let Some(child_response::Result::Payload(payload)) = observed.recv().await.unwrap().result else { panic!("Expected JSON Reply") };
-    assert_eq!(serde_json::from_slice::<serde_json::Value>(&payload).unwrap(), serde_json::json!({"id":"wifi"}));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&payload).unwrap(),
+        serde_json::json!({
+            "phase":"wifi", "outcome":"", "cancellation_requested":true, "attempt":0
+        })
+    );
+    let Some(child_response::Result::Payload(payload)) = observed.recv().await.unwrap().result else {
+        panic!("Expected Default JSON Reply")
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&payload).unwrap(),
+        serde_json::json!({
+            "phase":"", "outcome":"", "cancellation_requested":false, "attempt":0
+        })
+    );
+    let Some(child_response::Result::Payload(payload)) = observed.recv().await.unwrap().result else {
+        panic!("Expected Wrapped Scalar Reply")
+    };
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&payload).unwrap(), serde_json::json!({"value":"1.500s"}));
     for (classification, message) in [
-        (Classification::Invalid, "Call fixture.json: Field \"extra\" Is Not in Its Request; Expected id"),
-        (Classification::Invalid, "Call fixture.json: Field \"id\" Must Be String"),
+        (
+            Classification::Invalid,
+            "Call fixture.json: Field \"extra\" Is Not in Its Request; Expected phase, outcome, cancellation_requested, attempt",
+        ),
+        (Classification::Invalid, "Call fixture.json: Field \"phase\" Must Be String"),
+        (Classification::Invalid, "Call fixture.json: Supply a JSON Object for the Request"),
         (Classification::Refused, "Call fixture.absent: No Plugin Serves This Operation; Install or Enable the Plugin That Provides It"),
     ] {
         let Some(child_response::Result::Failure(failure)) = observed.recv().await.unwrap().result else { panic!("Expected JSON Failure") };
