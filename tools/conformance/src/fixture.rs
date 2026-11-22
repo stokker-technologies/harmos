@@ -318,15 +318,18 @@ pub fn declarations() -> Declarations {
             ..Default::default()
         },
     );
-    operations.push(OperationContract {
-        id: "conformance.local".into(),
-        request: ROW.into(),
-        response: ROW.into(),
-        visibility: Visibility::Private as i32,
-        replay_safe: true,
-        fingerprint: fingerprint("conformance.local"),
-        ..Default::default()
-    });
+    operations.insert(
+        0,
+        OperationContract {
+            id: "conformance.local".into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Private as i32,
+            replay_safe: true,
+            fingerprint: fingerprint("conformance.local"),
+            ..Default::default()
+        },
+    );
     for id in CLOCK_OPERATIONS {
         requires.push(Requirement {
             id: id.into(),
@@ -442,6 +445,7 @@ pub fn failure(operation: &str) -> Failure {
         })),
         details: HashMap::from([("fixture".into(), "value".into())]),
         diagnostics: "Fixture Diagnostics".into(),
+        retry: None,
     }
 }
 

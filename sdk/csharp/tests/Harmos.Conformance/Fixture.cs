@@ -117,7 +117,7 @@ public sealed class Fixture
       var reply = await context.Operation(value["operation"]!.GetValue<string>(), value["payload"]);
       return new Value { Value_ = ByteString.CopyFromUtf8(reply!.ToJsonString()) };
     }
-    catch (PluginFailureException error)
+    catch (OperationException error)
     {
       return new Value { Value_ = error.Failure.ToByteString() };
     }
@@ -130,7 +130,7 @@ public sealed class Fixture
       var invocation = Wire.InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
       await context.Operation(createInvocation, invocation);
     }
-    catch (PluginFailureException error)
+    catch (OperationException error)
     {
       if (request.Value_ == ByteString.CopyFromUtf8("propagate"))
         throw;
@@ -176,7 +176,7 @@ public sealed class Fixture
     {
       return await context.Operation(hostFail, new Value());
     }
-    catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
+    catch (OperationException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
   }
 
   private async Task<Value> SampleCancel(global::Harmos.Plugins.Context context)
@@ -281,7 +281,7 @@ public sealed class Fixture
 
   private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.Operation(hostFail, request);
 
-  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new PluginFailureException(new Failure
+  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new OperationException(new Failure
   {
     Classification = Classification.Permanent,
     Code = "fixture_failure",

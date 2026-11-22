@@ -535,6 +535,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             for (operation, payload, classification, reason) in [
                 ("conformance.host.json", json!({"radio":"wifi","state":"off"}), None, ""),
                 ("conformance.host.json", json!({}), None, ""),
+                ("conformance.host.json", json!({}), Some(Classification::Transient), "Provider Is Busy"),
+                ("conformance.host.json", json!({}), Some(Classification::Permanent), "Input Cannot Be Applied"),
+                ("conformance.host.json", json!({}), Some(Classification::Cancelled), "Caller Cancelled the Operation"),
                 (
                     "conformance.absent",
                     json!({}),
@@ -571,6 +574,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                         operation: operation.into(),
                         message: format!("Call {operation}: {reason}"),
                         code: "operation_payload".into(),
+                        action: "Choose Another Input".into(),
+                        retry: Some(harmos_protocol::model::OperationRetry {
+                            retryable: classification == Classification::Transient,
+                            attempts: 2,
+                            max_attempts: 3,
+                            next_after_s: 0.5,
+                        }),
                         ..Default::default()
                     };
                     send_child(&send, child.call, child_response::Result::Failure(failure.clone())).await?;
@@ -626,8 +636,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             }
         }
         40 => lanes::run(address).await?,
-        33 | 34 => crate::callers::run(rule, address).await?,
-        30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
+        30 | 31 => crate::callers::run(rule, address).await?,
+        27..=29 => Box::pin(samples_case(rule, &mut client)).await?,
         35 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
             let section = declarations
@@ -873,10 +883,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     && overridden.fingerprint == fixture::fingerprint("conformance.host.echo")
                     && overridden.policy
                         == Some(OperationPolicy {
-                            retries: Some(RetryPolicy {
-                                total_attempts: 3,
-                                ..Default::default()
-                            }),
+                            retries: Some(RetryPolicy { total_attempts: 3, ..Default::default() }),
                             ..Default::default()
                         }),
                 "Child Policy Override Differs",
@@ -902,6 +909,30 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let failure = fixture::failure("conformance.host.fail");
             send_child(&send, 1, child_response::Result::Failure(failure.clone())).await?;
             require(terminal(&mut input).await? == response::Result::Failure(failure), "Child Failure Lost Fields")?;
+            for classification in [
+                Classification::Transient,
+                Classification::Permanent,
+                Classification::Refused,
+                Classification::Invalid,
+                Classification::Cancelled,
+            ] {
+                let payload = fixture::payload(b"fail");
+                let (send, mut input) = invoke(&mut client, "conformance.child_failure", payload.clone()).await?;
+                child(&mut input, 1, "conformance.host.fail", &payload).await?;
+                let mut failure = fixture::failure("conformance.host.fail");
+                failure.classification = classification as i32;
+                failure.retry = Some(harmos_protocol::model::OperationRetry {
+                    retryable: classification == Classification::Transient,
+                    attempts: 2,
+                    max_attempts: 3,
+                    next_after_s: 0.5,
+                });
+                send_child(&send, 1, child_response::Result::Failure(failure.clone())).await?;
+                require(
+                    terminal(&mut input).await? == response::Result::Failure(failure),
+                    "Preserve Every Error Kind, Action and Retry Field",
+                )?;
+            }
         }
         7 => {
             let (send, mut input) = invoke(&mut client, "conformance.cancel", fixture::payload(b"pending")).await?;
@@ -1040,10 +1071,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 Some(Timestamp { seconds: 0, nanos: -1 }),
                 Some(Timestamp { seconds: 0, nanos: 1_000_000_000 }),
             ] {
-                invalid.push(Window { start, ..valid });
+                invalid.push(Window { start, ..valid.clone() });
             }
-            invalid.push(Window { period: None, ..valid });
-            invalid.push(Window { count: 0, ..valid });
+            invalid.push(Window { period: None, ..valid.clone() });
+            invalid.push(Window { count: 0, ..valid.clone() });
             for window in invalid {
                 let window = InstanceSamplesRequest {
                     frame: Some(instance_samples_request::Frame::Window(window)),
@@ -1246,7 +1277,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declarations Missing".into()))?;
             require(
-                declarations.operations.iter().any(|operation| operation.id == "conformance.local" && operation.visibility() == Visibility::Private),
+                declarations
+                    .operations
+                    .iter()
+                    .any(|operation| operation.id == "conformance.local" && operation.visibility() == Visibility::Private),
                 "Declare Private Operations for Host Admission",
             )?;
             let payload = fixture::payload(b"private payload");

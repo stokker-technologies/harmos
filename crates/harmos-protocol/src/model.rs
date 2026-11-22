@@ -509,6 +509,24 @@ pub struct Failure {
     /// Stack or source chain for support. Never shown as the message.
     #[prost(string, tag = "9")]
     pub diagnostics: ::prost::alloc::string::String,
+    /// Host-Owned Retry Evidence for This Invocation.
+    #[prost(message, optional, tag = "10")]
+    pub retry: ::core::option::Option<OperationRetry>,
+}
+/// Retry Eligibility and Attempt Counts Reported by the Host Scheduler.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct OperationRetry {
+    #[prost(bool, tag = "1")]
+    pub retryable: bool,
+    /// Attempts Already Run; Zero Means Admission Failed Before Execution.
+    #[prost(uint64, tag = "2")]
+    pub attempts: u64,
+    #[prost(uint64, tag = "3")]
+    pub max_attempts: u64,
+    /// Delay Before Another Attempt, in Seconds; Zero When No Attempt Is Scheduled.
+    #[prost(double, tag = "4")]
+    pub next_after_s: f64,
 }
 /// The Failure Category Used for Admission and Retry Decisions.
 #[allow(clippy::all)]

@@ -37,8 +37,8 @@ use super::{
     host,
 };
 use harmos::client::{CallOptions, ClientTransport, Input, Method, NoItems, Running};
-use harmos::{client, plugin};
 use harmos::{Client, ClientSettings};
+use harmos::{client, plugin};
 use harmos_protocol::host::InvocationsWatchRequest;
 
 /* === Constants === */

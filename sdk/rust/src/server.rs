@@ -82,6 +82,7 @@ struct Settled(Option<oneshot::Sender<()>>);
 
 struct Server {
     description: InstanceGetResponse,
+    failure_mapper: Option<crate::error::FailureMapper>,
     operations: HashMap<String, Arc<dyn Handler>>,
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
@@ -178,6 +179,7 @@ impl instance_server::Instance for Server {
         handler.validate(&request.payload)?;
         let payload = request.payload.clone();
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
+        context.failure_mapper = self.failure_mapper.clone();
         let (output, receiver) = mpsc::channel(1);
         context.output = Some(ChildOutput::Invoke(output.clone()));
         let jobs = self.jobs.clone();
@@ -210,6 +212,7 @@ impl instance_server::Instance for Server {
             self.description.id.clone(),
             self.requires.clone(),
         );
+        context.failure_mapper = self.failure_mapper.clone();
         let (output, receiver) = mpsc::channel(2);
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
@@ -257,6 +260,7 @@ pub(crate) async fn run(
         .collect();
     let stopping = cleanup.clone();
     let server = Server {
+        failure_mapper: plugin.failure_mapper,
         description: InstanceGetResponse {
             id: plugin.id,
             version: plugin.version,
@@ -270,11 +274,7 @@ pub(crate) async fn run(
             sdk_version: env!("CARGO_PKG_VERSION").into(),
             message_bytes: message_bytes as u64,
         },
-        operations: plugin
-            .operations
-            .into_iter()
-            .map(|operation| (operation.contract.id, operation.handler))
-            .collect(),
+        operations: plugin.operations.into_iter().map(|operation| (operation.contract.id, operation.handler)).collect(),
         streams,
         requires,
         message_bytes,
@@ -336,6 +336,12 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                     },
                 }
             };
+            let result = result.map_err(|error| {
+                if matches!(&error, Error::Failure(_)) {
+                    return error;
+                }
+                context.failure_mapper.as_ref().and_then(|mapper| mapper(&error)).unwrap_or(error)
+            });
             let _ = complete.send(result);
         });
     }
@@ -382,7 +388,7 @@ async fn invoke(
             }
         }
     };
-    context.cancel_calls(false, "Invocation Settled", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+    context.cancel_calls("Invocation Settled").await.map_err(|error| Status::unavailable(error.to_string()))?;
     let result = match result {
         Ok(payload) => response::Result::Payload(payload),
         Err(error) => error.response(&context.operation, &context.plugin)?,
@@ -446,7 +452,7 @@ async fn samples(
                         if let Some((_, complete)) = observing.take() {
                             if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
                             context.cancellation.send_replace(Some("Collection Demand Ended".into()));
-                            context.cancel_calls(false, "Collection Demand Ended", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+                            context.cancel_calls("Collection Demand Ended").await.map_err(|error| Status::unavailable(error.to_string()))?;
                             complete.cancel().await;
                         }
                         parts.clear();
@@ -488,6 +494,7 @@ async fn samples(
                         window_context.call_changes = context.call_changes.clone();
                         window_context.samples = context.samples.clone();
                         window_context.sequence = window.sequence;
+                        window_context.failure_mapper = context.failure_mapper.clone();
                         window_context.output = Some(ChildOutput::Samples {
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
                         });
@@ -514,7 +521,7 @@ async fn samples(
                 let (count, _) = observing.take().expect("Observer Active");
                 if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
                 context.cancellation.send_replace(Some("Samples Window Answered".into()));
-                context.cancel_calls(false, "Samples Window Answered", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+                context.cancel_calls("Samples Window Answered").await.map_err(|error| Status::unavailable(error.to_string()))?;
                 let columns = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| match error {
                     Error::Transport(status) if collection => status,
                     error => Status::internal(error.to_string()),
@@ -549,7 +556,7 @@ async fn samples(
     }
     context.cancellation.send_replace(Some("Samples Stream Ended".into()));
     context.output = None;
-    let cancellation = context.cancel_calls(false, "Samples Stream Ended", false).await;
+    let cancellation = context.cancel_calls("Samples Stream Ended").await;
     if let Some((_, complete)) = observing {
         complete.cancel().await;
     }

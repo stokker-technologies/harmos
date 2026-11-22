@@ -226,11 +226,11 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
             plugin_names.append(line.rsplit(" import ", 1)[-1])
     root_barrel = [
         "# @generated from protocol descriptors; do not edit.",
-        "from harmos._invocation import FailureError",
+        "from harmos._invocation import OperationError",
     ]
     for name in sorted(shared_names):
         root_barrel.append(f"from ._generated.shared import {name}")
-    root_barrel += ["", "__all__ = " + repr(["FailureError", *sorted(shared_names)])]
+    root_barrel += ["", "__all__ = " + repr(["OperationError", *sorted(shared_names)])]
     (root / f"sdk/python/src/{python_package}/__init__.py").write_text("\n".join(root_barrel) + "\n", encoding="utf-8", newline="\n")
     client_barrel = ["# @generated from protocol descriptors; do not edit.", "from ._generated.client import ClientRoot"]
     for name in sorted(client_names):

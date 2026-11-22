@@ -73,7 +73,6 @@ const harmos::plugin::Operation<Value, Value> watching =
 class SamplesHost final : public Instance::CallbackService {
 public:
   vector<harmos::plugin::detail::StreamDefinition> streams;
-  vector<harmos::plugin::detail::OperationDefinition> operations;
   map<string, string> requirements;
   size_t message_bytes = 4 * 1024 * 1024;
   unique_ptr<Server> server;
@@ -115,7 +114,7 @@ public:
     });
   }
   ServerBidiReactor<InstanceSamplesRequest, InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
-    auto *call = new harmos::plugin::detail::PublicationCall(streams, operations, requirements, "example", message_bytes);
+    auto *call = new harmos::plugin::detail::PublicationCall(streams, requirements, "example", message_bytes);
     {
       lock_guard lock(samples_mutex);
       ++opened;
@@ -545,7 +544,7 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   SamplesHost host([](Context &context) {
     try {
       context.operation(echo, Value{}).get();
-    } catch (const harmos::Failure &failure) {
+    } catch (const harmos::OperationError &failure) {
       return value(harmos::plugin::detail::encode(failure.value));
     }
     throw runtime_error("Call Echo: Expected Failure");

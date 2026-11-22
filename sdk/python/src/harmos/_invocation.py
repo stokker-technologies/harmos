@@ -62,13 +62,86 @@ type Handler = Callable[[Context, Message], Coroutine[object, object, Message]]
 # === Classes === #
 
 
-class FailureError(Exception):
-    """An Application FailureError, Preserved Without Reclassification."""
+class OperationError(Exception):
+    """An Operation Failure With the Host Scheduler's Retry Evidence."""
 
-    def __init__(self, value: failure_pb2.Failure) -> None:
-        super().__init__(value.message)
+    def __init__(
+        self,
+        kind: str | failure_pb2.Failure = "permanent",
+        *,
+        code: str = "",
+        message: str = "",
+        action: str = "",
+        operation: str = "",
+        retry: failure_pb2.OperationRetry | None = None,
+    ) -> None:
         self.value = failure_pb2.Failure()
-        self.value.CopyFrom(value)
+        if isinstance(kind, failure_pb2.Failure):
+            self.value.CopyFrom(kind)
+        else:
+            classification = {
+                "transient": failure_pb2.CLASSIFICATION_TRANSIENT,
+                "permanent": failure_pb2.CLASSIFICATION_PERMANENT,
+                "refused": failure_pb2.CLASSIFICATION_REFUSED,
+                "invalid": failure_pb2.CLASSIFICATION_INVALID,
+                "cancelled": failure_pb2.CLASSIFICATION_CANCELLED,
+            }
+            self.value.CopyFrom(
+                failure_pb2.Failure(
+                    classification=classification[kind],
+                    code=code,
+                    message=message,
+                    action=action,
+                    operation=operation,
+                    retry=retry,
+                )
+            )
+        super().__init__(self.value.message)
+
+    @property
+    def kind(self) -> str:
+        return {
+            failure_pb2.CLASSIFICATION_TRANSIENT: "transient",
+            failure_pb2.CLASSIFICATION_REFUSED: "refused",
+            failure_pb2.CLASSIFICATION_INVALID: "invalid",
+            failure_pb2.CLASSIFICATION_CANCELLED: "cancelled",
+            failure_pb2.CLASSIFICATION_TIMED_OUT: "cancelled",
+        }.get(self.value.classification, "permanent")
+
+    @property
+    def code(self) -> str:
+        return self.value.code
+
+    @property
+    def message(self) -> str:
+        return self.value.message
+
+    @property
+    def action(self) -> str:
+        return self.value.action
+
+    @property
+    def operation(self) -> str:
+        return self.value.operation
+
+    @property
+    def retry(self) -> failure_pb2.OperationRetry:
+        return self.value.retry
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "code": self.code,
+            "message": self.message,
+            "action": self.action,
+            "operation": self.operation,
+            "retry": {
+                "retryable": self.retry.retryable,
+                "attempts": self.retry.attempts,
+                "max_attempts": self.retry.max_attempts,
+                "next_after_s": self.retry.next_after_s,
+            },
+        }
 
 
 class ProtocolError(Exception):
@@ -107,7 +180,7 @@ class _Watching[R: Message]:
             kind = reply.WhichOneof("result")
             if kind == "failure":
                 await self.aclose()
-                raise FailureError(reply.failure)
+                raise OperationError(reply.failure)
             if kind == "payload":
                 await self.aclose()
                 raise StopAsyncIteration
@@ -148,9 +221,7 @@ class Context:
         self._pending: dict[int, Future[ChildResponse]] = {}
         self._next = [0]
         self._watches: dict[int, tuple[Queue[ChildResponse], int]] = {}
-        self._background = False
         self._retired: set[int] = set()
-        self._children: list[Context] = []
         self._cancelled = Event()
         self._reason = ""
         self._resources: dict[type, object] = {}
@@ -171,7 +242,7 @@ class Context:
     def scope(self) -> str:
         """Require a Caller-Bound Scope for This Invocation."""
         if not self._scope:
-            raise FailureError(
+            raise OperationError(
                 failure_pb2.Failure(
                     classification=CLASSIFICATION_REFUSED,
                     code="scope_required",
@@ -233,14 +304,13 @@ class Context:
         self._next[0] += 1
         call = self._next[0]
         child.call = call
-        child.background = self._background
         complete: Future[ChildResponse] = asyncio.get_running_loop().create_future()
         self._pending[call] = complete
         try:
             await self._output.put(InstanceInvokeResponse(child=child))
             reply = await complete
             if reply.WhichOneof("result") == "failure":
-                raise FailureError(reply.failure)
+                raise OperationError(reply.failure)
             return reply.payload
         except CancelledError:
             if self._pending.pop(call, None) is not None:
@@ -332,31 +402,15 @@ class Context:
             await queue.put(reply)
             return
         complete = self._pending.pop(reply.call, None)
-        if complete is None:
-            for child in self._children:
-                if child._has_pending(reply.call):
-                    await child._reply(reply)
-                    return
         if complete is None or complete.done():
             raise ProtocolError("Reply to Child: Unknown or Duplicate Identity")
         complete.set_result(reply)
-
-    def _has_pending(self, call: int) -> bool:
-        return (
-            call in self._pending
-            or call in self._watches
-            or call in self._retired
-            or any(child._has_pending(call) for child in self._children)
-        )
 
     async def _cancel(self, reason: str) -> None:
         if self._cancelled.is_set():
             return
         self._reason = reason
         self._cancelled.set()
-        for child in tuple(self._children):
-            if not child._background:
-                await child._cancel(reason)
         watches, self._watches = self._watches, {}
         for call, (queue, _) in watches.items():
             self._retired.add(call)
@@ -373,8 +427,8 @@ class Context:
             if not complete.done():
                 complete.set_exception(self._cancel_failure())
 
-    def _cancel_failure(self) -> FailureError:
-        return FailureError(
+    def _cancel_failure(self) -> OperationError:
+        return OperationError(
             failure_pb2.Failure(
                 classification=CLASSIFICATION_CANCELLED,
                 code="cancelled",

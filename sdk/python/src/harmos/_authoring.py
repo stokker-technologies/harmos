@@ -55,7 +55,7 @@ from harmos._wire.plugin.v1.stream_pb2 import CollectionDemandResponse, Sample
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Lane, Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
-from ._invocation import Context, FailureError, Handler, ProtocolError, Publisher, validate_timestamp
+from ._invocation import Context, Handler, OperationError, ProtocolError, Publisher, validate_timestamp
 from ._transfer import message_bytes
 from ._wire.model.v1.transfer_pb2 import StorageTransferSettings
 
@@ -163,8 +163,10 @@ class Plugin:
         register: Callable[[Registrar], None],
         lanes: Sequence[Lane] = (),
         transfer: StorageTransferSettings | None = None,
+        failure_mapper: Callable[[Exception], OperationError | None] | None = None,
     ) -> None:
         self.id = id
+        self.failure_mapper = failure_mapper
         self.lanes = tuple(lanes)
         self.version = version
         registrar = Registrar()
@@ -422,6 +424,7 @@ class _Sampling:
 class _Service:
     def __init__(self, plugin: Plugin, declarations: Declarations, stopped: asyncio.Event) -> None:
         self.stopped = stopped
+        self.failure_mapper = plugin.failure_mapper
         self.description = InstanceGetResponse(
             id=plugin.id,
             version=plugin.version,
@@ -469,7 +472,7 @@ class _Service:
         output = Queue(maxsize=1)
         execution = Context(request, self.description.id, self.requires, output)
         execution._instance = getattr(handler, "__self__", None)
-        running = asyncio.create_task(_execute(handler, execution, value, definition.response, output))
+        running = asyncio.create_task(_execute(handler, execution, value, definition.response, output, self.failure_mapper))
         reading = asyncio.create_task(_read_invoke(request_iterator, execution, output))
         try:
             while True:
@@ -495,9 +498,7 @@ class _Service:
         await context.send_initial_metadata(())
         output: Queue[Sample | InstanceSamplesResponse | _FaultError | None] = Queue(maxsize=1)
         windows: Queue[tuple[Window, Context]] = Queue(maxsize=1)
-        scope = _SamplesScope(
-            first.open.stream, first.open.scope, self.description.id, self.requires, getattr(handler, "__self__", None)
-        )
+        scope = _SamplesScope(first.open.stream, first.open.scope, self.description.id, self.requires, getattr(handler, "__self__", None))
         sampling = self.sampling.get(definition.id)
         reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output, sampling))
         running = asyncio.create_task(_produce(handler, scope, definition, observing, windows, output, self.description.message_bytes))
@@ -596,20 +597,30 @@ async def _execute(
     request: Message,
     response: type[Message],
     output: Queue[InstanceInvokeResponse | _FaultError],
+    failure_mapper: Callable[[Exception], OperationError | None] | None,
 ) -> None:
     try:
         value = await handler(execution, request)
         if not isinstance(value, response):
             raise TypeError("Handler Returned the Wrong Protobuf Type")
         result = Response(payload=value.SerializeToString())
-    except FailureError as failure:
+    except OperationError as failure:
         result = Response(failure=failure.value)
-    except (ProtocolError, DecodeError) as error:
-        await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
-        return
     except Exception as error:
-        await output.put(_FaultError(StatusCode.INTERNAL, str(error)))
-        return
+        mapped = failure_mapper(error) if failure_mapper is not None else None
+        failure = mapped or OperationError(
+            "permanent",
+            code="handler_failed",
+            message=str(error),
+            action="Inspect Plugin Diagnostics",
+            operation=execution._operation,
+        )
+        result = Response(failure=failure.value)
+    if result.HasField("failure"):
+        if not result.failure.operation:
+            result.failure.operation = execution._operation
+        if not result.failure.plugin:
+            result.failure.plugin = execution._plugin
     await output.put(InstanceInvokeResponse(response=result))
 
 

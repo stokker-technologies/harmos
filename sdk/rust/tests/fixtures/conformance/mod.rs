@@ -20,7 +20,7 @@ pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
+use std::{collections::HashMap, future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
 // Third Party Imports
 use prost::Message;
@@ -401,10 +401,7 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
         .operation_with(
             HostEcho { value: request.value },
             Some(harmos::OperationPolicy {
-                retries: Some(harmos::RetryPolicy {
-                    total_attempts: 3,
-                    ..Default::default()
-                }),
+                retries: Some(harmos::RetryPolicy { total_attempts: 3, ..Default::default() }),
                 ..Default::default()
             }),
         )
@@ -468,8 +465,9 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
             plugin: "host".into(),
             ..Default::default()
         })),
-        details: std::collections::HashMap::from([("fixture".into(), "value".into())]),
+        details: HashMap::from([("fixture".into(), "value".into())]),
         diagnostics: "Fixture Diagnostics".into(),
+        retry: None,
     }
     .into())
 }

@@ -63,6 +63,7 @@ release resources on the first and last demand, and run again for the next sampl
 Rust and C++ expose `on_start` / `on_stop`, Python uses observer decorator arguments of
 the same names, and C# uses `onStart` / `onStop` registration arguments.
 
+
 ## Interfaces
 
 ### CLI
@@ -99,7 +100,7 @@ reply = await ctx.operation("example.radio.set", {"radio": "wifi", "state": "off
 ```
 
 Python has one public generic operation call. Typed host resources remain available through
-`ctx.host`; the former declaration-plus-request generic `ctx.call` form is removed.
+`ctx.host`.
 Rust keeps typed request values and accepts `ctx.operation(harmos::untyped(id, payload))`
 for `serde_json::Value` replies. C# offers `ctx.Operation(id, payload)` returning `JsonNode`
 alongside typed declarations; the invocation's identifier is `OperationId`.
@@ -107,6 +108,12 @@ C++ offers `ctx.operation(id, harmos::json(text))` with Protobuf `Struct` object
 All four SDKs take and return JSON objects for identifier-based calls.
 Typed and identifier-based calls share `operation` in Rust and C++, `Operation` in C#,
 and `operation` in Python. Rust accepts either a typed request or `untyped(id, payload)`.
+
+Operation failures expose kind, code, message, action, operation and retry evidence
+(`retryable`, `attempts`, `max_attempts`, `next_after_s`). Rust returns `Err(Error)`;
+Python raises `OperationError`, C# throws `OperationException`, and C++20 throws
+`harmos::OperationError`. Plugins can register one failure mapper; an unmapped
+handler error becomes Permanent and retains the exception text and handler identity.
 
 
 #### Examples

@@ -52,6 +52,7 @@ using ::harmos::detail::payloads::FileReference;
 using ::harmos::detail::payloads::ListFileProductionsRequest;
 using ::harmos::detail::payloads::ListFileProductionsResponse;
 using ::harmos::detail::payloads::MessageSettings;
+using ::harmos::detail::payloads::OperationRetry;
 using ::harmos::detail::payloads::PageRequest;
 using ::harmos::detail::payloads::StorageTransferSettings;
 using ::harmos::detail::payloads::TRANSFER_FRAMING_BYTES;

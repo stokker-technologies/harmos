@@ -25,7 +25,7 @@ from harmos import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PROTECTED,
     VISIBILITY_PUBLIC,
-    FailureError,
+    OperationError,
     OperationPolicy,
     RetryPolicy,
     SettingDeclaration,
@@ -113,7 +113,7 @@ class Fixture:
 
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
-        raise FailureError(
+        raise OperationError(
             model.Failure(
                 classification=CLASSIFICATION_PERMANENT,
                 code="fixture_failure",
@@ -143,9 +143,7 @@ class Fixture:
         first = await ctx._call(
             HOST_ECHO,
             request,
-            policy=OperationPolicy(
-                retries=RetryPolicy(total_attempts=3)
-            ),
+            policy=OperationPolicy(retries=RetryPolicy(total_attempts=3)),
         )
         return await ctx._call(HOST_ECHO, first)
 
@@ -155,7 +153,7 @@ class Fixture:
         try:
             reply = await context.operation(value["operation"], value["payload"])
             return Value(value=json.dumps(reply).encode())
-        except FailureError as error:
+        except OperationError as error:
             return Value(value=error.value.SerializeToString())
 
     @operation("conformance.schema", request=Graph, response=Graph.Nested, visibility=VISIBILITY_PUBLIC)
@@ -241,7 +239,7 @@ class Fixture:
         create = InvocationsCreateRequest.FromString(REQUEST)
         try:
             await context._call(CREATE_INVOCATION, create)
-        except FailureError as failure:
+        except OperationError as failure:
             if request.value == b"propagate":
                 raise
             return Value(value=failure.value.SerializeToString())
@@ -280,7 +278,7 @@ class Fixture:
     async def window_failure(self, context: Context) -> Value:
         try:
             return await context._call(HOST_FAIL, Value())
-        except FailureError as failure:
+        except OperationError as failure:
             return Value(value=failure.value.SerializeToString())
 
     @observer("conformance.window_watch", row=Value, interval=Duration(seconds=1))
@@ -302,7 +300,7 @@ class Fixture:
             started.set()
             try:
                 return await context._call(HOST_PENDING, Value())
-            except FailureError:
+            except OperationError:
                 return Value()
 
         task = asyncio.create_task(pending())

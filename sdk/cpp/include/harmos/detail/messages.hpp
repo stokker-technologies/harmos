@@ -69,6 +69,7 @@ namespace model {
 using ::harmos::model::v1::Failure;
 }
 using ::harmos::model::v1::Classification;
+using ::harmos::model::v1::OperationRetry;
 inline constexpr auto CLASSIFICATION_UNSPECIFIED = static_cast<::harmos::model::v1::Classification>(0);
 inline constexpr auto CLASSIFICATION_PERMANENT = static_cast<::harmos::model::v1::Classification>(1);
 inline constexpr auto CLASSIFICATION_TRANSIENT = static_cast<::harmos::model::v1::Classification>(2);

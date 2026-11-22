@@ -84,15 +84,12 @@ type WatchResult = Result<Option<Vec<u8>>>;
 pub(crate) type Pending = BTreeMap<u64, PendingCall>;
 pub(crate) struct PendingCall {
     pub sender: oneshot::Sender<ChildResult>,
-    pub group: Arc<()>,
-    pub background: bool,
     pub sent: bool,
 }
 #[derive(Clone)]
 pub(crate) struct WatchCall {
     pub sender: mpsc::Sender<WatchResult>,
     pub limit: usize,
-    pub group: Arc<()>,
     pub sent: bool,
 }
 
@@ -137,12 +134,11 @@ pub struct Context {
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
     pub(crate) sequence: u64,
-    background: bool,
-    group: Arc<()>,
     pub(crate) call_changes: Arc<Notify>,
     pub(crate) child: Option<Arc<dyn ChildTransport>>,
     pub(crate) values: Vec<GuestValue>,
     pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<Timestamp>)>>,
+    pub(crate) failure_mapper: Option<crate::error::FailureMapper>,
 }
 
 pub(crate) struct Calls {
@@ -164,6 +160,12 @@ pub trait OperationInput {
     fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> impl Future<Output = Result<Self::Response>>;
 }
 
+pub(crate) trait ChildTransport: Send + Sync + Any {
+    fn call<'a>(&'a self, request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
+}
+
+/* === Implementations === */
+
 impl<Q: OperationRequest> OperationInput for Q {
     type Response = Q::Response;
 
@@ -179,12 +181,6 @@ impl OperationInput for Untyped {
         context.json_operation_with(self, policy).await
     }
 }
-
-pub(crate) trait ChildTransport: Send + Sync + Any {
-    fn call<'a>(&'a self, request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
-}
-
-/* === Implementations === */
 
 impl Context {
     pub(crate) fn new(request: Request, plugin: String, requires: Arc<HashMap<String, Vec<u8>>>) -> Self {
@@ -209,10 +205,9 @@ impl Context {
             cancellation: watch::channel(None).0,
             requires,
             sequence: 0,
-            background: false,
-            group: Arc::new(()),
             call_changes: Arc::new(Notify::new()),
             samples: None,
+            failure_mapper: None,
         }
     }
 
@@ -337,7 +332,6 @@ impl Context {
                 WatchCall {
                     sender,
                     limit: max_item_bytes.get(),
-                    group: self.group.clone(),
                     sent: false,
                 },
             );
@@ -387,16 +381,13 @@ impl Context {
     }
 
     async fn send_call(&self, mut child: ChildRequest) -> Result<Vec<u8>> {
-        child.background = self.background;
         if let Some(transport) = &self.child {
             return transport.call(child, self.values.clone(), false).await;
         }
         let operation = &child.operation;
         let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Call {operation}: Child Carrier Required")))?;
         output.check()?;
-        if !self.background
-            && let Some(reason) = self.cancellation.borrow().clone()
-        {
+        if let Some(reason) = self.cancellation.borrow().clone() {
             return Err(self.cancel_failure(reason));
         }
         self.flush_cancels().await?;
@@ -405,15 +396,7 @@ impl Context {
             let mut calls = self.calls.lock().expect("Child Calls Poisoned");
             calls.next += 1;
             let call = calls.next;
-            calls.pending.insert(
-                call,
-                PendingCall {
-                    sender: send,
-                    group: self.group.clone(),
-                    background: self.background,
-                    sent: false,
-                },
-            );
+            calls.pending.insert(call, PendingCall { sender: send, sent: false });
             call
         };
         let _pending = PendingDrop { context: self.clone(), call };
@@ -435,15 +418,10 @@ impl Context {
         Ok(())
     }
 
-    pub(crate) async fn cancel_calls(&self, owned: bool, reason: &str, keep_guards: bool) -> Result<()> {
+    pub(crate) async fn cancel_calls(&self, reason: &str) -> Result<()> {
         let (pending, watches) = {
             let mut calls = self.calls.lock().expect("Child Calls Poisoned");
-            let ids = calls
-                .pending
-                .iter()
-                .filter(|(_, call)| (!owned || Arc::ptr_eq(&call.group, &self.group)) && !(keep_guards && call.background))
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>();
+            let ids = calls.pending.iter().map(|(id, _)| *id).collect::<Vec<_>>();
             let mut pending = Vec::new();
             for id in ids {
                 let call = calls.pending.remove(&id).expect("selected child");
@@ -453,12 +431,7 @@ impl Context {
                 }
                 pending.push(call);
             }
-            let ids = calls
-                .watches
-                .iter()
-                .filter(|(_, call)| !owned || Arc::ptr_eq(&call.group, &self.group))
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>();
+            let ids = calls.watches.iter().map(|(id, _)| *id).collect::<Vec<_>>();
             let mut watches = Vec::new();
             for id in ids {
                 let watch = calls.watches.remove(&id).expect("selected watch");
@@ -671,5 +644,4 @@ mod tests {
         assert_eq!(retained.clear().await.unwrap(), 2);
         assert_eq!(state.get::<OpaqueState>().await.unwrap(), OpaqueState::default());
     }
-
 }

@@ -60,6 +60,7 @@ fn main() -> Result<()> {
             }),
             minimum: None,
             maximum: None,
+            ..Default::default()
         }],
     };
     let plugin = Plugin::new("example", "1.0.0")

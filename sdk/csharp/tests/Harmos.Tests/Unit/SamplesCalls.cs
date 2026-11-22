@@ -196,7 +196,7 @@ public sealed class SamplesCalls
     };
     var service = Service(async context =>
     {
-      var error = await Assert.ThrowsAsync<PluginFailureException>(() => context.Operation(Echo, new StringValue()));
+      var error = await Assert.ThrowsAsync<OperationException>(() => context.Operation(Echo, new StringValue()));
       Assert.Equal(failure, error.Failure);
       return new StringValue { Value = "handled" };
     });
@@ -230,7 +230,7 @@ public sealed class SamplesCalls
     Assert.Equal(second.Call, (await call.Read()).ChildCancel.Call);
     Assert.Equal(2UL, (await call.ReadBatch()).Count);
     foreach (var child in pending)
-      await Assert.ThrowsAsync<PluginFailureException>(async () => await child);
+      await Assert.ThrowsAsync<OperationException>(async () => await child);
     await call.Reply(first.Call, new StringValue());
     var refusal = await Assert.ThrowsAsync<RpcException>(() => serving);
     Assert.Equal(StatusCode.InvalidArgument, refusal.StatusCode);

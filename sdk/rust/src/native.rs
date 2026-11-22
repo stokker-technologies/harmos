@@ -208,7 +208,7 @@ impl Context {
 
     pub(crate) async fn cancel(&self, reason: String) -> Result<()> {
         self.cancellation.send_replace(Some(reason.clone()));
-        self.cancel_calls(false, &reason, true).await?;
+        self.cancel_calls(&reason).await?;
         Ok(())
     }
 }

@@ -26,7 +26,7 @@ from grpc.aio import EOF, AioRpcError
 from harmos import (
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
-    FailureError,
+    OperationError,
     Position,
     ReadCut,
     SettingDeclaration,
@@ -90,7 +90,7 @@ class Reader:
             return Value(value=b"answered")
         try:
             return await context._call(ECHO, Value(value=b"failure"))
-        except FailureError as failure:
+        except OperationError as failure:
             return Value(value=failure.value.SerializeToString())
 
     @publisher("conformance.example.device", row=Value)
@@ -257,10 +257,10 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).child_cancel.call, pending.call)
         self.assertEqual((await stream.read()).batch.columns, _columns(b"answered"))
         assert reader.pending is not None
-        with self.assertRaises(FailureError):
+        with self.assertRaises(OperationError):
             await reader.pending
 
-        # A Late Retired Reply Cannot Corrupt the Next Window or Its FailureError.
+        # A Late Retired Reply Cannot Corrupt the Next Window or Its OperationError.
         await stream.write(
             InstanceSamplesRequest(window=Window(start=Timestamp(seconds=103), period=Duration(seconds=1), count=1, sequence=4))
         )
@@ -333,7 +333,6 @@ class WindowChildren(IsolatedAsyncioTestCase):
         await active.cancelled()
         with self.assertRaises(ValueError):
             await active._call(ECHO, Value())
-
 
 
 # === Public Functions === #

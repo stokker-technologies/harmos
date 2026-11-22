@@ -102,7 +102,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     const auto instrument = harmos::plugin::Lane::serial("instrument");
     const auto parallel = harmos::plugin::Lane::concurrent("parallel", 2);
     const auto other = harmos::plugin::Lane::serial("other");
-    harmos::plugin::Operation<Value, Value> local("conformance.local", harmos::VISIBILITY_PRIVATE, [echo](Context &context, Value request) {
+    harmos::plugin::Operation<Value, Value> local("conformance.local", harmos::VISIBILITY_PRIVATE, [](Context &, Value request) {
       return request;
     });
     local.replay_safe();
@@ -130,7 +130,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.failure", harmos::VISIBILITY_PUBLIC,
                                                      [](Context &, Value) -> Value {
-                                                       throw harmos::Failure(failure());
+                                                       throw harmos::OperationError(failure());
                                                      })
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.child_failure", harmos::VISIBILITY_PUBLIC,
@@ -148,9 +148,6 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
         harmos::plugin::Operation<Value, Value>("conformance.policy", harmos::VISIBILITY_PUBLIC, [echo](Context &ctx, Value request) {
           harmos::OperationPolicy policy;
           policy.mutable_retries()->set_total_attempts(3);
-          policy.mutable_retries()->mutable_initial()->set_seconds(1);
-          policy.mutable_retries()->mutable_maximum()->set_seconds(4);
-          policy.mutable_retries()->set_deterministic_jitter(true);
           const auto first = ctx.operation(echo, request, policy).get();
           return ctx.operation(echo, first).get();
         }).visibility(harmos::VISIBILITY_PUBLIC));
@@ -164,7 +161,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
             if (!status.ok())
               throw runtime_error(status.ToString());
             return value(std::move(text));
-          } catch (const harmos::Failure &error) {
+          } catch (const harmos::OperationError &error) {
             return value(error.value.SerializeAsString());
           }
         }));
@@ -358,7 +355,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     harmos::plugin::Observer<Value> failure_observer(failures, [fail](Context &context) {
       try {
         context.operation(fail, Value{}).get();
-      } catch (const harmos::Failure &failure) {
+      } catch (const harmos::OperationError &failure) {
         return value(harmos::plugin::detail::encode(failure.value));
       }
       throw runtime_error("Sample Failure: Expected Child Failure");
@@ -395,7 +392,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
       }
       try {
         context.operation(create, request).get();
-      } catch (const harmos::Failure &failure) {
+      } catch (const harmos::OperationError &failure) {
         if (input.value() == "propagate")
           throw;
         return value(harmos::plugin::detail::encode(failure.value));

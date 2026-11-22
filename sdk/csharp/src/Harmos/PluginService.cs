@@ -17,7 +17,7 @@ using Microsoft.Extensions.Hosting;
 namespace Harmos.Plugins;
 
 internal sealed class PluginService(InstanceGetResponse description, Dictionary<string, Handler> operations,
-    Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime)
+    Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime, Func<Exception, OperationException?>? failureMapper = null)
     : Harmos.Internal.Plugin.Instance.InstanceBase
 {
   private readonly Dictionary<string, ByteString> requires = description.Declarations.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
@@ -65,7 +65,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     }
   }
 
-  private static async Task RunInvoke(IAsyncStreamReader<InstanceInvokeRequest> input, Handler handler, IMessage request,
+  private async Task RunInvoke(IAsyncStreamReader<InstanceInvokeRequest> input, Handler handler, IMessage request,
       Context context, ChannelWriter<InstanceInvokeResponse> output, CancellationToken transport)
   {
     Task<ByteString>? executing = null;
@@ -117,7 +117,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       {
         response = new Response { Payload = await executing };
       }
-      catch (PluginFailureException error) { response = new Response { Failure = error.Failure }; }
+      catch (OperationException error) { response = new Response { Failure = error.Failure }; }
       catch (OperationCanceledException) when (!transport.IsCancellationRequested)
       {
         response = new Response { Failure = context.CancellationFailure().Failure };
@@ -148,18 +148,33 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     }
   }
 
-  private static async Task<ByteString> Execute(Handler handler, Context context, IMessage request)
+  private async Task<ByteString> Execute(Handler handler, Context context, IMessage request)
   {
     try
     {
       return await handler.Execute(context, request);
     }
-    catch (PluginFailureException) { throw; }
-    catch (RpcException) { throw; }
+    catch (OperationException error)
+    {
+      if (error.Failure.Operation.Length == 0)
+        error.Failure.Operation = context.OperationId;
+      if (error.Failure.Plugin.Length == 0)
+        error.Failure.Plugin = context.Plugin;
+      throw;
+    }
     catch (OperationCanceledException) { throw; }
     catch (Exception error)
     {
-      throw new PluginFailureException(new Failure
+      var mapped = failureMapper?.Invoke(error);
+      if (mapped is not null)
+      {
+        if (mapped.Failure.Operation.Length == 0)
+          mapped.Failure.Operation = context.OperationId;
+        if (mapped.Failure.Plugin.Length == 0)
+          mapped.Failure.Plugin = context.Plugin;
+        throw mapped;
+      }
+      throw new OperationException(new Failure
       {
         Classification = Classification.Permanent,
         Code = "handler_failed",

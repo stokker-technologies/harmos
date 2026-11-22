@@ -17,6 +17,7 @@ pub use crate::wire::shared::ListFileProductionsResponse;
 pub use crate::wire::shared::MessageSettings;
 pub use crate::wire::shared::OperationContract;
 pub use crate::wire::shared::OperationPolicy;
+pub use crate::wire::shared::OperationRetry;
 pub use crate::wire::shared::PageRequest;
 pub use crate::wire::shared::Position;
 pub use crate::wire::shared::Protobuf;

@@ -190,6 +190,13 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   private readonly StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
   private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
   private readonly Registrar registrar = new();
+  private Func<Exception, OperationException?>? failureMapper;
+
+  public Plugin FailureMapper(Func<Exception, OperationException?> mapper)
+  {
+    failureMapper = mapper;
+    return this;
+  }
   private readonly List<Func<Task>> cleanup = [];
 
   public Plugin Register(Registration catalog)
@@ -300,7 +307,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     Sdk = "harmos_csharp",
     SdkVersion = "0.1.0",
     MessageBytes = messageBytes
-  }, new(registrar.operations), new(registrar.streams), cleanup.ToArray(), remote, lifetime);
+  }, new(registrar.operations), new(registrar.streams), cleanup.ToArray(), remote, lifetime, failureMapper);
 
 
 }

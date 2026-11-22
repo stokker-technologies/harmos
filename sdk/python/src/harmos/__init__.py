@@ -40,6 +40,7 @@ from ._generated.shared import (
     MessageSettings,
     OperationContract,
     OperationPolicy,
+    OperationRetry,
     PageRequest,
     Position,
     Protobuf,
@@ -61,7 +62,7 @@ from ._generated.shared import (
     Visibility,
     model,
 )
-from ._invocation import FailureError, ProtocolError
+from ._invocation import OperationError, ProtocolError
 
 __all__ = [
     "ALL",
@@ -80,7 +81,6 @@ __all__ = [
     "Declarations",
     "DiscoveredContract",
     "DiscoveredOperation",
-    "FailureError",
     "File",
     "FileMetadata",
     "FileReference",
@@ -93,7 +93,9 @@ __all__ = [
     "ListFileProductionsResponse",
     "MessageSettings",
     "OperationContract",
+    "OperationError",
     "OperationPolicy",
+    "OperationRetry",
     "PLUGINS",
     "PageRequest",
     "Position",

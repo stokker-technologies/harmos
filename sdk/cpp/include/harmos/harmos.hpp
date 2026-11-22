@@ -160,10 +160,41 @@ std::variant<SubscriptionRow, Gap> subscription_item(const std::string &payload)
 
 } // namespace harmos::plugin
 namespace harmos {
-class Failure : public std::runtime_error {
+class OperationError : public std::runtime_error {
 public:
   model::Failure value;
-  explicit Failure(model::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+  explicit OperationError(model::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+
+  const char *kind() const {
+    switch (value.classification()) {
+    case CLASSIFICATION_TRANSIENT:
+      return "transient";
+    case CLASSIFICATION_REFUSED:
+      return "refused";
+    case CLASSIFICATION_INVALID:
+      return "invalid";
+    case CLASSIFICATION_CANCELLED:
+    case CLASSIFICATION_TIMED_OUT:
+      return "cancelled";
+    default:
+      return "permanent";
+    }
+  }
+  const std::string &code() const {
+    return value.code();
+  }
+  const std::string &message() const {
+    return value.message();
+  }
+  const std::string &action() const {
+    return value.action();
+  }
+  const std::string &operation() const {
+    return value.operation();
+  }
+  const ::harmos::OperationRetry &retry() const {
+    return value.retry();
+  }
 };
 
 class TransportError : public std::runtime_error {
@@ -184,7 +215,8 @@ public:
   std::uint64_t sequence = 0;
 
   explicit Context(std::shared_ptr<detail::Invocation> state);
-  template <class Q, class R> Call<R> operation(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
+  template <class Q, class R>
+  Call<R> operation(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
   google::protobuf::Struct operation(const std::string &operation, const google::protobuf::Struct &payload = {},
                                      std::optional<OperationPolicy> policy = {});
   template <class Q, class R> Watching<R> watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes);
@@ -211,7 +243,6 @@ private:
                                        std::optional<std::string> json = {});
   std::shared_ptr<detail::Watch> open_watch(const detail::OperationDefinition &operation, const std::string &payload,
                                             std::size_t max_item_bytes);
-
 };
 
 template <class T> struct Dependency {
@@ -292,6 +323,10 @@ public:
     return *this;
   }
   Plugin &on_stop(std::function<void()> cleanup);
+  Plugin &failure_mapper(std::function<std::optional<OperationError>(std::exception_ptr)> mapper) {
+    failure_mapper_ = std::move(mapper);
+    return *this;
+  }
   Declarations declarations() const;
   // Binds the Supplied Address; Port Zero Selects a Free Port. Stop Keeps Serving.
   Listener start(std::string address) const;
@@ -313,6 +348,7 @@ private:
   std::vector<std::pair<Requirement, google::protobuf::FileDescriptorSet>> requirements_;
   std::vector<std::pair<Section, google::protobuf::FileDescriptorSet>> sections_;
   std::vector<std::function<void()>> cleanup_;
+  std::function<std::optional<OperationError>(std::exception_ptr)> failure_mapper_;
 };
 
 // Declaration-Only Accumulation; No Runtime Facilities Are Available.

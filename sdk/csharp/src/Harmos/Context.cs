@@ -33,7 +33,6 @@ public sealed class Context
   private readonly List<Context> children = [];
   private ulong nextCall;
   private readonly Dictionary<ulong, (Channel<ChildResponse> Channel, ulong Limit, Context Owner)> watches = [];
-  private bool background;
   private readonly HashSet<ulong> retired = [];
   private readonly List<Task> cancellationWrites = [];
   private string? cancelReason;
@@ -51,6 +50,7 @@ public sealed class Context
     this.output = output;
     root = this;
   }
+
 
   public HostRoot Host => new(this);
   public HostPluginsStateResource State => Host.Plugins.State;
@@ -80,7 +80,7 @@ public sealed class Context
   public string Scope()
   {
     if (scope.Length == 0)
-      throw new PluginFailureException(new Failure
+      throw new OperationException(new Failure
       {
         Classification = Classification.Refused,
         Code = "scope_required",
@@ -166,7 +166,6 @@ public sealed class Context
       completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
       pending.Add(call, completion);
       child.Call = call;
-      child.Background = background;
       if (!output.TryWrite(new InstanceInvokeResponse { Child = child }))
         throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Host Closed"));
     }
@@ -233,12 +232,12 @@ public sealed class Context
         {
           reply = await channel.Reader.ReadAsync(cancellationToken);
         }
-        catch (ChannelClosedException error) when (error.InnerException is PluginFailureException failure)
+        catch (ChannelClosedException error) when (error.InnerException is OperationException failure)
         {
           throw failure;
         }
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Failure)
-          throw new PluginFailureException(reply.Failure);
+          throw new OperationException(reply.Failure);
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Payload)
           yield break;
         yield return global::Harmos.Plugins.Operation<TRequest, TResponse>.DecodeResponse(reply.Item);
@@ -257,14 +256,6 @@ public sealed class Context
       if (removed)
         await output.WriteAsync(new InstanceInvokeResponse { ChildCancel = new ChildCancel { Call = call } });
     }
-  }
-
-  internal async Task SleepAsync(Duration duration) => await Operation(HostContracts.TimeSleep, new TimeSleepRequest { Duration = duration });
-
-  internal async Task<Timestamp> NowAsync()
-  {
-    var time = await Operation(HostContracts.TimeGet, new TimeGetRequest());
-    return time.Now;
   }
 
   internal async Task Reply(ChildResponse child)
@@ -292,7 +283,7 @@ public sealed class Context
       if (child.ResultCase is ChildResponse.ResultOneofCase.None or ChildResponse.ResultOneofCase.Item || !pending.Remove(child.Call, out var completion))
         throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, "Unknown, Duplicate or Empty Child Response"));
       if (child.ResultCase == ChildResponse.ResultOneofCase.Failure)
-        completion.SetException(new PluginFailureException(child.Failure));
+        completion.SetException(new OperationException(child.Failure));
       else
         completion.SetResult(child.Payload);
     }
@@ -422,7 +413,7 @@ public sealed class Context
     get => root.nextCall; set => root.nextCall = value;
   }
 
-  internal PluginFailureException CancelFailure(string reason) => new(new Failure
+  internal OperationException CancelFailure(string reason) => new(new Failure
   {
     Classification = Classification.Cancelled,
     Code = "cancelled",
@@ -432,5 +423,5 @@ public sealed class Context
     Plugin = Plugin
   });
 
-  internal PluginFailureException CancellationFailure() => CancelFailure(cancelReason ?? "Demand Closed");
+  internal OperationException CancellationFailure() => CancelFailure(cancelReason ?? "Demand Closed");
 }

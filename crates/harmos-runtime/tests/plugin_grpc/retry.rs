@@ -43,9 +43,11 @@ async fn private_calls_use_host_admission_and_retry_scheduling() {
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     let host = super::invoke_support::HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("private").await;
-    let attached = host.runtime.attach_grpc(
-        harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), super::support::settings(),
-    ).await.unwrap();
+    let attached = host
+        .runtime
+        .attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), super::support::settings())
+        .await
+        .unwrap();
 
     let input = super::invoke_support::payload(b"private request");
     let call = host.runtime.operations.submit_encoded("fixture.own", input.clone()).unwrap();

@@ -122,6 +122,6 @@ TEST_CASE("Typed Subscriptions Preserve Timestamps Gaps and Independent Closure"
   REQUIRE_FALSE(first.next());
   REQUIRE(std::holds_alternative<StreamRow<TimeGetResponse>>(*second.next()));
   harmos::plugin::detail::cancel_children(state, "Fixture Scope Ended");
-  REQUIRE_THROWS_AS(second.next(), harmos::Failure);
+  REQUIRE_THROWS_AS(second.next(), harmos::OperationError);
   second.close();
 }

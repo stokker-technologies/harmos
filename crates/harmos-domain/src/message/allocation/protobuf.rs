@@ -500,6 +500,7 @@ impl MemorySize for model::Failure {
             .saturating_add(self.cause.memory_size().saturating_sub(mem::size_of_val(&self.cause)))
             .saturating_add(self.details.memory_size().saturating_sub(mem::size_of_val(&self.details)))
             .saturating_add(self.diagnostics.memory_size().saturating_sub(mem::size_of_val(&self.diagnostics)))
+            .saturating_add(self.retry.memory_size().saturating_sub(mem::size_of_val(&self.retry)))
     }
 }
 
@@ -572,6 +573,16 @@ impl MemorySize for model::OperationPolicy {
             .saturating_add(self.attempt_timeout.memory_size().saturating_sub(mem::size_of_val(&self.attempt_timeout)))
             .saturating_add(self.cancellation_timeout.memory_size().saturating_sub(mem::size_of_val(&self.cancellation_timeout)))
             .saturating_add(self.retries.memory_size().saturating_sub(mem::size_of_val(&self.retries)))
+    }
+}
+
+impl MemorySize for model::OperationRetry {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>()
+            .saturating_add(self.retryable.memory_size().saturating_sub(mem::size_of_val(&self.retryable)))
+            .saturating_add(self.attempts.memory_size().saturating_sub(mem::size_of_val(&self.attempts)))
+            .saturating_add(self.max_attempts.memory_size().saturating_sub(mem::size_of_val(&self.max_attempts)))
+            .saturating_add(self.next_after_s.memory_size().saturating_sub(mem::size_of_val(&self.next_after_s)))
     }
 }
 

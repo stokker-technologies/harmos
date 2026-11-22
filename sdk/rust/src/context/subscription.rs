@@ -182,7 +182,7 @@ mod tests {
         assert!(!context.calls.lock().unwrap().watches.contains_key(&first_call));
         assert!(context.calls.lock().unwrap().watches.contains_key(&second_call));
         assert!(matches!(second.next().await.unwrap(), Some(SubscriptionItem::Row(_))));
-        context.cancel_calls(false, "Fixture Scope Ended", false).await.unwrap();
+        context.cancel_calls("Fixture Scope Ended").await.unwrap();
         assert!(second.next().await.is_err());
         driver.abort();
         assert!(driver.await.unwrap_err().is_cancelled());

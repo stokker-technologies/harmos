@@ -16,7 +16,7 @@ from unittest import IsolatedAsyncioTestCase
 
 # Third Party Imports
 # Local Imports
-from harmos import CLASSIFICATION_INVALID, CLASSIFICATION_REFUSED, FailureError, OperationPolicy, model
+from harmos import CLASSIFICATION_INVALID, CLASSIFICATION_REFUSED, OperationError, OperationPolicy, OperationRetry, model
 from harmos._invocation import Context
 from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse
 from harmos._wire.plugin.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
@@ -77,9 +77,27 @@ class UntypedOperation(IsolatedAsyncioTestCase):
         ]:
             failure = model.Failure(classification=classification, message=f"Call fixture.echo: {reason}", operation="fixture.echo")
             output = Output(failure)
-            with self.assertRaises(FailureError) as raised:
+            with self.assertRaises(OperationError) as raised:
                 await output.context.operation("fixture.echo", {})
             self.assertEqual(raised.exception.value, failure)
+
+    async def test_operation_errors_expose_all_kinds_and_retry_evidence(self) -> None:
+        for kind in ("transient", "permanent", "refused", "invalid", "cancelled"):
+            failure = OperationError(
+                kind,
+                code="fixture",
+                message="Apply Failed",
+                action="Choose Another Input",
+                operation="fixture.echo",
+                retry=OperationRetry(retryable=kind == "transient", attempts=2, max_attempts=3, next_after_s=0.5),
+            )
+            output = Output(failure.value)
+            with self.assertRaises(OperationError) as raised:
+                await output.context.operation("fixture.echo", {})
+            result = raised.exception.to_dict()
+            self.assertEqual(result["kind"], kind)
+            self.assertEqual(result["action"], "Choose Another Input")
+            self.assertEqual(result["retry"], {"retryable": kind == "transient", "attempts": 2, "max_attempts": 3, "next_after_s": 0.5})
 
 
 # === Public Functions === #

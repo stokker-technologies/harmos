@@ -538,10 +538,12 @@ fn child_policy(declared: OperationPolicy, override_policy: &model::OperationPol
                 })?,
                 backoff,
             },
-            _ => return Err(Error::InvalidInput {
-                field: "child retries",
-                reason: "Declare the Callee Backoff Before Enabling Retries and Choose a Positive Attempt Count",
-            }),
+            _ => {
+                return Err(Error::InvalidInput {
+                    field: "child retries",
+                    reason: "Declare the Callee Backoff Before Enabling Retries and Choose a Positive Attempt Count",
+                });
+            }
         };
     }
     Ok(applied)
@@ -631,3 +633,39 @@ fn policy(policy: Option<&model::OperationPolicy>) -> Result<OperationPolicy> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn retry_override_keeps_the_callee_backoff_and_other_policy_fields() {
+        let backoff = crate::operations::Backoff::Fixed {
+            delay: Duration::from_secs(7),
+            jitter: crate::operations::Jitter::None,
+        };
+        let declared = OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_secs(10),
+            cancellation_timeout: Duration::from_secs(2),
+            retries: crate::RetryPolicy::OnTransient { total_attempts: 2, backoff },
+        };
+        let applied = child_policy(
+            declared,
+            &model::OperationPolicy {
+                retries: Some(model::RetryPolicy {
+                    total_attempts: 4,
+                    initial: Some(prost_types::Duration { seconds: 99, nanos: 0 }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.timeout, declared.timeout);
+        assert_eq!(applied.attempt_timeout, declared.attempt_timeout);
+        assert_eq!(applied.cancellation_timeout, declared.cancellation_timeout);
+        assert_eq!(applied.retries, crate::RetryPolicy::OnTransient { total_attempts: 4, backoff });
+    }
+}

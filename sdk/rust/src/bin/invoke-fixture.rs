@@ -18,7 +18,7 @@
 // Standard Library Imports
 use std::result;
 use std::{
-    env, fs,
+    env, fs, io,
     num::NonZeroUsize,
     sync::{
         OnceLock,
@@ -310,8 +310,12 @@ struct PrivateInput {
     value: Vec<u8>,
 }
 impl harmos::Message for PrivateInput {
-    fn name() -> String { Value::name() }
-    fn types() -> FileDescriptorSet { Value::types() }
+    fn name() -> String {
+        Value::name()
+    }
+    fn types() -> FileDescriptorSet {
+        Value::types()
+    }
 }
 impl OperationRequest for PrivateInput {
     type Response = Value;
@@ -479,22 +483,82 @@ fn main() -> Result<()> {
                 Ok(())
             })
             .expect("Register Plugin Declarations")
+    } else if mode == "error-kinds" {
+        Plugin::new("fixture", "1.0.0")
+            .failure_mapper(|error| {
+                error
+                    .downcast_ref::<harmos::Error>()
+                    .filter(|error| matches!(error, harmos::Error::Io(_)))
+                    .map(|_| harmos::Error::failure(Classification::Refused, "source_missing", "Source Unavailable", "Select a Source"))
+            })
+            .register(|ctx| {
+                ctx.register(
+                    Operation::new("fixture.private", async |_: &Context, request: Value| -> Result<Value> {
+                        let classification = match request.value.as_slice() {
+                            b"transient" => Classification::Transient,
+                            b"refused" => Classification::Refused,
+                            b"invalid" => Classification::Invalid,
+                            b"cancelled" => Classification::Cancelled,
+                            b"mapped" => return Err(io::Error::other("Source Unavailable").into()),
+                            b"unmapped" => return Err(harmos::Error::Invalid("Unmapped Failure".into())),
+                            _ => Classification::Permanent,
+                        };
+                        Err(harmos::Error::failure(classification, "fixture_failure", "Apply Failed", "Choose Another Input"))
+                    })
+                    .visibility(Visibility::Private)
+                    .replay_safe()
+                    .policy(OperationPolicy {
+                        retries: Some(RetryPolicy {
+                            total_attempts: 3,
+                            initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                )?;
+                ctx.register(
+                    Operation::new("fixture.error_report", async |context: &Context, request: Value| {
+                        let error = match context.operation(PrivateInput { value: request.value }).await {
+                            Err(error) => error,
+                            Ok(_) => panic!("Expected an Operation Failure"),
+                        };
+                        let retry = error.retry();
+                        let value = serde_json::json!({
+                            "kind": error.kind(), "code": error.code(), "message": error.message(), "action": error.action(),
+                            "operation": error.operation(), "retry": {"retryable": retry.retryable, "attempts": retry.attempts,
+                            "max_attempts": retry.max_attempts, "next_after_s": retry.next_after_s},
+                        });
+                        Ok(Value {
+                            value: serde_json::to_vec(&value).unwrap(),
+                        })
+                    })
+                    .visibility(Visibility::Protected),
+                )?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
     } else if mode == "private" {
         Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
-                ctx.register(Operation::new("fixture.own", async |context: &Context, request: Value| {
-                    context.operation(PrivateInput { value: request.value }).await
-                }).visibility(Visibility::Protected))?;
-                ctx.register(Operation::new("fixture.private", retry).visibility(Visibility::Private).replay_safe().policy(OperationPolicy {
-                    retries: Some(RetryPolicy {
-                        total_attempts: 3,
-                        initial: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                ctx.register(
+                    Operation::new("fixture.own", async |context: &Context, request: Value| {
+                        context.operation(PrivateInput { value: request.value }).await
+                    })
+                    .visibility(Visibility::Protected),
+                )?;
+                ctx.register(Operation::new("fixture.private", retry).visibility(Visibility::Private).replay_safe().policy(
+                    OperationPolicy {
+                        retries: Some(RetryPolicy {
+                            total_attempts: 3,
+                            initial: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
-                    ..Default::default()
-                }))?;
+                    },
+                ))?;
                 Ok(())
-            }).expect("Register Plugin Declarations")
+            })
+            .expect("Register Plugin Declarations")
     } else if mode == "retry" {
         Plugin::new("fixture", "1.0.0")
             .register(|ctx| {

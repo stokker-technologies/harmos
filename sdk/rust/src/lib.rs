@@ -100,7 +100,6 @@ pub use error::{Error, Result};
 include!("exports.rs");
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
-use operation::Operation;
 use plugin::Plugin;
 
 // Dependencies Used by the Data Derive and Generated Protobuf Consumers.

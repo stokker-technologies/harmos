@@ -34,8 +34,8 @@ namespace harmos::plugin::detail {
 class PublicationCall final : public Duplex<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse> {
 public:
   // `message_bytes` Bounds Every Encoded Response, So Window Answers Split to Fit It.
-  PublicationCall(const std::vector<StreamDefinition> &streams, const std::vector<OperationDefinition> &operations,
-                  const std::map<std::string, std::string> &requirements, const std::string &plugin, std::size_t message_bytes)
+  PublicationCall(const std::vector<StreamDefinition> &streams, const std::map<std::string, std::string> &requirements,
+                  const std::string &plugin, std::size_t message_bytes)
       : streams_(streams), state_(std::make_shared<Invocation>()), message_bytes_(message_bytes) {
     state_->window_scoped = true;
     state_->requirements = requirements;

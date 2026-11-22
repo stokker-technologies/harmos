@@ -468,6 +468,7 @@ mod tests {
             })),
             details: [("key".into(), "value".into())].into(),
             diagnostics: "fixture_diagnostics".into(),
+            retry: None,
         };
         let error = Error::OperationFailed {
             operation: "fixture.outer".into(),

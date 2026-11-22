@@ -10,6 +10,7 @@ from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_TRANSIENT,
     CLASSIFICATION_UNSPECIFIED,
     Classification,
+    OperationRetry,
 )
 from harmos._wire.model.v1.file_pb2 import (
     UPLOAD_STATE_ABANDONED,
@@ -61,6 +62,8 @@ LaneDeclaration.__module__ = "harmos"
 LaneDeclaration.__qualname__ = "LaneDeclaration"
 Section.__module__ = "harmos"
 Section.__qualname__ = "Section"
+OperationRetry.__module__ = "harmos"
+OperationRetry.__qualname__ = "OperationRetry"
 File.__module__ = "harmos"
 File.__qualname__ = "File"
 FileMetadata.__module__ = "harmos"
@@ -149,6 +152,7 @@ __all__ = [
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",
+    "OperationRetry",
     "PLUGINS",
     "PageRequest",
     "Position",

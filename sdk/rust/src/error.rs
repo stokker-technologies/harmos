@@ -16,14 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{io, result};
+use std::{error, io, result, sync::Arc};
 
 // Third Party Imports
 use tonic::Status;
 
 // Local Imports
-use crate::Classification;
 use crate::model::Failure;
+use crate::{Classification, OperationRetry};
 use harmos_protocol::plugin::response;
 
 /* === Constants === */
@@ -31,6 +31,8 @@ use harmos_protocol::plugin::response;
 /* === Macros === */
 
 /* === Type Aliases === */
+
+pub(crate) type FailureMapper = Arc<dyn Fn(&(dyn error::Error + 'static)) -> Option<Error> + Send + Sync>;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -68,6 +70,53 @@ impl From<Failure> for Error {
 }
 
 impl Error {
+    pub fn kind(&self) -> &str {
+        match self {
+            Self::Failure(failure) => match failure.classification() {
+                Classification::Transient => "transient",
+                Classification::Refused => "refused",
+                Classification::Invalid => "invalid",
+                Classification::Cancelled | Classification::TimedOut => "cancelled",
+                _ => "permanent",
+            },
+            Self::Invalid(_) => "invalid",
+            _ => "permanent",
+        }
+    }
+
+    pub fn code(&self) -> &str {
+        match self {
+            Self::Failure(failure) => &failure.code,
+            Self::Invalid(_) => "invalid",
+            _ => "sdk_error",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn action(&self) -> &str {
+        match self {
+            Self::Failure(failure) => &failure.action,
+            _ => "Inspect Plugin Diagnostics",
+        }
+    }
+
+    pub fn operation(&self) -> &str {
+        match self {
+            Self::Failure(failure) => &failure.operation,
+            _ => "",
+        }
+    }
+
+    pub fn retry(&self) -> OperationRetry {
+        match self {
+            Self::Failure(failure) => failure.retry.clone().unwrap_or_default(),
+            _ => OperationRetry::default(),
+        }
+    }
+
     pub fn failure(classification: Classification, code: impl Into<String>, message: impl Into<String>, action: impl Into<String>) -> Self {
         Failure {
             classification: classification as i32,
@@ -81,7 +130,6 @@ impl Error {
 
     pub(crate) fn response(self, operation: &str, plugin: &str) -> result::Result<response::Result, Status> {
         match self {
-            Self::Transport(status) => Err(status),
             Self::Failure(mut failure) => {
                 if failure.operation.is_empty() {
                     failure.operation = operation.into();

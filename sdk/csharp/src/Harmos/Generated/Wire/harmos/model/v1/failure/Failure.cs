@@ -25,25 +25,30 @@ namespace Harmos;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "Ch1oYXJtb3MvbW9kZWwvdjEvZmFpbHVyZS5wcm90bxIPaGFybW9zLm1vZGVs",
-            "LnYxIp0DCgdGYWlsdXJlEkcKDmNsYXNzaWZpY2F0aW9uGAEgASgOMh8uaGFy",
+            "LnYxItQDCgdGYWlsdXJlEkcKDmNsYXNzaWZpY2F0aW9uGAEgASgOMh8uaGFy",
             "bW9zLm1vZGVsLnYxLkNsYXNzaWZpY2F0aW9uUg5jbGFzc2lmaWNhdGlvbhIS",
             "CgRjb2RlGAIgASgJUgRjb2RlEhgKB21lc3NhZ2UYAyABKAlSB21lc3NhZ2US",
             "FgoGYWN0aW9uGAQgASgJUgZhY3Rpb24SHAoJb3BlcmF0aW9uGAUgASgJUglv",
             "cGVyYXRpb24SFgoGcGx1Z2luGAYgASgJUgZwbHVnaW4SLgoFY2F1c2UYByAB",
             "KAsyGC5oYXJtb3MubW9kZWwudjEuRmFpbHVyZVIFY2F1c2USPwoHZGV0YWls",
             "cxgIIAMoCzIlLmhhcm1vcy5tb2RlbC52MS5GYWlsdXJlLkRldGFpbHNFbnRy",
-            "eVIHZGV0YWlscxIgCgtkaWFnbm9zdGljcxgJIAEoCVILZGlhZ25vc3RpY3Ma",
-            "OgoMRGV0YWlsc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIg",
-            "ASgJUgV2YWx1ZToCOAEq4AEKDkNsYXNzaWZpY2F0aW9uEh4KGkNMQVNTSUZJ",
-            "Q0FUSU9OX1VOU1BFQ0lGSUVEEAASHAoYQ0xBU1NJRklDQVRJT05fUEVSTUFO",
-            "RU5UEAESHAoYQ0xBU1NJRklDQVRJT05fVFJBTlNJRU5UEAISHAoYQ0xBU1NJ",
-            "RklDQVRJT05fQ0FOQ0VMTEVEEAMSHAoYQ0xBU1NJRklDQVRJT05fVElNRURf",
-            "T1VUEAQSGgoWQ0xBU1NJRklDQVRJT05fUkVGVVNFRBAFEhoKFkNMQVNTSUZJ",
-            "Q0FUSU9OX0lOVkFMSUQQBmIGcHJvdG8z"));
+            "eVIHZGV0YWlscxIgCgtkaWFnbm9zdGljcxgJIAEoCVILZGlhZ25vc3RpY3MS",
+            "NQoFcmV0cnkYCiABKAsyHy5oYXJtb3MubW9kZWwudjEuT3BlcmF0aW9uUmV0",
+            "cnlSBXJldHJ5GjoKDERldGFpbHNFbnRyeRIQCgNrZXkYASABKAlSA2tleRIU",
+            "CgV2YWx1ZRgCIAEoCVIFdmFsdWU6AjgBIo8BCg5PcGVyYXRpb25SZXRyeRIc",
+            "CglyZXRyeWFibGUYASABKAhSCXJldHJ5YWJsZRIaCghhdHRlbXB0cxgCIAEo",
+            "BFIIYXR0ZW1wdHMSIQoMbWF4X2F0dGVtcHRzGAMgASgEUgttYXhBdHRlbXB0",
+            "cxIgCgxuZXh0X2FmdGVyX3MYBCABKAFSCm5leHRBZnRlclMq4AEKDkNsYXNz",
+            "aWZpY2F0aW9uEh4KGkNMQVNTSUZJQ0FUSU9OX1VOU1BFQ0lGSUVEEAASHAoY",
+            "Q0xBU1NJRklDQVRJT05fUEVSTUFORU5UEAESHAoYQ0xBU1NJRklDQVRJT05f",
+            "VFJBTlNJRU5UEAISHAoYQ0xBU1NJRklDQVRJT05fQ0FOQ0VMTEVEEAMSHAoY",
+            "Q0xBU1NJRklDQVRJT05fVElNRURfT1VUEAQSGgoWQ0xBU1NJRklDQVRJT05f",
+            "UkVGVVNFRBAFEhoKFkNMQVNTSUZJQ0FUSU9OX0lOVkFMSUQQBmIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Harmos.Classification), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Failure), global::Harmos.Failure.Parser, new[]{ "Classification", "Code", "Message", "Action", "Operation", "Plugin", "Cause", "Details", "Diagnostics" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, })
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Failure), global::Harmos.Failure.Parser, new[]{ "Classification", "Code", "Message", "Action", "Operation", "Plugin", "Cause", "Details", "Diagnostics", "Retry" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.OperationRetry), global::Harmos.OperationRetry.Parser, new[]{ "Retryable", "Attempts", "MaxAttempts", "NextAfterS" }, null, null, null, null)
           }));
     }
     #endregion
@@ -107,6 +112,7 @@ namespace Harmos;
       cause_ = other.cause_ != null ? other.cause_.Clone() : null;
       details_ = other.details_.Clone();
       diagnostics_ = other.diagnostics_;
+      retry_ = other.retry_ != null ? other.retry_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -223,6 +229,18 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "retry" field.</summary>
+    public const int RetryFieldNumber = 10;
+    private global::Harmos.OperationRetry retry_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Harmos.OperationRetry Retry {
+      get { return retry_; }
+      set {
+        retry_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -247,6 +265,7 @@ namespace Harmos;
       if (!object.Equals(Cause, other.Cause)) return false;
       if (!Details.Equals(other.Details)) return false;
       if (Diagnostics != other.Diagnostics) return false;
+      if (!object.Equals(Retry, other.Retry)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -263,6 +282,7 @@ namespace Harmos;
       if (cause_ != null) hash ^= Cause.GetHashCode();
       hash ^= Details.GetHashCode();
       if (Diagnostics.Length != 0) hash ^= Diagnostics.GetHashCode();
+      if (retry_ != null) hash ^= Retry.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -314,6 +334,10 @@ namespace Harmos;
         output.WriteRawTag(74);
         output.WriteString(Diagnostics);
       }
+      if (retry_ != null) {
+        output.WriteRawTag(82);
+        output.WriteMessage(Retry);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -357,6 +381,10 @@ namespace Harmos;
         output.WriteRawTag(74);
         output.WriteString(Diagnostics);
       }
+      if (retry_ != null) {
+        output.WriteRawTag(82);
+        output.WriteMessage(Retry);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -391,6 +419,9 @@ namespace Harmos;
       size += details_.CalculateSize(_map_details_codec);
       if (Diagnostics.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Diagnostics);
+      }
+      if (retry_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Retry);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -431,6 +462,12 @@ namespace Harmos;
       details_.MergeFrom(other.details_);
       if (other.Diagnostics.Length != 0) {
         Diagnostics = other.Diagnostics;
+      }
+      if (other.retry_ != null) {
+        if (retry_ == null) {
+          Retry = new global::Harmos.OperationRetry();
+        }
+        Retry.MergeFrom(other.Retry);
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -490,6 +527,13 @@ namespace Harmos;
             Diagnostics = input.ReadString();
             break;
           }
+          case 82: {
+            if (retry_ == null) {
+              Retry = new global::Harmos.OperationRetry();
+            }
+            input.ReadMessage(Retry);
+            break;
+          }
         }
       }
     #endif
@@ -546,6 +590,322 @@ namespace Harmos;
           }
           case 74: {
             Diagnostics = input.ReadString();
+            break;
+          }
+          case 82: {
+            if (retry_ == null) {
+              Retry = new global::Harmos.OperationRetry();
+            }
+            input.ReadMessage(Retry);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class OperationRetry : pb::IMessage<OperationRetry>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<OperationRetry> _parser = new pb::MessageParser<OperationRetry>(() => new OperationRetry());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<OperationRetry> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Harmos.FailureReflection.Descriptor.MessageTypes[1]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public OperationRetry() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public OperationRetry(OperationRetry other) : this() {
+      retryable_ = other.retryable_;
+      attempts_ = other.attempts_;
+      maxAttempts_ = other.maxAttempts_;
+      nextAfterS_ = other.nextAfterS_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public OperationRetry Clone() {
+      return new OperationRetry(this);
+    }
+
+    /// <summary>Field number for the "retryable" field.</summary>
+    public const int RetryableFieldNumber = 1;
+    private bool retryable_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Retryable {
+      get { return retryable_; }
+      set {
+        retryable_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "attempts" field.</summary>
+    public const int AttemptsFieldNumber = 2;
+    private ulong attempts_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong Attempts {
+      get { return attempts_; }
+      set {
+        attempts_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "max_attempts" field.</summary>
+    public const int MaxAttemptsFieldNumber = 3;
+    private ulong maxAttempts_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong MaxAttempts {
+      get { return maxAttempts_; }
+      set {
+        maxAttempts_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "next_after_s" field.</summary>
+    public const int NextAfterSFieldNumber = 4;
+    private double nextAfterS_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double NextAfterS {
+      get { return nextAfterS_; }
+      set {
+        nextAfterS_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as OperationRetry);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(OperationRetry other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Retryable != other.Retryable) return false;
+      if (Attempts != other.Attempts) return false;
+      if (MaxAttempts != other.MaxAttempts) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(NextAfterS, other.NextAfterS)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Retryable != false) hash ^= Retryable.GetHashCode();
+      if (Attempts != 0UL) hash ^= Attempts.GetHashCode();
+      if (MaxAttempts != 0UL) hash ^= MaxAttempts.GetHashCode();
+      if (NextAfterS != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(NextAfterS);
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Retryable != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Retryable);
+      }
+      if (Attempts != 0UL) {
+        output.WriteRawTag(16);
+        output.WriteUInt64(Attempts);
+      }
+      if (MaxAttempts != 0UL) {
+        output.WriteRawTag(24);
+        output.WriteUInt64(MaxAttempts);
+      }
+      if (NextAfterS != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(NextAfterS);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Retryable != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Retryable);
+      }
+      if (Attempts != 0UL) {
+        output.WriteRawTag(16);
+        output.WriteUInt64(Attempts);
+      }
+      if (MaxAttempts != 0UL) {
+        output.WriteRawTag(24);
+        output.WriteUInt64(MaxAttempts);
+      }
+      if (NextAfterS != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(NextAfterS);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Retryable != false) {
+        size += 1 + 1;
+      }
+      if (Attempts != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Attempts);
+      }
+      if (MaxAttempts != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(MaxAttempts);
+      }
+      if (NextAfterS != 0D) {
+        size += 1 + 8;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(OperationRetry other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Retryable != false) {
+        Retryable = other.Retryable;
+      }
+      if (other.Attempts != 0UL) {
+        Attempts = other.Attempts;
+      }
+      if (other.MaxAttempts != 0UL) {
+        MaxAttempts = other.MaxAttempts;
+      }
+      if (other.NextAfterS != 0D) {
+        NextAfterS = other.NextAfterS;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Retryable = input.ReadBool();
+            break;
+          }
+          case 16: {
+            Attempts = input.ReadUInt64();
+            break;
+          }
+          case 24: {
+            MaxAttempts = input.ReadUInt64();
+            break;
+          }
+          case 33: {
+            NextAfterS = input.ReadDouble();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Retryable = input.ReadBool();
+            break;
+          }
+          case 16: {
+            Attempts = input.ReadUInt64();
+            break;
+          }
+          case 24: {
+            MaxAttempts = input.ReadUInt64();
+            break;
+          }
+          case 33: {
+            NextAfterS = input.ReadDouble();
             break;
           }
         }

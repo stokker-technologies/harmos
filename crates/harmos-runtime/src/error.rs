@@ -20,6 +20,8 @@ use std::{error, iter, sync::Arc};
 use tonic::Status;
 
 // Local Imports
+use crate::plugin::grpc::CallError;
+use harmos_protocol::model;
 
 /* === Constants === */
 
@@ -308,6 +310,21 @@ impl<E> From<harmos_operations::operations::ContextError> for Error<E> {
 }
 
 impl Error {
+    pub(crate) fn with_retry(self, operation: &str, retry: model::OperationRetry) -> Self {
+        let Self::OperationFailed { operation: failed, source } = self else {
+            return self;
+        };
+        let Some(CallError::Remote(failure)) = source.downcast_ref() else {
+            return Self::OperationFailed { operation: failed, source };
+        };
+        let mut wire = model::Failure::from(failure.as_ref());
+        if wire.retry.is_none() || wire.operation == operation {
+            wire.retry = Some(retry);
+        }
+        let source = Arc::new(CallError::Remote(Box::new(wire.into())));
+        Self::OperationFailed { operation: failed, source }
+    }
+
     pub(crate) fn explicit_status(&self) -> Option<Status> {
         let mut error = self;
         for _ in 0..32 {

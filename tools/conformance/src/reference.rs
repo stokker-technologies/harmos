@@ -470,12 +470,7 @@ async fn invoke(
                 payload: request.payload,
                 fingerprint: fixture::fingerprint("conformance.host.echo"),
                 policy: Some(OperationPolicy {
-                    retries: Some(RetryPolicy {
-                        total_attempts: 3,
-                        initial: Some(Duration { seconds: 1, nanos: 0 }),
-                        maximum: Some(Duration { seconds: 4, nanos: 0 }),
-                        deterministic_jitter: true,
-                    }),
+                    retries: Some(RetryPolicy { total_attempts: 3, ..Default::default() }),
                     ..Default::default()
                 }),
                 ..Default::default()

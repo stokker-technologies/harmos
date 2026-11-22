@@ -112,8 +112,10 @@ private:
 
 class InvocationCall final : public Duplex<plugin::v1::InstanceInvokeRequest, plugin::v1::InstanceInvokeResponse> {
 public:
-  InvocationCall(const vector<detail::OperationDefinition> &operations, const std::map<string, string> &requirements, const string &plugin)
+  InvocationCall(const vector<detail::OperationDefinition> &operations, const std::map<string, string> &requirements, const string &plugin,
+                 std::function<optional<OperationError>(std::exception_ptr)> mapper)
       : operations_(operations), state_(std::make_shared<detail::Invocation>()) {
+    failure_mapper_ = std::move(mapper);
     state_->requirements = requirements;
     state_->plugin = plugin;
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
@@ -169,14 +171,26 @@ public:
         try {
           Context context(state_);
           frame.mutable_response()->set_payload(operation->handler(context, state_->request.payload()));
-        } catch (const Failure &failure) {
+        } catch (const OperationError &failure) {
           *frame.mutable_response()->mutable_failure() = failure.value;
-        } catch (const TransportError &error) {
-          end({static_cast<StatusCode>(error.code), error.what()});
-          return;
         } catch (const exception &error) {
-          end({StatusCode::INTERNAL, error.what()});
-          return;
+          auto mapped = failure_mapper_ ? failure_mapper_(std::current_exception()) : optional<OperationError>{};
+          auto *failure = frame.mutable_response()->mutable_failure();
+          if (mapped) {
+            *failure = mapped->value;
+          } else {
+            failure->set_classification(model::v1::CLASSIFICATION_PERMANENT);
+            failure->set_code("handler_failed");
+            failure->set_message(error.what());
+            failure->set_action("Inspect Plugin Diagnostics");
+          }
+        }
+        auto *failure = frame.mutable_response()->has_failure() ? frame.mutable_response()->mutable_failure() : nullptr;
+        if (failure) {
+          if (failure->operation().empty())
+            failure->set_operation(state_->request.operation());
+          if (failure->plugin().empty())
+            failure->set_plugin(state_->plugin);
         }
         try {
           write(std::move(frame));
@@ -208,8 +222,7 @@ public:
       {
         lock_guard lock(state_->mutex);
         for (const auto &[id, promise] : state_->pending)
-          if (!state_->guards.contains(id))
-            pending.push_back(id);
+          pending.push_back(id);
         for (const auto &[id, watch] : state_->watches)
           pending.push_back(id);
       }
@@ -234,7 +247,7 @@ public:
         for (auto id : pending) {
           auto found = state_->pending.find(id);
           if (found != state_->pending.end()) {
-            found->second.set_exception(std::make_exception_ptr(Failure(failure)));
+            found->second.set_exception(std::make_exception_ptr(OperationError(failure)));
             state_->pending.erase(found);
           }
           auto watching = state_->watches.find(id);
@@ -259,6 +272,7 @@ public:
   }
 
 private:
+  std::function<optional<OperationError>(std::exception_ptr)> failure_mapper_;
   const vector<detail::OperationDefinition> &operations_;
   shared_ptr<detail::Invocation> state_;
   bool started_ = false;
@@ -285,6 +299,7 @@ public:
   vector<detail::StreamDefinition> streams;
   std::map<string, string> requirements;
   vector<std::function<void()>> cleanup;
+  std::function<optional<OperationError>(std::exception_ptr)> failure_mapper;
   std::function<void()> stop;
   std::once_flag cleanup_once;
   std::exception_ptr cleanup_failure;
@@ -316,10 +331,10 @@ public:
     return reactor;
   }
   ServerBidiReactor<plugin::v1::InstanceInvokeRequest, plugin::v1::InstanceInvokeResponse> *Invoke(CallbackServerContext *) override {
-    return new InvocationCall(operations, requirements, description.id());
+    return new InvocationCall(operations, requirements, description.id(), failure_mapper);
   }
   ServerBidiReactor<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
-    return new detail::PublicationCall(streams, operations, requirements, description.id(), description.message_bytes());
+    return new detail::PublicationCall(streams, requirements, description.id(), description.message_bytes());
   }
   ServerUnaryReactor *Stop(CallbackServerContext *context, const plugin::v1::InstanceStopRequest *,
                            plugin::v1::InstanceStopResponse *) override {
@@ -424,6 +439,7 @@ Listener Plugin::start(string address, bool remote) const {
   service.operations = operations_;
   service.streams = streams_;
   service.cleanup = cleanup_;
+  service.failure_mapper = failure_mapper_;
   for (const auto &[requirement, types] : requirements_)
     service.requirements[requirement.id()] = requirement.fingerprint();
   service.stop = [owned = state.get(), remote] {

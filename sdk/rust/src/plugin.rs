@@ -33,6 +33,7 @@ pub use crate::stream::{Collection, CollectionOutput, Observer, Publisher, Strea
 // Standard Library Imports
 use std::{
     collections::{HashMap, HashSet},
+    error,
     sync::Arc,
 };
 
@@ -42,7 +43,7 @@ use prost_types::FileDescriptorSet;
 use semver::Version;
 
 // Local Imports
-use crate::{Error, Message, Result, message::merge_types, stream::StreamDefinition};
+use crate::{Error, Result, message::merge_types, stream::StreamDefinition};
 use harmos_protocol::model::Protobuf;
 use harmos_protocol::model::Requirement;
 use harmos_protocol::model::Section;
@@ -78,6 +79,7 @@ pub struct Plugin {
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
     pub(crate) transfer: StorageTransferSettings,
+    pub(crate) failure_mapper: Option<crate::error::FailureMapper>,
 }
 
 pub(crate) struct Required {
@@ -142,7 +144,14 @@ impl Plugin {
             cleanup: Vec::new(),
             remote: false,
             transfer: Default::default(),
+            failure_mapper: None,
         }
+    }
+
+    /// Map an Unstructured Handler Error Before the Permanent Fallback.
+    pub fn failure_mapper(mut self, mapper: impl Fn(&(dyn error::Error + 'static)) -> Option<Error> + Send + Sync + 'static) -> Self {
+        self.failure_mapper = Some(Arc::new(mapper));
+        self
     }
 
     pub fn transfer(mut self, settings: StorageTransferSettings) -> Self {
@@ -496,7 +505,8 @@ mod tests {
 #[cfg(test)]
 mod registration_tests {
     use super::{Contribution, Plugin, Registrar, Registration};
-    use crate::{Context, Message, Operation, Result, Visibility};
+    use crate::plugin::Operation;
+    use crate::{Context, Message, Result, Visibility};
 
     mod settings {
         use super::{Contribution, Registrar, Registration};

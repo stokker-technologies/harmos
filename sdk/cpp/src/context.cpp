@@ -17,7 +17,6 @@
 #include "harmos/host/v1/time.pb.h"
 #include "harmos/plugin/v1/subscriptions.pb.h"
 #include "invocation.hpp"
-#include <absl/numeric/int128.h>
 #include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/time_util.h>
 
@@ -50,10 +49,6 @@ using std::vector;
 /* === Public Functions === */
 
 namespace harmos::plugin {
-namespace {
-const Operation<::harmos::host::v1::TimeSleepRequest, ::harmos::host::v1::TimeSleepResponse> SLEEP("harmos.plugin.v1.Time/Sleep",
-                                                                                                   VISIBILITY_PUBLIC);
-}
 namespace {
 class ChildWatch final : public detail::Watch {
 public:
@@ -94,7 +89,7 @@ public:
     state->watches.erase(call);
     if (watch->terminal) {
       if (watch->terminal->has_failure())
-        throw Failure(watch->terminal->failure());
+        throw OperationError(watch->terminal->failure());
       return {};
     }
     throw TransportError(14, "Watch: Invocation Closed");
@@ -192,7 +187,7 @@ const string &Context::scope() const {
     failure.set_classification(::harmos::model::v1::CLASSIFICATION_REFUSED);
     failure.set_code("scope_required");
     failure.set_message("Invocation Scope Is Required: the caller must bind a scope");
-    throw Failure(std::move(failure));
+    throw OperationError(std::move(failure));
   }
   return scope_;
 }
@@ -201,17 +196,11 @@ namespace {
 shared_ptr<detail::Invocation> transport(const shared_ptr<detail::Invocation> &state) {
   return state->transport ? state->transport : state;
 }
-optional<string> cancellation(shared_ptr<detail::Invocation> state) {
-  while (state) {
-    if (state->cancelled)
-      return state->cancelled;
-    auto caller = state->caller;
-    if (!caller && state->transport && state->transport != state)
-      caller = state->transport;
-    if (caller == state)
-      break;
-    state = std::move(caller);
-  }
+optional<string> cancellation(const shared_ptr<detail::Invocation> &state) {
+  if (state->cancelled)
+    return state->cancelled;
+  if (state->transport)
+    return state->transport->cancelled;
   return {};
 }
 ::harmos::model::v1::Failure interrupted(const shared_ptr<detail::Invocation> &state, ::harmos::model::v1::Classification kind,
@@ -235,9 +224,9 @@ void cancel_owned(const shared_ptr<detail::Invocation> &state, const string &rea
       auto found = root->pending.find(id);
       if (found == root->pending.end())
         continue;
-      found->second.set_exception(std::make_exception_ptr(Failure(interrupted(state, kind, reason))));
+      found->second.set_exception(std::make_exception_ptr(OperationError(interrupted(state, kind, reason))));
       root->pending.erase(found);
-      root->guards.erase(id);
+
       root->retired.insert(id);
       cancelled.push_back(id);
     }
@@ -285,18 +274,14 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
       throw TransportError(3, "Invoke " + request.operation() + ": Child Scope Is Closed");
     if (root->closed)
       throw TransportError(14, "Invoke: Invocation Closed");
-    if (!state_->background)
-      if (auto reason = cancellation(state_))
-        throw Failure(interrupted(state_, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
+    if (auto reason = cancellation(state_))
+      throw OperationError(interrupted(state_, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
     if (root->next == UINT64_MAX)
       throw TransportError(8, "Invoke " + request.operation() + ": Child Identity Exhausted");
     request.set_call(++root->next);
-    request.set_background(state_->background);
     auto &pending = root->pending[request.call()];
     result = pending.get_future().share();
     state_->owned.insert(request.call());
-    if (state_->background)
-      root->guards.insert(request.call());
     if (cancel)
       *cancel = [root, owner = state_, id = request.call()] {
         {
@@ -304,10 +289,10 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
           auto found = root->pending.find(id);
           if (found == root->pending.end())
             return;
-          found->second.set_exception(
-              std::make_exception_ptr(Failure(interrupted(owner, ::harmos::model::v1::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
+          found->second.set_exception(std::make_exception_ptr(
+              OperationError(interrupted(owner, ::harmos::model::v1::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
           root->pending.erase(found);
-          root->guards.erase(id);
+
           root->retired.insert(id);
           root->changed.notify_all();
         }
@@ -379,12 +364,13 @@ void cancel_children(const shared_ptr<Invocation> &state, const string &reason) 
   {
     lock_guard lock(root->mutex);
     for (auto &[id, promise] : root->pending) {
-      promise.set_exception(std::make_exception_ptr(Failure(interrupted(state, ::harmos::model::v1::CLASSIFICATION_CANCELLED, reason))));
+      promise.set_exception(
+          std::make_exception_ptr(OperationError(interrupted(state, ::harmos::model::v1::CLASSIFICATION_CANCELLED, reason))));
       root->retired.insert(id);
       cancelled.push_back(id);
     }
     root->pending.clear();
-    root->guards.clear();
+
     for (auto &[id, watch] : root->watches) {
       plugin::v1::ChildResponse terminal;
       terminal.set_call(id);
