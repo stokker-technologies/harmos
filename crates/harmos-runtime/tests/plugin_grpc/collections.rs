@@ -17,7 +17,7 @@
 
 // Standard Library Imports
 use std::iter;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::atomic::Ordering;
 use std::{
     collections::BTreeMap,
@@ -26,7 +26,7 @@ use std::{
 };
 
 // Third Party Imports
-use futures_util::stream;
+use futures_util::{StreamExt, stream};
 use prost::Message;
 use prost_types::Timestamp;
 use serde_json::Value;
@@ -45,7 +45,8 @@ use harmos_protocol::{
 };
 use harmos_runtime::clock::{Clock, Source};
 use harmos_runtime::operations::CallContext;
-use harmos_runtime::plugin::grpc::{Error, Placement, PlacementSettings};
+use harmos_runtime::plugin::grpc::{Error, IntervalLag, Placement, PlacementSettings};
+use harmos_runtime::streams::Item;
 
 /* === Constants === */
 
@@ -210,6 +211,57 @@ fn settings() -> PlacementSettings {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn collection_lag_recovery() {
+    // Keep Both the Storage Publications and Live Watchers to Observe the Same Hole.
+    let host = HostFixture::new().await;
+    *host.signals.publications.lock().unwrap() = Some(Vec::new());
+    let fixture = Fixture::start(false, false, 0).await;
+    let settings = PlacementSettings {
+        interval_lag: IntervalLag::new(NonZeroU32::new(2).unwrap(), NonZeroU32::new(3).unwrap()),
+        ..settings()
+    };
+    let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings).await.unwrap();
+    let reading = host.clock.read();
+    let start: Timestamp = reading.date.into();
+    let start_micros = start.seconds * 1_000_000 + i64::from(start.nanos).div_euclid(1000);
+    let mut alpha = host.watch("fixture.alpha");
+    let mut beta = host.watch("fixture.beta");
+
+    // One Jump Skips Thirteen Ticks; the Next Window Covers Only Ticks Fourteen Through Sixteen.
+    host.clock.registered_at(reading.instant + Duration::from_secs(4)).await;
+    host.clock.advance_by(Duration::from_secs(13));
+    host.clock.registered_at(reading.instant + Duration::from_secs(16)).await;
+    assert!(fixture.ticks.lock().unwrap().is_empty());
+    host.clock.advance_by(Duration::from_secs(3));
+    stored(&host, 12).await;
+    for watching in [&mut alpha, &mut beta] {
+        assert!(matches!(watching.next().await, Some(Item::Gap { missed: 13 })));
+        let Some(Item::Row(row)) = watching.next().await else { panic!("Expected a Resumed Row") };
+        assert_eq!(row.value.published_unix_micros, Some(start_micros + 14_000_000));
+    }
+
+    // All Later Rows Arrive, Including a Member That Emits Several Rows per Tick.
+    host.clock.registered_at(reading.instant + Duration::from_secs(20)).await;
+    host.clock.advance_by(Duration::from_secs(4));
+    stored(&host, 28).await;
+    assert_eq!(fixture.ticks.lock().unwrap().get(""), Some(&7));
+    {
+        let publications = host.signals.publications.lock().unwrap();
+        for (id, per_tick) in [("fixture.alpha", 1), ("fixture.beta", 3)] {
+            let rows = publications.as_ref().unwrap().iter().filter(|(definition, _)| definition.id() == id).collect::<Vec<_>>();
+            assert_eq!(rows.len(), 7 * per_tick);
+            assert_eq!(rows[0].1.missed(), 13);
+            assert!(rows[1..].iter().all(|(_, row)| row.missed() == 0));
+            assert_eq!(rows.last().unwrap().1.published_unix_micros(), Some(start_micros + 20_000_000));
+        }
+    }
+    assert!(attached.status().borrow().failure.is_none());
+    drop((alpha, beta));
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
 
 #[tokio::test]
 async fn collection_ticks_are_shared_sparse_ordered_and_host_stamped() {
@@ -399,8 +451,8 @@ async fn collection_backpressure() {
     let activation = attached.activation().unwrap();
     let first = host.runtime.bind_grpc(&activation, "first", first_clock, &CallContext::default()).await.unwrap();
     let second = host.runtime.bind_grpc(&activation, "second", second_clock, &CallContext::default()).await.unwrap();
-    first.start_samples(["alpha", "beta"]).await.unwrap();
-    second.start_samples(["alpha", "beta"]).await.unwrap();
+    first.start_samples(["fixture.alpha", "fixture.beta"]).await.unwrap();
+    second.start_samples(["fixture.alpha", "fixture.beta"]).await.unwrap();
 
     // Hold Ingest Before Letting Each Burst Exceed the Retained Window.
     for window in 1..=2 {
@@ -425,7 +477,7 @@ async fn collection_backpressure() {
     {
         let rows = host.stored.lock().unwrap();
         for scope in ["first", "second"] {
-            for id in ["alpha", "beta"] {
+            for id in ["fixture.alpha", "fixture.beta"] {
                 let actual = rows
                     .iter()
                     .zip(&values)
@@ -435,7 +487,7 @@ async fn collection_backpressure() {
                     })
                     .map(|(_, value)| value["now"]["seconds"].as_i64().unwrap())
                     .collect::<Vec<_>>();
-                let expected = if id == "alpha" {
+                let expected = if id == "fixture.alpha" {
                     (1..=8).collect::<Vec<_>>()
                 } else {
                     (1..=8).flat_map(|tick| (0..3).map(move |index| tick * 10 + index)).collect::<Vec<_>>()
@@ -467,7 +519,7 @@ async fn cancel_backpressured_collection() {
     let attached = host.runtime.attach_grpc(Placement::Remote(fixture.remote.address.clone()), settings).await.unwrap();
     let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = host.runtime.bind_grpc(&attached.activation().unwrap(), "first", clock, &CallContext::default()).await.unwrap();
-    binding.start_samples(["alpha", "beta"]).await.unwrap();
+    binding.start_samples(["fixture.alpha", "fixture.beta"]).await.unwrap();
     host.signals.storage_hold.store(true, Ordering::SeqCst);
     let advancing = time.advance_by(Duration::from_secs(4));
     tokio::pin!(advancing);

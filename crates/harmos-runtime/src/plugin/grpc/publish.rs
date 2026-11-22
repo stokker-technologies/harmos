@@ -108,6 +108,7 @@ struct Cadence {
     period: Duration,
     window: Duration,
     lag: Duration,
+    consecutive_lag_windows: u32,
 }
 
 /// What Lets the Unscoped Demand Grant: Something Watches Its Stream and No Scope of Its Activation Samples It.
@@ -568,6 +569,7 @@ fn cadence(
         period,
         window,
         lag: settings.interval_lag.of(window),
+        consecutive_lag_windows: settings.interval_lag.consecutive_windows().get(),
     }))
 }
 
@@ -738,7 +740,13 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
     };
     let outcome = {
         let work = async {
-            let Some(Cadence { period, window, lag }) = cadence else {
+            let Some(Cadence {
+                period,
+                window,
+                lag,
+                consecutive_lag_windows,
+            }) = cadence
+            else {
                 let row = row.as_ref().expect("device stream row");
                 // A Device Stream Publishes Whenever Its Device Produces a Sample.
                 let mut sequence = 0;
@@ -780,6 +788,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                                 published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
                                 context: row_context(&operations, sample.at),
                             },
+                            0,
                             &[clock, &host],
                         )
                         .await
@@ -795,6 +804,8 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
             let mut origin = clock.read();
             let mut granted = 0_u128;
             let mut sequence = 0_u64;
+            let mut lagging = 0_u32;
+            let mut missed = BTreeMap::<String, u64>::new();
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
             let mut active = BTreeSet::new();
             loop {
@@ -813,6 +824,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     activity.wait(gate.until(true)).await;
                     origin = clock.read();
                     granted = 0;
+                    lagging = 0;
                     continue;
                 }
                 let due_nanos = (granted + 1) * period_nanos;
@@ -846,16 +858,32 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                 }
                 // One Reading Ends the Window: a Late or Advanced Clock Extends It to Where Time Reached.
                 let reading = clock.read();
-                // A Window Ending Further Past Its End Than the Lag Tolerates Fails the Demand Instead of Growing.
+                let through = reading.instant.saturating_duration_since(origin.instant).as_nanos() / period_nanos;
+                // Skip Stale Samples Without Ending Any Member's Publication or Enlarging Its Next Window.
                 let behind = reading.instant.saturating_duration_since(end);
                 if behind > lag {
-                    return Err(Error::Lagging {
-                        stream: stream.clone(),
-                        lag: behind,
-                        limit: lag,
-                    });
+                    lagging += 1;
+                    if lagging >= consecutive_lag_windows {
+                        return Err(Error::Lagging {
+                            stream: stream.clone(),
+                            lag: behind,
+                            limit: lag,
+                            consecutive_windows: lagging,
+                        });
+                    }
+                    let skipped = u64::try_from(through - granted).map_err(|_| invalid("Skip Sample Windows: too many samples are due"))?;
+                    let affected = if members.is_empty() { BTreeSet::from([stream.clone()]) } else { active.clone() };
+                    for id in affected {
+                        let pending = missed.entry(id).or_default();
+                        *pending = pending.checked_add(skipped).ok_or_else(|| invalid("Skip Sample Windows: gap extent overflow"))?;
+                    }
+                    granted = through;
+                    if let Some(schedule) = &schedule {
+                        schedule.due(origin.instant + span((granted + 1) * period_nanos)?);
+                    }
+                    continue;
                 }
-                let through = reading.instant.saturating_duration_since(origin.instant).as_nanos() / period_nanos;
+                lagging = 0;
                 if through <= granted {
                     continue;
                 }
@@ -924,6 +952,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     active.clear();
                     origin = clock.read();
                     granted = 0;
+                    lagging = 0;
                     continue;
                 };
                 // Accepted Ingestion Is Host Work: It Holds Both the Demand's and the Runtime Clock.
@@ -971,7 +1000,11 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     }
                     for (writer, row) in staged {
                         let id = writer.stream().definition().id().to_owned();
-                        let receipt = writer.admit_clocked_row(row, &[clock, &host]).await.map_err(|error| admission(&id, error))?;
+                        let receipt = writer
+                            .admit_clocked_row(row, missed.get(&id).copied().unwrap_or_default(), &[clock, &host])
+                            .await
+                            .map_err(|error| admission(&id, error))?;
+                        missed.remove(&id);
                         ingested_members.insert(id, (writer, receipt));
                     }
                     for (writer, receipt) in ingested_members.values() {
@@ -996,12 +1029,14 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                                             published_unix_micros: Some(first.div_euclid(1000)),
                                             context: context.clone(),
                                         },
+                                        missed.get(&stream).copied().unwrap_or_default(),
                                         &[clock, &host],
                                     )
                                     .await
                                     .map_err(|error| admission(&stream, error))?,
                             );
                             ingested_through = receipt;
+                            missed.remove(&stream);
                         }
                     }
                     let receipt = receipt.expect("an answered window has at least one part");

@@ -21,8 +21,9 @@ mod support;
 
 // Standard Library Imports
 use std::{
+    num::NonZeroUsize,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime},
@@ -65,6 +66,7 @@ criterion::criterion_group!(benches, benchmarks);
 #[derive(Default)]
 struct Counter {
     samples: AtomicU64,
+    missed: AtomicU64,
     changed: Notify,
 }
 
@@ -102,6 +104,8 @@ impl StreamConsumer<support::Bank> for Count {
 
     async fn drain(&mut self, batch: Batch<support::Bank>) -> Cursor {
         let samples = batch.publications().map(|(_, _, row)| count(row.value.payload())).sum::<u64>();
+        let missed = batch.publications().map(|(_, _, row)| row.value.missed()).sum::<u64>();
+        self.0.missed.fetch_add(missed, Ordering::SeqCst);
         self.1 = batch.reaches();
         if samples > 0 {
             self.0.samples.fetch_add(samples, Ordering::SeqCst);
@@ -137,7 +141,7 @@ impl Host {
         let settings = PlacementSettings {
             reconnect_delay: Duration::from_secs(1),
             stop_grace: Duration::from_secs(30),
-            stream_window: std::num::NonZeroUsize::new(64).unwrap(),
+            stream_window: NonZeroUsize::new(64).unwrap(),
             interval_window: case.window,
             interval_lag: Default::default(),
         };
@@ -203,8 +207,8 @@ impl Case<'_> {
         let samples = self.samples();
         let host = executor.block_on(Host::start(self));
         // Every Stream Publishes Its First Window, Then One Iteration Probes the Case. A Host That Falls
-        // Behind the Declared Rate Fails Fast With the Demand's Named Error; One That Neither Keeps Up
-        // Nor Fails Within the Probe Is Reported as Not Sustained. Neither Case Is Measured.
+        // Behind Skips Windows With Explicit Gaps Before Persistent Lag Fails Its Demand. A Case With
+        // Gaps or Without Enough Samples Within the Probe Is Reported as Not Sustained and Is Not Measured.
         let probe = executor.block_on(async {
             tokio::time::timeout(PROBE, async {
                 host.advance(samples / WINDOWS).await?;
@@ -215,7 +219,7 @@ impl Case<'_> {
         match probe {
             Ok(Ok(())) => {}
             Ok(Err(failure)) => {
-                println!("windows/{}/{}: failed fast: {failure}", self.name, self.streams);
+                println!("windows/{}/{}: publication failed: {failure}", self.name, self.streams);
                 executor.block_on(host.stop());
                 return;
             }
@@ -231,7 +235,13 @@ impl Case<'_> {
                 return;
             }
         }
-        let failed = std::sync::Mutex::new(None);
+        let missed = host.counter.missed.load(Ordering::SeqCst);
+        if missed > 0 {
+            println!("windows/{}/{}: not sustained, skipped {missed} ticks during the probe", self.name, self.streams);
+            executor.block_on(host.stop());
+            return;
+        }
+        let failed = Mutex::new(None);
         group.throughput(Throughput::Elements(samples));
         group.bench_function(BenchmarkId::new(self.name, self.streams), |bencher| {
             bencher.iter_custom(|iterations| {
@@ -253,7 +263,11 @@ impl Case<'_> {
             });
         });
         if let Some(failure) = failed.into_inner().unwrap() {
-            println!("windows/{}/{}: failed fast during measurement, figures void: {failure}", self.name, self.streams);
+            println!("windows/{}/{}: publication failed during measurement, figures void: {failure}", self.name, self.streams);
+        }
+        let missed = host.counter.missed.load(Ordering::SeqCst);
+        if missed > 0 {
+            println!("windows/{}/{}: skipped {missed} ticks during measurement, figures void", self.name, self.streams);
         }
         executor.block_on(host.stop());
     }

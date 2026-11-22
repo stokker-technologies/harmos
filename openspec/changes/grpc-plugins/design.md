@@ -1,5 +1,30 @@
 # gRPC Plugins Design
 
+## Interval Lag Recovery
+
+The locked owner decision supersedes the earlier window-overload fail-fast rule.
+`PlacementSettings::interval_lag` skips overdue samples instead of ending a demand.
+`IntervalLag::new(windows, consecutive_windows)` owns both positive bounds; defaults
+are ten window lengths of tolerated lag and three consecutive lagging wakes before
+failure. A single clock jump counts once, regardless of skipped windows; a timely
+wake or paused demand resets persistence. No deadline or pool bound changes.
+
+Skip every due tick through the current clock reading, retain the origin's grid,
+and schedule the next ungranted tick. Do not advance the carrier sequence for ticks
+never granted. Carry the skipped tick count into the existing `missed` metadata on
+the next admitted row, once per selected collection member, including across empty
+ticks. Storage receives that extent and live subscribers receive the existing Gap
+or Missed item before resumed rows. For sparse collections the extent counts missed
+ticks, since their unobserved row multiplicity is unknowable. A persistent failure
+names the stream, measured lag, configured bound, consecutive count and corrective
+action; attachment or scope settlement reports it through the existing error path.
+Benchmarks count missed ticks and invalidate throughput with gaps.
+
+Owner documentation: `docs/project/architecture.md:1356` must describe recovery,
+gap extents and persistence instead of immediate lag failure. README remains accurate.
+The old fail-fast regression is SUPERSEDED and is removed with that behavior;
+replacement tests prove recovery, persistence reset, failure and collection delivery.
+
 ## Shared Owners
 
 Plugin description admission owns namespace validation once, in
@@ -208,6 +233,13 @@ protocol bindings remain tracked. Documentation changes are reported to the owne
 
 ## Existing Overlaps Requiring Owner Direction
 
+- `crates/harmos-runtime/tests/plugin_grpc/support.rs::binary` and
+  `crates/harmos-runtime/tests/support/fixtures.rs::binary` both resolve fixture
+  executables from Nextest, Cargo or archived artifacts. gRPC stories call the
+  former, which also falls back to target/debug; shared fixture consumers call
+  the latter. Prefer one shared resolver and delete the gRPC-local resolver after
+  owner direction. The missing executable prerequisite requires a fixture build,
+  not another resolver; this delivery retains both existing paths.
 - `crates/harmos-runtime/src/state/capture.rs` has Callback and Managed journal
   capture. `Builder::require_capture` serves callback consumers;
   `Builder::managed_storage` serves StateBackend consumers. Both acknowledge
@@ -873,8 +905,8 @@ auto reply = ctx.operation(thermal::v1::SetTemperature{.target = 85});
   replacement, samples an interval stream only while something watches it: a
   `PublishedStream::watch()` handle or a plugin listener. It starts from a fresh origin when the first watcher appears and stops when the last
   leaves. Interval sampling is granted as windows (operation-grammar design, Windowed Interval
-  Batches), and a demand that cannot keep up fails fast with an error naming its stream and
-  action (Overload Fails Fast there).
+  Batches). The Interval Lag Recovery decision above replaces immediate lag failure;
+  pool exhaustion and a window too large for the pool retain their actionable failures.
 - Guests cannot hold a call open, so they declare no streams and no observers.
 - `PlacementSettings.stream_window` is required and is a positive retained-row capacity per
   stream supplied by the consumer. Harmos supplies no implicit storage budget.

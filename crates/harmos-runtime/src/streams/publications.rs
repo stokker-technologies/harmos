@@ -24,7 +24,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::definition::{Contract, Windows};
 use super::{Demand, Holding, Item, Query, StreamManager, Wired, window};
-use crate::{Application, state::Position, streams::Definition};
+use crate::{Application, clock::Clock, state::Position, streams::Definition};
 use harmos_operations::StreamDeclaration;
 use harmos_operations::inventory::publications;
 
@@ -195,7 +195,7 @@ impl StreamWriter {
 
     /// Wait for Ingest Room and Admit a Row Holding Every Clock Until All Feeds Have Drained It.
     pub(crate) async fn admit_clocked_row(
-        &self, row: PublicationRow, clocks: &[&crate::clock::Clock],
+        &self, row: PublicationRow, missed: u64, clocks: &[&Clock],
     ) -> Result<u64, StreamPublicationError> {
         // Serialize Shared Scoped Writers While Ingest Makes Room.
         let _admission = self.admission.lock().await;
@@ -204,7 +204,7 @@ impl StreamWriter {
         loop {
             progress.borrow_and_update();
             let activities = clocks.iter().map(|clock| clock.activity("stream storage delivery")).collect();
-            match self.admit_at(&mut row, None, 0, Some(activities)) {
+            match self.admit_at(&mut row, None, missed, Some(activities)) {
                 Ok((_, cursor)) => return Ok(cursor),
                 Err(StreamPublicationError::Backlog) => {}
                 Err(error) => return Err(error),
