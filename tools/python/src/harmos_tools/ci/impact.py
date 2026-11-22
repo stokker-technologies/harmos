@@ -74,7 +74,7 @@ def classify(paths: Iterable[str] | None) -> frozenset[str]:
         parts = PurePosixPath(path).parts
         if not path or path.startswith("/") or "\\" in path or any(part in {".", ".."} for part in parts):
             return frozenset({"all"})
-        if path.startswith(("docs/", "openspec/", "sites/docs/", "tools/python/src/harmos_tools/docs/")) or path.endswith(".md"):
+        if path.startswith(("docs/", "sites/docs/", "tools/python/src/harmos_tools/docs/")) or path.endswith(".md"):
             classes.add("docs")
         elif (
             path.startswith((".github/", "proto/", "tools/", ".cargo/"))
