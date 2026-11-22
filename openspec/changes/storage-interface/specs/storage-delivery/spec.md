@@ -21,3 +21,14 @@ Guest and gRPC plugins SHALL register validated windows and writer leases throug
 #### Scenario: Guest Staging Remains Atomic
 - **WHEN** a guest activation stages windows and rows before its generation commits or aborts
 - **THEN** the shared registration preserves staged visibility, original generation identity and rollback of an aborted activation
+
+### Requirement: One Admission Generation Allocator
+Guest and gRPC activations SHALL obtain their publication generation from one monotonic admission allocator. For each plugin identity, later activations SHALL have greater generations across transport changes, restarts and fresh attachments within a host lifetime. Attachment numbering SHALL serve reconnect reporting only and SHALL NOT identify publications. Retained publications SHALL keep their original admission generation.
+
+#### Scenario: Alternating Transports for One Identity
+- **WHEN** guest and gRPC activations admit the same plugin identity in succession
+- **THEN** their generations come from the same increasing sequence, including after a new attachment
+
+#### Scenario: Reconnect Preserves Original Rows
+- **WHEN** a gRPC activation reconnects after admitting rows that storage has retained
+- **THEN** new rows report its new admission generation and earlier rows retain their old generation
