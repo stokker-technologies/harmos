@@ -36,7 +36,6 @@ use tokio::sync::watch;
 // Local Imports
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
-use harmos_protocol::model::Visibility;
 use harmos_protocol::plugin::GuestInitialize;
 use harmos_protocol::plugin::GuestInvocation;
 use harmos_protocol::plugin::GuestPrepare;
@@ -329,15 +328,6 @@ impl Session {
             },
             self.registration.plugin.id.clone(),
             crate::Plugin::requirements(declarations),
-        );
-        context.local = Arc::new(
-            self.registration
-                .plugin
-                .operations
-                .iter()
-                .filter(|operation| operation.contract.visibility == Visibility::Private as i32)
-                .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
-                .collect(),
         );
         context.child = Some(self.transport(invocation.context, false));
         context.values = invocation.values;

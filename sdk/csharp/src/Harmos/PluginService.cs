@@ -37,7 +37,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     var request = input.Current.Request;
     if (request.Invocation.Length == 0 || request.Attempt == 0)
       throw Invalid("Invocation and Attempt Are Required");
-    if (!operations.TryGetValue(request.Operation, out var handler) || handler.Contract.Visibility == Visibility.Private)
+    if (!operations.TryGetValue(request.Operation, out var handler))
       throw new RpcException(new global::Grpc.Core.Status(StatusCode.NotFound, "Unknown Operation"));
 
     IMessage decoded;
@@ -51,7 +51,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
 
     using var stopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
     var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
-    var context = new Context(request, description.Id, requires, stopped, frames.Writer, operations);
+    var context = new Context(request, description.Id, requires, stopped, frames.Writer);
     var processing = RunInvoke(input, handler, decoded, context, frames.Writer, call.CancellationToken);
     try
     {
@@ -227,7 +227,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
           windowStopped = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
           var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
           windowContext = new Context(new Request { Operation = open.Stream, Scope = open.Scope, Attempt = 1 },
-              description.Id, requires, windowStopped, frames.Writer, operations)
+              description.Id, requires, windowStopped, frames.Writer)
           {
             Sequence = window.Sequence,
             At = window.Start.Clone(),

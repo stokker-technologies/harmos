@@ -103,58 +103,12 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     const auto parallel = harmos::plugin::Lane::concurrent("parallel", 2);
     const auto other = harmos::plugin::Lane::serial("other");
     harmos::plugin::Operation<Value, Value> local("conformance.local", harmos::VISIBILITY_PRIVATE, [echo](Context &context, Value request) {
-      if (request.value() == "deadline" || request.value() == "overall") {
-        Duration delay;
-        delay.set_seconds(3600);
-        context.sleep(delay);
-        return request;
-      }
-      if (request.value() == "cancel") {
-        context.operation(echo, request).get();
-        return value(context.cancelled());
-      }
-      if (request.value() != "retry" && request.value() != "retry-bound")
-        return request;
-      if (context.attempt == 1) {
-        auto error = failure();
-        error.set_classification(harmos::CLASSIFICATION_TRANSIENT);
-        throw harmos::Failure(error);
-      }
-      return value(std::to_string(context.attempt));
+      return request;
     });
     local.replay_safe();
     registrar.add(local).add(
         harmos::plugin::Operation<Value, Value>("conformance.local_call", harmos::VISIBILITY_PUBLIC, [local](Context &ctx, Value request) {
-          optional<harmos::OperationPolicy> policy;
-          if (request.value() == "deadline") {
-            policy.emplace();
-            policy->mutable_timeout()->set_seconds(3);
-            policy->mutable_attempt_timeout()->set_seconds(2);
-          }
-          if (request.value() == "cancel") {
-            policy.emplace();
-            policy->mutable_cancellation_timeout()->set_seconds(1);
-          }
-          if (request.value() == "overall") {
-            policy.emplace();
-            policy->mutable_timeout()->set_seconds(2);
-            policy->mutable_cancellation_timeout()->set_seconds(1);
-          }
-          if (request.value() == "retry-bound") {
-            policy.emplace();
-            policy->mutable_timeout()->set_seconds(1);
-            policy->mutable_retries()->set_total_attempts(2);
-            policy->mutable_retries()->mutable_initial()->set_seconds(3600);
-          }
-          if (request.value() == "retry") {
-            policy.emplace();
-            auto *retry = policy->mutable_retries();
-            retry->set_total_attempts(2);
-            retry->mutable_initial()->set_seconds(1);
-            retry->mutable_maximum()->set_seconds(4);
-            retry->set_deterministic_jitter(true);
-          }
-          return ctx.operation(local, request, policy).get();
+          return ctx.operation(local, request).get();
         }));
     registrar
         .add(harmos::plugin::Operation<Value, Value>("conformance.step.0", harmos::VISIBILITY_PUBLIC,

@@ -21,7 +21,7 @@
 use super::*;
 use crate::operations::Visibility;
 use crate::plugin::grpc::{CallingPlugin, invoke::Binding};
-use harmos_protocol::model::{Callers, Requirement};
+use harmos_protocol::model::Callers;
 
 /* === Constants === */
 
@@ -262,8 +262,12 @@ impl Entry {
         Ok(())
     }
 
-    pub(super) fn require_grpc_plugin<'a>(&self, caller: &'a CallingPlugin) -> Result<&'a Requirement> {
+    pub(super) fn require_grpc_plugin(&self, caller: &CallingPlugin) -> Result<Vec<u8>> {
         self.authorize_grpc_plugin(caller)?;
+        let own = self.binding.downcast_ref::<Binding>().is_some_and(|binding| caller.same_activation(&binding.caller));
+        if own {
+            return super::plugin_grpc::fingerprint(self);
+        }
         let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
         let required = requires.iter().find(|required| required.id == self.id()).ok_or_else(|| Error::OperationUnauthorized {
             caller: caller.owner().to_owned(),
@@ -276,7 +280,7 @@ impl Entry {
                 reason: "callee differs from the declared requirement; refresh the plugin declarations",
             });
         }
-        Ok(required)
+        Ok(required.fingerprint.clone())
     }
 
     pub(in crate::operations) fn settled(&self) -> bool {

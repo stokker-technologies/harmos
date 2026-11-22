@@ -211,8 +211,7 @@ private:
                                        std::optional<std::string> json = {});
   std::shared_ptr<detail::Watch> open_watch(const detail::OperationDefinition &operation, const std::string &payload,
                                             std::size_t max_item_bytes);
-  std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition &operation, const std::string &payload,
-                                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel);
+
 };
 
 template <class T> struct Dependency {
@@ -332,8 +331,6 @@ public:
   }
   template <class Q, class R> Registrar &add(const Dependency<Operation<Q, R>> &dependency) {
     const auto &operation = dependency.operation;
-    if (operation.definition.contract.visibility() == VISIBILITY_PRIVATE)
-      throw std::invalid_argument("Require " + operation.definition.contract.id() + ": Private Calls Are Local");
     Requirement requirement;
     requirement.set_id(operation.definition.contract.id());
     requirement.set_fingerprint(operation.definition.contract.fingerprint());
@@ -511,8 +508,6 @@ Call<R> Context::operation(const Operation<Q, R> &operation, const Q &request, s
     throw std::invalid_argument("Call " + operation.definition.contract.id() + ": Use Watch for a Streaming Contract");
   const auto payload = detail::encode(request);
   std::function<void()> cancel;
-  if (auto result = local(operation.definition, payload, policy, &cancel))
-    return Call<R>(*result, std::move(cancel));
   auto result = send(operation.definition, payload, std::move(policy), &cancel);
   return Call<R>(std::move(result), std::move(cancel));
 }

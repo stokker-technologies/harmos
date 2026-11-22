@@ -80,11 +80,8 @@ pub const CASES: &[&str] = &[
     "Explicit Visibility and Replay Safety",
     "Invocation Resource Isolation",
     "Cooperative Cancellation Reason",
-    "Local Private Isolation",
+    "Host-Scheduled Private Calls",
     "Demand-Bounded Context Watch",
-    "Local Private Retry Policy",
-    "Local Private Attempt Deadline",
-    "Local Private Cooperative Cancellation",
     "Host-Mediated Peer Visibility",
     "Samples Child Calls and Correlation",
     "Samples Child Routing and Failures",
@@ -362,7 +359,7 @@ async fn publish_status(
 
 async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
     match rule {
-        30 => {
+        27 => {
             let (send, mut input) = open(client, "conformance.window_children").await?;
             let mut used = BTreeSet::new();
             for (sequence, seconds) in [(1, 100), (2, 101)] {
@@ -414,7 +411,7 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
                 )?;
             }
         }
-        31 => {
+        28 => {
             let (send, mut input) = open(client, "conformance.window_context").await?;
             grant(&send, 1, 1, 400).await?;
             let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"fixture")).await?;
@@ -477,7 +474,7 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             samples_reply(&send, watch.call, child_response::Result::Payload(fixture::payload(&[]))).await?;
             require(samples_answer(&mut input).await? == [7, 8], "Samples: Watch Items Differ")?;
         }
-        32 => {
+        29 => {
             for name in ["conformance.interval", "conformance.device"] {
                 let (send, mut input) = open(client, name).await?;
                 if name == "conformance.device" {
@@ -534,7 +531,7 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
-        45 => {
+        42 => {
             for (operation, payload, classification, reason) in [
                 ("conformance.host.json", json!({"radio":"wifi","state":"off"}), None, ""),
                 ("conformance.host.json", json!({}), None, ""),
@@ -594,7 +591,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 }
             }
         }
-        44 => {
+        41 => {
             // A Carrier Notification Precedes Normally Completed Host Waits.
             let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(b"wind_down")).await?;
             let sleep = TimeSleepRequest {
@@ -615,7 +612,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 "Wind Down: Complete Normally With Sticky Context State",
             )?;
         }
-        42 => {
+        39 => {
             let declared = description.declarations.ok_or_else(|| Error::Invalid("Declare Lanes: Return Declarations".into()))?;
             let expected = fixture::declarations();
             require(declared.lanes == expected.lanes, "Declare Lanes: Match the Encoded Lane Facts")?;
@@ -628,10 +625,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 require(actual.lane == operation.lane, "Declare Operation Lane: Match the Declared Assignment")?;
             }
         }
-        43 => lanes::run(address).await?,
+        40 => lanes::run(address).await?,
         33 | 34 => crate::callers::run(rule, address).await?,
         30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
-        38 => {
+        35 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
             let section = declarations
                 .sections
@@ -662,7 +659,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 require(SettingValues::decode(value.value.as_slice())? == values, "List Settings: Values Differ")?;
             }
         }
-        40 => {
+        37 => {
             // A Host Closing a Scope Half-Closes Without Awaiting Its Last Window; the Demand Still Ends With OK.
             let (send, mut input) = open(&mut client, "conformance.interval").await?;
             grant(&send, 1, 3, 1_700_000_000).await?;
@@ -680,7 +677,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 require(answered <= 3, "Half-Close: Parts Exceed the Last Window")?;
             }
         }
-        39 => {
+        36 => {
             let (send, mut input) = invoke(&mut client, "conformance.discover", fixture::payload(&[])).await?;
             child(&mut input, 1, "harmos.plugin.v1.Operations/List", &[]).await?;
             let operation = DiscoveredOperation {
@@ -710,7 +707,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 "Discover Operation: Typed Contract Differs",
             )?;
         }
-        35 => {
+        32 => {
             // A Window Observer Answers Small Windows Whole and Splits Large Ones at Sample Boundaries.
             let limit = description.message_bytes;
             let (send, mut input) = open(&mut client, fixture::WINDOW).await?;
@@ -727,21 +724,21 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             drop(send);
             require(input.message().await?.is_none(), "Split Window: Demand Survived Half-Close")?;
         }
-        41 => {
+        38 => {
             // One Sample Numbered Past the Advertised Message Size Cannot Fit Any Part, So the Window Fails.
             let limit = description.message_bytes;
             let (send, mut input) = open(&mut client, fixture::OVERSIZED).await?;
             grant(&send, limit + 1, 1, 1_700_000_100).await?;
             refused(&mut input, Code::ResourceExhausted).await?;
         }
-        37 => {
+        34 => {
             // Echo a Message Larger Than the Storage Chunk Through the Default Carrier.
             let chunk = StorageTransferSettings::default().chunk_bytes() as usize;
             let payload = fixture::payload(&vec![0x5a; chunk + TransferFraming::Bytes as usize]);
             let (_send, mut input) = invoke(&mut client, "conformance.step.0", payload.clone()).await?;
             require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke Large Echo: Payload Differs")?;
         }
-        36 => {
+        33 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declare: Missing Declarations".into()))?;
             for operation in &declarations.operations {
                 harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
@@ -878,9 +875,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                         == Some(OperationPolicy {
                             retries: Some(RetryPolicy {
                                 total_attempts: 3,
-                                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
-                                deterministic_jitter: true,
+                                ..Default::default()
                             }),
                             ..Default::default()
                         }),
@@ -1251,30 +1246,16 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declarations Missing".into()))?;
             require(
-                !declarations.operations.iter().any(|operation| operation.id == "conformance.local"),
-                "Private Operation Leaked Into Declarations",
+                declarations.operations.iter().any(|operation| operation.id == "conformance.local" && operation.visibility() == Visibility::Private),
+                "Declare Private Operations for Host Admission",
             )?;
-            require(
-                !declarations.requires.iter().any(|operation| operation.id == "conformance.local"),
-                "Private Requirement Leaked Into Declarations",
-            )?;
-            let payload = fixture::payload(b"local payload");
-            let (_send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
-            // terminal Rejects Any Child Frame, So Private Dispatch Cannot Use the Carrier.
-            require(terminal(&mut input).await? == response::Result::Payload(payload), "Local Private Result Differs")?;
-            let result = invoke(&mut client, "conformance.local", fixture::payload(b"outside")).await;
-            match result {
-                Err(Error::Status(status)) if status.code() == Code::NotFound => {}
-                Ok((_send, mut input)) => {
-                    require(
-                        input.message().await.is_err_and(|status| status.code() == Code::NotFound),
-                        "Private Carrier Call Was Admitted",
-                    )?;
-                }
-                _ => return Err(Error::Invalid("Private Carrier Call Was Admitted".into())),
-            }
+            let payload = fixture::payload(b"private payload");
+            let (send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
+            child(&mut input, 1, "conformance.local", &payload).await?;
+            send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;
+            require(terminal(&mut input).await? == response::Result::Payload(payload), "Private Host Result Differs")?;
         }
-        29 => {
+        26 => {
             for (mode, operation) in [
                 (b"public".as_slice(), "conformance.peer.public"),
                 (b"self", "conformance.plugin.v1.Lifecycle/Initialize"),
@@ -1310,176 +1291,6 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     );
                     send_child(&send, 1, child_response::Result::Failure(failure.clone())).await?;
                     require(terminal(&mut input).await? == response::Result::Failure(failure), "Peer Refusal Lost Its Action or Cause")?;
-                }
-            }
-        }
-        27 => {
-            for mode in [b"deadline".as_slice(), b"overall"] {
-                let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(mode)).await?;
-                for call in 1..=2 {
-                    child(&mut input, call, "harmos.plugin.v1.Time/Get", &[]).await?;
-                    send_child(
-                        &send,
-                        call,
-                        child_response::Result::Payload(
-                            TimeGetResponse {
-                                now: Some(Timestamp { seconds: 0, nanos: 0 }),
-                            }
-                            .encode_to_vec(),
-                        ),
-                    )
-                    .await?;
-                }
-                let mut deadline = None;
-                let mut sleeping = None;
-                for _ in 0..2 {
-                    let frame = input.message().await?.and_then(|frame| frame.frame);
-                    let Some(instance_invoke_response::Frame::Child(child)) = frame else {
-                        return Err(Error::Invalid("Private Deadline: Expected Clock Child".into()));
-                    };
-                    require(child.operation == "harmos.plugin.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
-                    let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
-                    if child.background {
-                        require(duration == prost_types::Duration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
-                        deadline = Some(child.call);
-                    } else {
-                        require(duration == prost_types::Duration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
-                        sleeping = Some(child.call);
-                    }
-                }
-                send_child(
-                    &send,
-                    deadline.ok_or_else(|| Error::Invalid("Private Deadline: Guard Missing".into()))?,
-                    child_response::Result::Payload(Vec::new()),
-                )
-                .await?;
-                let mut cancelled = false;
-                loop {
-                    let frame = input.message().await?.and_then(|frame| frame.frame);
-                    match frame {
-                        Some(instance_invoke_response::Frame::ChildCancel(child)) => {
-                            if Some(child.call) == sleeping {
-                                cancelled = true;
-                            }
-                        }
-                        Some(instance_invoke_response::Frame::Response(Response {
-                            result: Some(response::Result::Failure(failure)),
-                        })) => {
-                            require(
-                                cancelled && failure.classification() == Classification::TimedOut,
-                                "Private Deadline Did Not Cancel Its Child Before Settling",
-                            )?;
-                            require(input.message().await?.is_none(), "Frame After Private Deadline")?;
-                            break;
-                        }
-                        _ => return Err(Error::Invalid(format!("Private Deadline: Unexpected Frame {frame:?}"))),
-                    }
-                }
-            }
-        }
-        28 => {
-            let payload = fixture::payload(b"cancel");
-            let (send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
-            child(&mut input, 1, "conformance.host.echo", &payload).await?;
-            send_child(&send, 1, child_response::Result::Payload(payload)).await?;
-            send.send(InstanceInvokeRequest {
-                frame: Some(instance_invoke_request::Frame::Cancel(Cancel { reason: "Local Stop".into() })),
-            })
-            .await
-            .map_err(|_| Error::Invalid("Private Cancel: Carrier Closed".into()))?;
-            let mut guards = BTreeSet::new();
-            loop {
-                let frame = input.message().await?.and_then(|frame| frame.frame);
-                match frame {
-                    Some(instance_invoke_response::Frame::Child(child)) => {
-                        require(
-                            child.background && child.operation == "harmos.plugin.v1.Time/Sleep",
-                            "Private Cancellation Leaked a Local Call",
-                        )?;
-                        guards.insert(child.call);
-                    }
-                    Some(instance_invoke_response::Frame::ChildCancel(child)) => {
-                        guards.remove(&child.call);
-                    }
-                    Some(instance_invoke_response::Frame::Response(Response {
-                        result: Some(response::Result::Payload(payload)),
-                    })) => {
-                        require(
-                            guards.is_empty() && payload == fixture::payload(b"Local Stop"),
-                            "Private Cancellation Did Not Preserve Its Reason and Settle Guards",
-                        )?;
-                        require(input.message().await?.is_none(), "Frame After Private Cancellation")?;
-                        break;
-                    }
-                    _ => return Err(Error::Invalid(format!("Private Cancel: Unexpected Frame {frame:?}"))),
-                }
-            }
-        }
-        26 => {
-            let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry")).await?;
-            let delay = TimeSleepRequest {
-                duration: Some(prost_types::Duration { seconds: 1, nanos: 11 }),
-            }
-            .encode_to_vec();
-            child(&mut input, 1, "harmos.plugin.v1.Time/Sleep", &delay).await?;
-            send_child(&send, 1, child_response::Result::Payload(Vec::new())).await?;
-            require(
-                terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"2")),
-                "Private Retry Did Not Preserve Attempt Semantics",
-            )?;
-            // An Hour-Long Retry Must Stop at the Remaining Overall Budget.
-            let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry-bound")).await?;
-            let mut now = 0;
-            let mut slept = false;
-            let mut guards = BTreeSet::new();
-            loop {
-                let frame = input.message().await?.and_then(|frame| frame.frame);
-                match frame {
-                    Some(instance_invoke_response::Frame::Child(child)) => {
-                        require(child.fingerprint == fixture::fingerprint(&child.operation), "Private Retry: Clock Fingerprint Differs")?;
-                        if child.operation == "harmos.plugin.v1.Time/Get" {
-                            send_child(
-                                &send,
-                                child.call,
-                                child_response::Result::Payload(
-                                    TimeGetResponse {
-                                        now: Some(Timestamp { seconds: now, nanos: 0 }),
-                                    }
-                                    .encode_to_vec(),
-                                ),
-                            )
-                            .await?;
-                        } else {
-                            require(child.operation == "harmos.plugin.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
-                            let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
-                            require(duration == prost_types::Duration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
-                            if child.background {
-                                guards.insert(child.call);
-                            } else {
-                                require(!slept, "Private Retry Continued After Its Overall Deadline")?;
-                                slept = true;
-                                now = 1;
-                                send_child(&send, child.call, child_response::Result::Payload(Vec::new())).await?;
-                            }
-                        }
-                    }
-                    Some(instance_invoke_response::Frame::ChildCancel(cancel)) => {
-                        guards.remove(&cancel.call);
-                    }
-                    Some(instance_invoke_response::Frame::Response(Response {
-                        result: Some(response::Result::Failure(failure)),
-                    })) => {
-                        require(
-                            slept && guards.is_empty() && failure.classification() == Classification::TimedOut,
-                            &format!(
-                                "Private Retry Did Not Settle at Its Overall Deadline: slept={slept}, guards={}, failure={failure:?}",
-                                guards.len()
-                            ),
-                        )?;
-                        require(input.message().await?.is_none(), "Frame After Private Retry Deadline")?;
-                        break;
-                    }
-                    _ => return Err(Error::Invalid(format!("Private Retry: Unexpected Frame {frame:?}"))),
                 }
             }
         }

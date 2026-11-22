@@ -304,6 +304,20 @@ impl OperationRequest for MissingInput {
     const ID: &'static str = "fixture.missing";
 }
 
+#[derive(prost::Message)]
+struct PrivateInput {
+    #[prost(bytes = "vec", tag = "1")]
+    value: Vec<u8>,
+}
+impl harmos::Message for PrivateInput {
+    fn name() -> String { Value::name() }
+    fn types() -> FileDescriptorSet { Value::types() }
+}
+impl OperationRequest for PrivateInput {
+    type Response = Value;
+    const ID: &'static str = "fixture.private";
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -465,6 +479,22 @@ fn main() -> Result<()> {
                 Ok(())
             })
             .expect("Register Plugin Declarations")
+    } else if mode == "private" {
+        Plugin::new("fixture", "1.0.0")
+            .register(|ctx| {
+                ctx.register(Operation::new("fixture.own", async |context: &Context, request: Value| {
+                    context.operation(PrivateInput { value: request.value }).await
+                }).visibility(Visibility::Protected))?;
+                ctx.register(Operation::new("fixture.private", retry).visibility(Visibility::Private).replay_safe().policy(OperationPolicy {
+                    retries: Some(RetryPolicy {
+                        total_attempts: 3,
+                        initial: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }))?;
+                Ok(())
+            }).expect("Register Plugin Declarations")
     } else if mode == "retry" {
         Plugin::new("fixture", "1.0.0")
             .register(|ctx| {

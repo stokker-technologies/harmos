@@ -53,11 +53,8 @@ public sealed class Registrar
         payload => operation.Decode(payload),
         async (context, request) => (await handler(context, (TRequest)request)).ToByteString(), contract)))
       throw new ArgumentException($"Duplicate Operation: {contract.Id}");
-    if (contract.Visibility != Visibility.Private)
-    {
-      declarations.Operations.Add(contract);
-      Descriptors.Merge(declarations.Types_, operation.Types);
-    }
+    declarations.Operations.Add(contract);
+    Descriptors.Merge(declarations.Types_, operation.Types);
     return this;
   }
 
@@ -72,8 +69,6 @@ public sealed class Registrar
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
   {
-    if (operation.Contract.Visibility == Visibility.Private)
-      throw new ArgumentException($"Require {operation.Contract.Id}: Private Calls Are Local");
     if (declarations.Requires.Any(item => item.Id == operation.Contract.Id))
       throw new ArgumentException($"Duplicate Requirement: {operation.Contract.Id}");
     declarations.Requires.Add(new Requirement { Id = operation.Contract.Id, Fingerprint = operation.Contract.Fingerprint });
@@ -274,9 +269,9 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     var endpoint = Environment.GetEnvironmentVariable("HARMOS_HOST_ENDPOINT");
     var token = Environment.GetEnvironmentVariable("HARMOS_LAUNCH_TOKEN");
     if (endpoint is not null && token is null)
-      throw new InvalidOperationException("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
+      throw new InvalidPluginFailureException("Start Plugin: Set HARMOS_LAUNCH_TOKEN Beside HARMOS_HOST_ENDPOINT");
     if (endpoint is null && token is not null)
-      throw new InvalidOperationException("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
+      throw new InvalidPluginFailureException("Start Plugin: Set HARMOS_HOST_ENDPOINT Beside HARMOS_LAUNCH_TOKEN");
     await using var listener = await StartAsync(address, remote, cancellationToken);
     if (endpoint is not null && token is not null)
     {
@@ -288,7 +283,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
       }
       catch (RpcException error)
       {
-        throw new InvalidOperationException($"Announce Plugin Launch: {error.Status.Detail}", error);
+        throw new InvalidPluginFailureException($"Announce Plugin Launch: {error.Status.Detail}", error);
       }
     }
     await listener.WaitAsync(cancellationToken);

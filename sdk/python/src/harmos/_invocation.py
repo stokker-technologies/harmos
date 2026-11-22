@@ -12,9 +12,8 @@
 
 # Standard Library Imports
 import asyncio
-import copy
 import json
-from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
+from asyncio import CancelledError, Event, Future, Queue
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from typing import TYPE_CHECKING, Protocol
 
@@ -28,8 +27,6 @@ from harmos._wire.model.v1 import failure_pb2
 from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
     CLASSIFICATION_REFUSED,
-    CLASSIFICATION_TIMED_OUT,
-    CLASSIFICATION_TRANSIENT,
 )
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
@@ -150,7 +147,6 @@ class Context:
         self._output = output
         self._pending: dict[int, Future[ChildResponse]] = {}
         self._next = [0]
-        self._local: dict[str, tuple[Operation[Message, Message], Handler]] = {}
         self._watches: dict[int, tuple[Queue[ChildResponse], int]] = {}
         self._background = False
         self._retired: set[int] = set()
@@ -209,10 +205,6 @@ class Context:
             raise ValueError(f"Call {operation.id}: Use Watch for a Streaming Contract")
         if not isinstance(request, operation.request):
             raise TypeError("Request Does Not Match the Operation")
-        if operation.id in self._local:
-            return await self._invoke_local(operation, request, policy)
-        if self._requires.get(operation.id) != operation.fingerprint:
-            raise ValueError(f"Undeclared or Incompatible Requirement: {operation.id}")
         child = ChildRequest(
             operation=operation.id,
             payload=request.SerializeToString(),
@@ -306,142 +298,6 @@ class Context:
         )
 
         return _Watching(self, operation.response, output, call, queue)
-
-    async def _invoke_local[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, override: OperationPolicy | None) -> R:
-        definition, handler = self._local[operation.id]
-        if operation.fingerprint != definition.fingerprint:
-            raise ValueError(f"Invoke {operation.id}: Local Contract Differs")
-        policy = override if override is not None else definition.policy
-        policy = policy if policy is not None else OperationPolicy()
-        context = copy.copy(self)
-        context._operation = operation.id
-        context._cancelled = Event()
-        context._reason = ""
-        context._resources = {}
-        context._pending = {}
-        context._watches = {}
-        context._children = []
-
-        # Replies Stay on the Parent Carrier and Are Forwarded by Correlation.
-        def duration_ns(value: Duration | Timestamp) -> int:
-            if value.seconds < 0 or not 0 <= value.nanos < 1_000_000_000 or value.seconds > 315_576_000_000:
-                raise ValueError(f"Invoke {operation.id}: Invalid Policy Duration")
-            return value.seconds * 1_000_000_000 + value.nanos
-
-        timeout = duration_ns(policy.timeout) if policy.HasField("timeout") else None
-        attempt_timeout = duration_ns(policy.attempt_timeout) if policy.HasField("attempt_timeout") else None
-        grace = duration_ns(policy.cancellation_timeout)
-        if timeout is not None and timeout <= 0 or attempt_timeout is not None and attempt_timeout <= 0 or grace < 0:
-            raise ValueError(f"Invoke {operation.id}: Invalid Deadline")
-        attempts = policy.retries.total_attempts if policy.HasField("retries") else 1
-        if attempts < 1 or attempts > 1 and not definition.replay_safe:
-            raise ValueError(f"Invoke {operation.id}: Retry Requires Replay Safety")
-        if attempts > 1:
-            initial = duration_ns(policy.retries.initial)
-            maximum = duration_ns(policy.retries.maximum) if policy.retries.HasField("maximum") else initial
-            if initial <= 0 or maximum < initial:
-                raise ValueError(f"Invoke {operation.id}: Invalid Retry Delay")
-        guard = copy.copy(self)
-        guard._background = True
-        guard._pending = {}
-        guard._watches = {}
-        guard._children = []
-        guard._cancelled = Event()
-        self._children.extend([context, guard])
-        try:
-            started = duration_ns(await self.now()) if timeout is not None else 0
-            for attempt in range(attempts):
-                if self._cancelled.is_set():
-                    raise self._cancel_failure()
-                context.attempt = attempt + 1
-                context._resources = {}
-                context._cancelled = Event()
-                context._reason = ""
-                remaining = timeout - (duration_ns(await self.now()) - started) if timeout is not None else None
-                bounds = [value for value in (remaining, attempt_timeout) if value is not None]
-                bound = min(bounds) if bounds else None
-                if bound is not None and bound <= 0:
-                    raise FailureError(
-                        failure_pb2.Failure(
-                            classification=CLASSIFICATION_TIMED_OUT,
-                            code="deadline",
-                            message=f"Invoke {operation.id}: Deadline Reached",
-                            action="Invoke Again If Safe",
-                        )
-                    )
-                context._instance = getattr(handler, "__self__", None)
-                running = asyncio.create_task(handler(context, request))
-                cancelled = asyncio.create_task(self.cancelled())
-                timer = (
-                    asyncio.create_task(guard.sleep(Duration(seconds=bound // 1_000_000_000, nanos=bound % 1_000_000_000)))
-                    if bound is not None
-                    else None
-                )
-                tasks = [running, cancelled] + ([timer] if timer else [])
-                try:
-                    done, _ = await asyncio.wait(tasks, return_when=FIRST_COMPLETED)
-                    if running not in done:
-                        reason = cancelled.result() if cancelled in done else "Deadline Reached"
-                        await context._cancel(reason)
-                        deadline_reached = timer in done
-                        if grace and not deadline_reached:
-                            settling = asyncio.create_task(
-                                guard.sleep(Duration(seconds=grace // 1_000_000_000, nanos=grace % 1_000_000_000))
-                            )
-                            try:
-                                settled, _ = await asyncio.wait(
-                                    [running, settling] + ([timer] if timer else []), return_when=FIRST_COMPLETED
-                                )
-                                deadline_reached = timer in settled
-                            finally:
-                                settling.cancel()
-                                await asyncio.gather(settling, return_exceptions=True)
-                        if not grace or deadline_reached or not running.done():
-                            kind = CLASSIFICATION_CANCELLED if cancelled in done else CLASSIFICATION_TIMED_OUT
-                            raise FailureError(
-                                failure_pb2.Failure(
-                                    classification=kind,
-                                    code="interrupted",
-                                    message=f"Invoke {operation.id}: {reason}",
-                                    action="Invoke Again If Safe",
-                                )
-                            )
-                    result = await running
-                    if not isinstance(result, operation.response):
-                        raise TypeError(f"Invoke {operation.id}: Response Does Not Match the Operation")
-                    return result
-                except FailureError as failure:
-                    if failure.value.classification != CLASSIFICATION_TRANSIENT or attempt + 1 >= attempts:
-                        raise
-                    await context._cancel("Local Attempt Settled")
-                    if timer is not None:
-                        timer.cancel()
-                        await asyncio.gather(timer, return_exceptions=True)
-                    delay = duration_ns(policy.retries.initial)
-                    maximum = duration_ns(policy.retries.maximum) if policy.retries.HasField("maximum") else None
-                    if delay <= 0 or maximum is not None and maximum < delay:
-                        raise ValueError(f"Invoke {operation.id}: Invalid Retry Delay") from failure
-                    if maximum is not None:
-                        delay = min(delay * 2**attempt, maximum)
-                    if policy.retries.deterministic_jitter:
-                        delay += (attempt * 17 + 11) % (delay // 4 + 1)
-                        if maximum is not None:
-                            delay = min(delay, maximum)
-                    if timeout is not None:
-                        delay = min(delay, max(0, timeout - (duration_ns(await self.now()) - started)))
-                    if delay:
-                        await self.sleep(Duration(seconds=delay // 1_000_000_000, nanos=delay % 1_000_000_000))
-                finally:
-                    for task in tasks:
-                        if not task.done():
-                            task.cancel()
-                    await asyncio.gather(*tasks, return_exceptions=True)
-            raise ProtocolError(f"Invoke {operation.id}: No Attempt Settled")
-        finally:
-            await context._cancel("Local Attempt Settled")
-            await guard._cancel("Policy Guard Settled")
-            self._children.remove(context)
-            self._children.remove(guard)
 
     async def settings(self, *, at: ReadCut | None = None) -> SettingsListResponse:
         """Read the Calling Plugin's Complete Settings and Revision."""

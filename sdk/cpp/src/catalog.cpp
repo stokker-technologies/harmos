@@ -256,8 +256,6 @@ model::v1::Declarations Plugin::declarations() const {
     if (visibility != model::v1::VISIBILITY_PRIVATE && visibility != model::v1::VISIBILITY_PROTECTED &&
         visibility != model::v1::VISIBILITY_PUBLIC)
       throw invalid_argument("Register " + operation.contract.id() + ": Explicit Visibility Is Required");
-    if (visibility == model::v1::VISIBILITY_PRIVATE)
-      continue;
     *declarations.add_operations() = operation.contract;
     detail::merge(*declarations.mutable_types(), operation.types);
   }

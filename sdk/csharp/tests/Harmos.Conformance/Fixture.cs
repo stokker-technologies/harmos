@@ -136,7 +136,7 @@ public sealed class Fixture
         throw;
       return new Value { Value_ = error.Failure.ToByteString() };
     }
-    throw new InvalidOperationException("Create Invocation: Client-Only Operation Was Admitted");
+    throw new InvalidPluginFailureException("Create Invocation: Client-Only Operation Was Admitted");
   }
 
   private static async Task<Value> ReadSettings(global::Harmos.Plugins.Context context, Value request)
@@ -204,36 +204,10 @@ public sealed class Fixture
     _ => context.Operation(peerLocal, request),
   };
 
-  private async Task<Value> Local(global::Harmos.Plugins.Context context, Value request)
-  {
-    if (request.Value_.ToStringUtf8() is "deadline" or "overall")
-    {
-      await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
-      return request;
-    }
-    if (request.Value_ == ByteString.CopyFromUtf8("cancel"))
-    {
-      await context.Operation(hostEcho, request);
-      return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
-    }
-    if (request.Value_.ToStringUtf8() is not ("retry" or "retry-bound"))
-      return request;
-    if (context.Attempt == 1)
-      throw new PluginFailureException(new Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
-    return new Value { Value_ = ByteString.CopyFromUtf8(context.Attempt.ToString()) };
-  }
+  private Task<Value> Local(global::Harmos.Plugins.Context context, Value request) => Task.FromResult(request);
   private Task<Value> LocalCall(global::Harmos.Plugins.Context context, Value request)
   {
-    var policy = request.Value_.ToStringUtf8() switch
-    {
-      "retry" => new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 2, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } },
-      "deadline" => new OperationPolicy { Timeout = new Duration { Seconds = 3 }, AttemptTimeout = new Duration { Seconds = 2 } },
-      "cancel" => new OperationPolicy { CancellationTimeout = new Duration { Seconds = 1 } },
-      "overall" => new OperationPolicy { Timeout = new Duration { Seconds = 2 }, CancellationTimeout = new Duration { Seconds = 1 } },
-      "retry-bound" => new OperationPolicy { Timeout = new Duration { Seconds = 1 }, Retries = new RetryPolicy { TotalAttempts = 2, Initial = new Duration { Seconds = 3600 } } },
-      _ => null
-    };
-    return context.Operation(local, request, policy);
+    return context.Operation(local, request);
   }
 
   private async Task<Value> Watch(global::Harmos.Plugins.Context context, Value request)
@@ -266,13 +240,13 @@ public sealed class Fixture
     if (request.Value_ == ByteString.CopyFromUtf8("wind_down"))
     {
       if (context.WindDownRequested)
-        throw new InvalidOperationException("Wind Down Was Requested Before the Host Signal");
+        throw new InvalidPluginFailureException("Wind Down Was Requested Before the Host Signal");
       await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
       if (!context.WindDownRequested)
-        throw new InvalidOperationException("Wind Down Signal Was Not Observed");
+        throw new InvalidPluginFailureException("Wind Down Signal Was Not Observed");
       await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
       if (!context.WindDownRequested)
-        throw new InvalidOperationException("Wind Down State Was Lost");
+        throw new InvalidPluginFailureException("Wind Down State Was Lost");
       return new Value { Value_ = ByteString.CopyFromUtf8("wound down") };
     }
     var before = await context.Host.Time.Get();
@@ -299,7 +273,7 @@ public sealed class Fixture
 
   private async Task<Value> Policy(global::Harmos.Plugins.Context context, Value request)
   {
-    var first = await context.Operation(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } });
+    var first = await context.Operation(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3 } });
     return await context.Operation(hostEcho, first);
   }
 

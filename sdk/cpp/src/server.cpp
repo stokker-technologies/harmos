@@ -115,9 +115,6 @@ public:
   InvocationCall(const vector<detail::OperationDefinition> &operations, const std::map<string, string> &requirements, const string &plugin)
       : operations_(operations), state_(std::make_shared<detail::Invocation>()) {
     state_->requirements = requirements;
-    for (const auto &operation : operations)
-      if (operation.contract.visibility() == model::v1::VISIBILITY_PRIVATE)
-        state_->local.emplace(operation.contract.id(), operation);
     state_->plugin = plugin;
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
       write(std::move(frame));
@@ -160,7 +157,7 @@ public:
       state_->request = input.request();
       const detail::OperationDefinition *operation = nullptr;
       for (const auto &candidate : operations_)
-        if (candidate.contract.visibility() != model::v1::VISIBILITY_PRIVATE && candidate.contract.id() == input.request().operation())
+        if (candidate.contract.id() == input.request().operation())
           operation = &candidate;
       if (!operation) {
         end({StatusCode::NOT_FOUND, "Unknown Operation"});

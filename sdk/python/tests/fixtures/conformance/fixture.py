@@ -89,32 +89,11 @@ class Fixture:
 
     @operation("conformance.local", request=Value, response=Value, visibility=VISIBILITY_PRIVATE, replay_safe=True)
     async def local(self, context: Context, request: Value) -> Value:
-        if request.value in (b"deadline", b"overall"):
-            await context.host.time.sleep(Duration(seconds=3600))
-            return request
-        if request.value == b"cancel":
-            await context._call(HOST_ECHO, request)
-            return Value(value=(await context.cancelled()).encode())
-        if request.value in (b"retry", b"retry-bound"):
-            if context.attempt == 1:
-                raise FailureError(model.Failure(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
-            return Value(value=str(context.attempt).encode())
         return request
 
     @operation("conformance.local_call", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def local_call(self, context: Context, request: Value) -> Value:
-        policy = {
-            b"retry": OperationPolicy(
-                retries=RetryPolicy(total_attempts=2, initial=Duration(seconds=1), maximum=Duration(seconds=4), deterministic_jitter=True)
-            ),
-            b"deadline": OperationPolicy(timeout=Duration(seconds=3), attempt_timeout=Duration(seconds=2)),
-            b"cancel": OperationPolicy(cancellation_timeout=Duration(seconds=1)),
-            b"overall": OperationPolicy(timeout=Duration(seconds=2), cancellation_timeout=Duration(seconds=1)),
-            b"retry-bound": OperationPolicy(
-                timeout=Duration(seconds=1), retries=RetryPolicy(total_attempts=2, initial=Duration(seconds=3600))
-            ),
-        }.get(request.value)
-        return await context._call(LOCAL, request, policy=policy)
+        return await context._call(LOCAL, request)
 
     @operation("conformance.step.0", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def echo(self, ctx: Context, request: Value) -> Value:
@@ -165,7 +144,7 @@ class Fixture:
             HOST_ECHO,
             request,
             policy=OperationPolicy(
-                retries=RetryPolicy(total_attempts=3, initial=Duration(seconds=1), maximum=Duration(seconds=4), deterministic_jitter=True)
+                retries=RetryPolicy(total_attempts=3)
             ),
         )
         return await ctx._call(HOST_ECHO, first)

@@ -219,9 +219,6 @@ impl Plugin {
             let mut contract = operation.contract.clone();
             contract.fingerprint = schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
                 .map_err(|error| Error::Invalid(error.to_string()))?;
-            if contract.visibility == Visibility::Private as i32 {
-                continue;
-            }
             schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
             declarations.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
@@ -229,13 +226,6 @@ impl Plugin {
         let mut requires = HashSet::new();
         for requirement in &self.requirements {
             schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;
-            if self
-                .operations
-                .iter()
-                .any(|operation| operation.contract.id == requirement.id && operation.contract.visibility == Visibility::Private as i32)
-            {
-                return Err(Error::Invalid(format!("Require {}: Private Calls Are Local", requirement.id)));
-            }
             if !requires.insert(&requirement.id) {
                 return Err(Error::Invalid(format!("Duplicate Requirement: {}", requirement.id)));
             }

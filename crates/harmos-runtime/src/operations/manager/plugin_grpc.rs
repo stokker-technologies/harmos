@@ -288,6 +288,7 @@ impl Manager {
                 id: Identifier::new(&contract.id).map_err(|error| grpc::Error::Invalid(error.to_string()))?,
                 description: contract.description.clone(),
                 visibility: match contract.visibility() {
+                    model::Visibility::Private => Visibility::Private,
                     model::Visibility::Protected => Visibility::Protected,
                     model::Visibility::Public => Visibility::Public,
                     _ => return Err(grpc::Error::Invalid(format!("Invalid Visibility for {}", contract.id))),
@@ -381,7 +382,7 @@ impl crate::operations::Context<'_> {
         entry.available().map_err(|error| if child.json.is_some() { json::unserved(&child.operation) } else { error })?;
         entry.authorize_grpc_plugin(caller)?;
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if child.json.is_none() && entry.require_grpc_plugin(caller)?.fingerprint != child.fingerprint {
+        if child.json.is_none() && entry.require_grpc_plugin(caller)? != child.fingerprint {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
                 reason: "callee differs from the declared requirement; refresh the plugin declarations",
@@ -465,7 +466,7 @@ impl crate::operations::Context<'_> {
                 })?
         };
         let streams = prepared.streams.clone();
-        let override_policy = child.policy.as_ref().map(|value| policy(Some(value))).transpose()?;
+        let override_policy = child.policy.as_ref().map(|value| child_policy(entry.declared().policy, value)).transpose()?;
         let mut invocation =
             self.operations.dispatch_grpc_prepared(entry, prepared, self, caller, override_policy, child.json.is_some())?;
         if let Some(response) = response {
@@ -512,6 +513,39 @@ impl Manager {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn child_policy(declared: OperationPolicy, override_policy: &model::OperationPolicy) -> Result<OperationPolicy> {
+    let mut wire = override_policy.clone();
+    let retry = wire.retries.take();
+    let parsed = policy(Some(&wire))?;
+    let mut applied = declared;
+    if wire.timeout.is_some() {
+        applied.timeout = parsed.timeout;
+    }
+    if wire.attempt_timeout.is_some() {
+        applied.attempt_timeout = parsed.attempt_timeout;
+    }
+    if wire.cancellation_timeout.is_some() {
+        applied.cancellation_timeout = parsed.cancellation_timeout;
+    }
+    if let Some(retry) = retry {
+        applied.retries = match (retry.total_attempts, declared.retries) {
+            (1, _) => crate::RetryPolicy::Never,
+            (attempts, crate::RetryPolicy::OnTransient { backoff, .. }) if attempts > 1 => crate::RetryPolicy::OnTransient {
+                total_attempts: usize::try_from(attempts).map_err(|_| Error::InvalidInput {
+                    field: "child retries",
+                    reason: "Choose an Attempt Count That Fits the Host Address Space",
+                })?,
+                backoff,
+            },
+            _ => return Err(Error::InvalidInput {
+                field: "child retries",
+                reason: "Declare the Callee Backoff Before Enabling Retries and Choose a Positive Attempt Count",
+            }),
+        };
+    }
+    Ok(applied)
+}
 
 fn json_descriptors(entry: &Entry) -> Result<(MessageDescriptor, MessageDescriptor)> {
     let failure = |reason: &str| Error::OperationFailed {

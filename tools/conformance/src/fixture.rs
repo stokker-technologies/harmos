@@ -318,6 +318,15 @@ pub fn declarations() -> Declarations {
             ..Default::default()
         },
     );
+    operations.push(OperationContract {
+        id: "conformance.local".into(),
+        request: ROW.into(),
+        response: ROW.into(),
+        visibility: Visibility::Private as i32,
+        replay_safe: true,
+        fingerprint: fingerprint("conformance.local"),
+        ..Default::default()
+    });
     for id in CLOCK_OPERATIONS {
         requires.push(Requirement {
             id: id.into(),

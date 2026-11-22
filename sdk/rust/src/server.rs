@@ -46,13 +46,13 @@ use tonic::{Request, Response, Status, Streaming, transport};
 
 // Local Imports
 use crate::{
-    Context, Error, Operation, Plugin, Result, columns,
+    Context, Error, Plugin, Result, columns,
     context::ChildOutput,
     operation::Handler,
     stream::{Lifecycle, Observer},
 };
 use harmos_protocol::{
-    model::{Declarations, Visibility},
+    model::Declarations,
     plugin::{
         self, InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
         InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse, Sample, instance_invoke_request, instance_invoke_response,
@@ -83,7 +83,6 @@ struct Settled(Option<oneshot::Sender<()>>);
 struct Server {
     description: InstanceGetResponse,
     operations: HashMap<String, Arc<dyn Handler>>,
-    local: Arc<HashMap<String, Arc<Operation>>>,
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
     jobs: mpsc::Sender<Job>,
@@ -179,7 +178,6 @@ impl instance_server::Instance for Server {
         handler.validate(&request.payload)?;
         let payload = request.payload.clone();
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
-        context.local = self.local.clone();
         let (output, receiver) = mpsc::channel(1);
         context.output = Some(ChildOutput::Invoke(output.clone()));
         let jobs = self.jobs.clone();
@@ -212,7 +210,6 @@ impl instance_server::Instance for Server {
             self.description.id.clone(),
             self.requires.clone(),
         );
-        context.local = self.local.clone();
         let (output, receiver) = mpsc::channel(2);
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
@@ -273,18 +270,9 @@ pub(crate) async fn run(
             sdk_version: env!("CARGO_PKG_VERSION").into(),
             message_bytes: message_bytes as u64,
         },
-        local: Arc::new(
-            plugin
-                .operations
-                .iter()
-                .filter(|operation| operation.contract.visibility == Visibility::Private as i32)
-                .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
-                .collect(),
-        ),
         operations: plugin
             .operations
             .into_iter()
-            .filter(|operation| operation.contract.visibility != Visibility::Private as i32)
             .map(|operation| (operation.contract.id, operation.handler))
             .collect(),
         streams,
@@ -498,7 +486,6 @@ async fn samples(
                         }, context.plugin.clone(), context.requires.clone());
                         window_context.calls = context.calls.clone();
                         window_context.call_changes = context.call_changes.clone();
-                        window_context.local = context.local.clone();
                         window_context.samples = context.samples.clone();
                         window_context.sequence = window.sequence;
                         window_context.output = Some(ChildOutput::Samples {

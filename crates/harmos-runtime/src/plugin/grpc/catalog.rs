@@ -57,7 +57,7 @@ pub(super) fn verify(plugin: &str, declarations: &Declarations) -> Result<(), Er
         if operation.id.is_empty() || !operations.insert(&operation.id) {
             return Err(Error::Invalid(format!("Duplicate or Empty Operation: {}", operation.id)));
         }
-        if !matches!(model::Visibility::try_from(operation.visibility), Ok(model::Visibility::Protected | model::Visibility::Public)) {
+        if !matches!(model::Visibility::try_from(operation.visibility), Ok(model::Visibility::Private | model::Visibility::Protected | model::Visibility::Public)) {
             return Err(Error::Invalid(format!("Invalid Operation Visibility: {}", operation.id)));
         }
         let fingerprint = schema::fingerprint(&operation.id, &types, &operation.request, &operation.response)

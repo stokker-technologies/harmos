@@ -376,42 +376,7 @@ async fn window_caller_refusal(ctx: &Context) -> Result<Value> {
 }
 
 async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
-    let policy = match request.value.as_slice() {
-        b"retry" => Some(harmos::OperationPolicy {
-            retries: Some(harmos::RetryPolicy {
-                total_attempts: 2,
-                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
-                deterministic_jitter: true,
-            }),
-            ..Default::default()
-        }),
-        b"deadline" => Some(harmos::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
-            attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
-            ..Default::default()
-        }),
-        b"overall" => Some(harmos::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
-            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            ..Default::default()
-        }),
-        b"retry-bound" => Some(harmos::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            retries: Some(harmos::RetryPolicy {
-                total_attempts: 2,
-                initial: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }),
-        b"cancel" => Some(harmos::OperationPolicy {
-            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            ..Default::default()
-        }),
-        _ => None,
-    };
-    ctx.operation_with(LocalInput { value: request.value }, policy).await
+    ctx.operation(LocalInput { value: request.value }).await
 }
 
 async fn clock(ctx: &Context, request: Value) -> Result<Value> {
@@ -438,9 +403,7 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
             Some(harmos::OperationPolicy {
                 retries: Some(harmos::RetryPolicy {
                     total_attempts: 3,
-                    initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                    maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
-                    deterministic_jitter: true,
+                    ..Default::default()
                 }),
                 ..Default::default()
             }),
@@ -562,25 +525,8 @@ async fn watch(context: &Context, request: Value) -> Result<Value> {
 }
 
 async fn local(context: &Context, request: Value) -> Result<Value> {
-    if matches!(request.value.as_slice(), b"deadline" | b"overall") {
-        context.sleep(Duration::from_secs(3600)).await?;
-        return Ok(request);
-    }
-    if request.value == b"cancel" {
-        context.operation(HostEcho { value: request.value }).await?;
-        return Ok(Value {
-            value: context.cancelled().await.into_bytes(),
-        });
-    }
-    if !matches!(request.value.as_slice(), b"retry" | b"retry-bound") {
-        return Ok(request);
-    }
-    if context.attempt == 1 {
-        return Err(harmos::Error::failure(Classification::Transient, "retry", "Retry", "Invoke Again"));
-    }
-    Ok(Value {
-        value: context.attempt.to_string().into_bytes(),
-    })
+    let _ = context;
+    Ok(request)
 }
 
 async fn peer_call(context: &Context, request: Value) -> Result<Value> {

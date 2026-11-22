@@ -40,9 +40,6 @@ public:
     state_->window_scoped = true;
     state_->requirements = requirements;
     state_->plugin = plugin;
-    for (const auto &operation : operations)
-      if (operation.contract.visibility() == ::harmos::VISIBILITY_PRIVATE)
-        state_->local.emplace(operation.contract.id(), operation);
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
       std::lock_guard lock(window_mutex_);
       if (!state_->window_active)
@@ -216,7 +213,6 @@ public:
     window_state->transport = state_;
     window_state->request = state_->request;
     window_state->requirements = state_->requirements;
-    window_state->local = state_->local;
     window_state->plugin = state_->plugin;
     const Window window{grant.start(), grant.period(), grant.count(), grant.sequence()};
     worker = std::thread([this, window_state, window] {

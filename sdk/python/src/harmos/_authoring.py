@@ -218,13 +218,9 @@ class Plugin:
                 raise ValueError(f"Register {definition.id}: Plugin Operations Are Unary")
             if definition.visibility not in (VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC):
                 raise ValueError(f"Invalid Visibility: {definition.id}")
-            if definition.visibility == VISIBILITY_PRIVATE:
-                continue
             declarations.operations.add().CopyFrom(definition.contract())
             _merge(files, definition.request, definition.response)
         for definition in self.requires:
-            if definition.visibility == VISIBILITY_PRIVATE:
-                raise ValueError(f"Require {definition.id}: Private Calls Are Local")
             declarations.requires.add(id=definition.id, fingerprint=definition.fingerprint)
             _merge(files, definition.request, definition.response)
         for definition, _, observing in streams:
@@ -372,14 +368,12 @@ class _SamplesScope:
         scope: str,
         plugin: str,
         requires: dict[str, bytes],
-        local: dict[str, tuple[Operation[Message, Message], Handler]],
         instance: object | None,
     ) -> None:
         self.stream = stream
         self.scope = scope
         self.plugin = plugin
         self.requires = requires
-        self.local = local
         self.instance = instance
         self.context: Context | None = None
         self.next = [0]
@@ -439,12 +433,7 @@ class _Service:
             message_bytes=message_bytes(plugin.transfer),
         )
         operations, streams = plugin._registrations()
-        self.local = {
-            definition.id: (definition, handler) for definition, handler in operations if definition.visibility == VISIBILITY_PRIVATE
-        }
-        self.operations = {
-            definition.id: (definition, handler) for definition, handler in operations if definition.visibility != VISIBILITY_PRIVATE
-        }
+        self.operations = {definition.id: (definition, handler) for definition, handler in operations}
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
         self.sampling = {definition.id: _Sampling(definition) for definition, _, observing in streams if observing}
         self.requires = {requirement.id: requirement.fingerprint for requirement in declarations.requires}
@@ -479,7 +468,6 @@ class _Service:
         await context.send_initial_metadata(())
         output = Queue(maxsize=1)
         execution = Context(request, self.description.id, self.requires, output)
-        execution._local = self.local
         execution._instance = getattr(handler, "__self__", None)
         running = asyncio.create_task(_execute(handler, execution, value, definition.response, output))
         reading = asyncio.create_task(_read_invoke(request_iterator, execution, output))
@@ -508,7 +496,7 @@ class _Service:
         output: Queue[Sample | InstanceSamplesResponse | _FaultError | None] = Queue(maxsize=1)
         windows: Queue[tuple[Window, Context]] = Queue(maxsize=1)
         scope = _SamplesScope(
-            first.open.stream, first.open.scope, self.description.id, self.requires, self.local, getattr(handler, "__self__", None)
+            first.open.stream, first.open.scope, self.description.id, self.requires, getattr(handler, "__self__", None)
         )
         sampling = self.sampling.get(definition.id)
         reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output, sampling))
@@ -686,7 +674,6 @@ async def _read_publish(
             execution._wind_down = scope.wind_down
             execution._next = scope.next
             execution._retired = scope.retired
-            execution._local = scope.local
             execution._instance = scope.instance
             scope.context = execution
             await windows.put((window, execution))
@@ -732,7 +719,6 @@ async def _produce(
         if not observing:
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
             execution._wind_down = scope.wind_down
-            execution._local = scope.local
             execution._instance = scope.instance
             scope.context = execution
             await cast(Producer, handler)(execution, Publisher(definition.row, output))

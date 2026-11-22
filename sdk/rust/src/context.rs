@@ -61,7 +61,7 @@ use tonic::Status;
 // Local Imports
 use crate::message;
 use crate::plugin::HostPluginsSettingsResource;
-use crate::{Error, Operation, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
+use crate::{Error, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
 use harmos_protocol::host::{TimeGetRequest, TimeSleepRequest};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
@@ -72,7 +72,6 @@ use harmos_protocol::plugin::ChildRequest;
 use harmos_protocol::plugin::GuestValue;
 use harmos_protocol::plugin::Request;
 use harmos_protocol::plugin::instance_invoke_response;
-use harmos_protocol::policy::RetryPolicy;
 
 /* === Constants === */
 
@@ -137,7 +136,6 @@ pub struct Context {
     pub(crate) output: Option<ChildOutput>,
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
-    pub(crate) local: Arc<HashMap<String, Arc<Operation>>>,
     pub(crate) sequence: u64,
     background: bool,
     group: Arc<()>,
@@ -210,7 +208,6 @@ impl Context {
             values: Vec::new(),
             cancellation: watch::channel(None).0,
             requires,
-            local: Arc::new(HashMap::new()),
             sequence: 0,
             background: false,
             group: Arc::new(()),
@@ -306,17 +303,7 @@ impl Context {
         if let Some(output) = &self.output {
             output.check()?;
         }
-        if let Some(operation) = self.local.get(Q::ID) {
-            if operation.contract.request != Q::name() || operation.contract.response != <Q::Response as message::Message>::name() {
-                return Err(Error::Invalid(format!("Call {}: Local Contract Differs", Q::ID)));
-            }
-            let payload = self.invoke_local(operation, request.encode_to_vec(), policy).await?;
-            return Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into());
-        }
         let fingerprint = request_fingerprint::<Q>()?;
-        if self.requires.get(Q::ID) != Some(&fingerprint) {
-            return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
-        }
         let payload = self
             .send_call(ChildRequest {
                 operation: Q::ID.into(),
@@ -381,136 +368,22 @@ impl Context {
         Ok(watching)
     }
 
-    async fn invoke_local(&self, operation: &Operation, payload: Vec<u8>, override_policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
-        use harmos_protocol::policy::{FailureKind, OperationPolicy, ReplaySafety, UNBOUNDED};
-        let policy = OperationPolicy::try_from(override_policy.as_ref().or(operation.contract.policy.as_ref()))
-            .map_err(|error| Error::Invalid(format!("Invoke {}: {error}", operation.contract.id)))?;
-        let replay = if operation.contract.replay_safe {
-            ReplaySafety::Idempotent
-        } else {
-            ReplaySafety::Unknown
-        };
-        if replay == ReplaySafety::Unknown && !matches!(policy.retries, RetryPolicy::Never) {
-            return Err(Error::Invalid(format!("Invoke {}: Retry Requires Replay Safety", operation.contract.id)));
-        }
-        let mut context = self.clone();
-        context.operation = operation.contract.id.clone();
-        context.group = Arc::new(());
-        context.resources = Arc::new(Mutex::new(HashMap::new()));
-        context.cancellation = watch::channel(None).0;
-        let mut guard = self.clone();
-        guard.background = true;
-        guard.group = Arc::new(());
-        let started = if policy.timeout < UNBOUNDED {
-            Some(self.now().await?)
-        } else {
-            None
-        };
-        let mut attempt = 0;
-        loop {
-            if let Some(reason) = self.cancellation.borrow().clone() {
-                return Err(context.cancel_failure(reason));
-            }
-            context.attempt = attempt + 1;
-            context.resources = Arc::new(Mutex::new(HashMap::new()));
-            context.cancellation = watch::channel(None).0;
-            let remaining = if let Some(started) = &started {
-                let now = self.now().await?;
-                let elapsed = elapsed(started, &now);
-                policy.timeout.saturating_sub(elapsed)
-            } else {
-                UNBOUNDED
-            };
-            if remaining.is_zero() {
-                return Err(Error::failure(
-                    Classification::TimedOut,
-                    "deadline",
-                    format!("Invoke {}: Deadline Reached", operation.contract.id),
-                    "Invoke Again If Safe",
-                ));
-            }
-            let bound = remaining.min(policy.attempt_timeout);
-            let result = Box::pin(async {
-                let executing = operation.handler.execute(&context, payload.clone());
-                tokio::pin!(executing);
-                let deadline = guard.sleep(bound);
-                tokio::pin!(deadline);
-                let (classification, reason) = tokio::select! {
-                    result = &mut executing => return result,
-                    reason = self.cancelled() => (Classification::Cancelled, reason),
-                    result = &mut deadline, if bound < UNBOUNDED => {
-                        result?;
-                        (Classification::TimedOut, "Deadline Reached".into())
-                    }
-                };
-                context.cancellation.send_replace(Some(reason.clone()));
-                context.cancel_calls(true, &reason, false).await?;
-                if classification == Classification::Cancelled && !policy.cancellation_timeout.is_zero() {
-                    tokio::select! {
-                        result = &mut executing => return result,
-                        _ = guard.sleep(policy.cancellation_timeout) => {},
-                        _ = &mut deadline, if bound < UNBOUNDED => {},
-                    }
-                }
-                Err(Error::failure(
-                    classification,
-                    "interrupted",
-                    format!("Invoke {}: {reason}", operation.contract.id),
-                    "Invoke Again If Safe",
-                ))
-            })
-            .await;
-            guard.cancel_calls(true, "Policy Guard Settled", false).await?;
-            context.cancel_calls(true, "Local Attempt Settled", false).await?;
-            let kind = match &result {
-                Err(Error::Failure(failure)) if failure.classification() == Classification::Transient => FailureKind::Transient,
-                _ => return result,
-            };
-            let Some(mut delay) = policy.retries.retry_after(attempt as usize, kind, replay, 0) else {
-                return result;
-            };
-            if let Some(started) = &started {
-                let now = self.now().await?;
-                let elapsed = elapsed(started, &now);
-                delay = delay.min(policy.timeout.saturating_sub(elapsed));
-            }
-            if !delay.is_zero() {
-                self.sleep(delay).await?;
-            }
-            attempt += 1;
-        }
-    }
-
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
     /// Register `HostOperation::TimeSleep` during the plugin register phase.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
-        self.clock_call(TimeSleepRequest { duration: Some(duration) }).await?;
+        self.operation(TimeSleepRequest { duration: Some(duration) }).await?;
         Ok(())
     }
 
     /// Read evidence time from the host; register `HostOperation::TimeGet`.
     pub async fn now(&self) -> Result<Timestamp> {
-        self.clock_call(TimeGetRequest {}).await?.now.ok_or_else(|| Status::invalid_argument("Get Host Time: Missing Payload").into())
+        self.operation(TimeGetRequest {}).await?.now.ok_or_else(|| Status::invalid_argument("Get Host Time: Missing Payload").into())
     }
 
     /// Access the calling plugin entry's effective settings.
     pub fn settings(&self) -> HostPluginsSettingsResource {
         self.host().plugins.settings
-    }
-
-    // Local Operation Policies Depend on the Clock, so Clock Calls Go Straight to the Host.
-    async fn clock_call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
-        let fingerprint = self.requires.get(Q::ID).ok_or_else(|| Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)))?.clone();
-        let payload = self
-            .send_call(ChildRequest {
-                operation: Q::ID.into(),
-                payload: request.encode_to_vec(),
-                fingerprint,
-                ..Default::default()
-            })
-            .await?;
-        Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
     }
 
     async fn send_call(&self, mut child: ChildRequest) -> Result<Vec<u8>> {
@@ -680,13 +553,6 @@ pub fn untyped(operation: impl Into<String>, payload: Value) -> Untyped {
 
 /* === Private Functions === */
 
-fn elapsed(started: &Timestamp, now: &Timestamp) -> Duration {
-    let nanos = ((i128::from(now.seconds) - i128::from(started.seconds)) * 1_000_000_000 + i128::from(now.nanos)
-        - i128::from(started.nanos))
-    .max(0) as u128;
-    Duration::new((nanos / 1_000_000_000).min(u128::from(u64::MAX)) as u64, (nanos % 1_000_000_000) as u32)
-}
-
 /* === Tests === */
 
 #[cfg(test)]
@@ -806,19 +672,4 @@ mod tests {
         assert_eq!(state.get::<OpaqueState>().await.unwrap(), OpaqueState::default());
     }
 
-    #[test]
-    fn policy_clock_spans_keep_large_durations_and_fractional_seconds() {
-        let started = Timestamp {
-            seconds: -30_000_000_000,
-            nanos: 900_000_000,
-        };
-        let now = Timestamp {
-            seconds: 10_000_000_001,
-            nanos: 100_000_000,
-        };
-        let span = elapsed(&started, &now);
-        assert_eq!(span, Duration::new(40_000_000_000, 200_000_000));
-        assert_eq!(Duration::from_secs(40_000_000_000).saturating_sub(span), Duration::ZERO);
-        assert_eq!(elapsed(&now, &started), Duration::ZERO);
-    }
 }

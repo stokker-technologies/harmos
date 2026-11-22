@@ -59,7 +59,6 @@ struct Invocation {
   std::function<void(plugin::v1::InstanceInvokeResponse)> emit;
   std::function<void()> read;
   std::once_flag reading;
-  std::map<std::string, OperationDefinition> local;
   ::harmos::plugin::v1::Request request;
   std::string plugin;
   std::optional<std::string> cancelled;
