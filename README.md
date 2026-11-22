@@ -105,7 +105,8 @@ for `serde_json::Value` replies. C# offers `ctx.Operation(id, payload)` returnin
 alongside typed declarations; the invocation's identifier is `OperationId`.
 C++ offers `ctx.operation(id, harmos::json(text))` with Protobuf `Struct` objects.
 All four SDKs take and return JSON objects for identifier-based calls.
-Typed Rust and C++ calls retain `call`; typed C# calls retain `CallAsync`.
+Typed and identifier-based calls share `operation` in Rust and C++, `Operation` in C#,
+and `operation` in Python. Rust accepts either a typed request or `untyped(id, payload)`.
 
 
 #### Examples

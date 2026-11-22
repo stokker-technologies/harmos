@@ -658,7 +658,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
                     f"        Ok(Host{name} {{ incoming: self.context.watch(request, max_item_bytes).await? }})",
                 ]
             else:
-                lines += [f"        let response: {r} = self.context.call_with(request, options.policy).await?;"]
+                lines += [f"        let response: {r} = self.context.operation_with(request, options.policy).await?;"]
                 if payload and payload["kind"] == 11 and not payload["repeated"]:
                     lines += [f'        response.{payload["name"]}.ok_or_else(|| Error::Invalid("Read {name}: Missing Payload".into()))']
                 else:

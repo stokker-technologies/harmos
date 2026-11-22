@@ -40,6 +40,7 @@ use {
     std::collections::BTreeMap,
     std::collections::BTreeSet,
     std::collections::HashMap,
+    std::future::Future,
     std::marker::PhantomData,
     std::mem,
     std::num::NonZeroUsize,
@@ -158,6 +159,29 @@ pub(crate) struct Calls {
 
 /* === Traits === */
 
+/// An Input Accepted by `Context::operation`.
+pub trait OperationInput {
+    type Response;
+
+    fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> impl Future<Output = Result<Self::Response>>;
+}
+
+impl<Q: OperationRequest> OperationInput for Q {
+    type Response = Q::Response;
+
+    async fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> Result<Self::Response> {
+        context.typed_operation_with(self, policy).await
+    }
+}
+
+impl OperationInput for Untyped {
+    type Response = Value;
+
+    async fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> Result<Value> {
+        context.json_operation_with(self, policy).await
+    }
+}
+
 pub(crate) trait ChildTransport: Send + Sync + Any {
     fn call<'a>(&'a self, request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
 }
@@ -249,12 +273,17 @@ impl Context {
         }
     }
 
-    /// Call a Served Operation With JSON; Conversion Belongs to the Host.
-    pub async fn operation(&self, request: Untyped) -> Result<Value> {
+    /// Invoke a Typed Request or an Identifier With a JSON Object Through the Host.
+    pub async fn operation<Q: OperationInput>(&self, request: Q) -> Result<Q::Response> {
         self.operation_with(request, None).await
     }
 
-    pub async fn operation_with(&self, request: Untyped, policy: Option<OperationPolicy>) -> Result<Value> {
+    pub async fn operation_with<Q: OperationInput>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
+        request.invoke(self, policy).await
+    }
+
+    /// Call a Served Operation With JSON; Conversion Belongs to the Host.
+    async fn json_operation_with(&self, request: Untyped, policy: Option<OperationPolicy>) -> Result<Value> {
         let json = serde_json::to_string(&request.payload)
             .map_err(|error| Error::Invalid(format!("Call {}: Encode JSON Payload: {error}", request.operation)))?;
         let child = ChildRequest {
@@ -267,11 +296,7 @@ impl Context {
         serde_json::from_slice(&payload).map_err(|error| Error::Invalid(format!("Read Operation Reply: Host Must Send JSON: {error}")))
     }
 
-    pub async fn call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
-        self.call_with(request, None).await
-    }
-
-    pub async fn call_with<Q: OperationRequest>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
+    async fn typed_operation_with<Q: OperationRequest>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
         if Q::WATCH {
             return Err(Error::Invalid(format!("Call {}: Use Watch for a Streaming Contract", Q::ID)));
         }

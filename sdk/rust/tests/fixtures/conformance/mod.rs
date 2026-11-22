@@ -364,7 +364,7 @@ pub fn catalog() -> impl Registration {
 async fn caller_refusal(ctx: &Context, value: Value) -> Result<Value> {
     let request = <CreateInvocation as prost::Message>::decode(include_bytes!("caller-request.bin").as_slice())
         .map_err(|error| harmos::Error::Invalid(format!("Create Invocation: {error}")))?;
-    match ctx.call(request).await {
+    match ctx.operation(request).await {
         Err(harmos::Error::Failure(failure)) if value.value != b"propagate" => Ok(Value { value: failure.encode_to_vec() }),
         Err(error) => Err(error),
         Ok(_) => Err(harmos::Error::Invalid("Create Invocation: Client-Only Operation Was Admitted".into())),
@@ -411,7 +411,7 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
         }),
         _ => None,
     };
-    ctx.call_with(LocalInput { value: request.value }, policy).await
+    ctx.operation_with(LocalInput { value: request.value }, policy).await
 }
 
 async fn clock(ctx: &Context, request: Value) -> Result<Value> {
@@ -433,7 +433,7 @@ async fn clock(ctx: &Context, request: Value) -> Result<Value> {
 
 async fn policy(ctx: &Context, request: Value) -> Result<Value> {
     let first = ctx
-        .call_with(
+        .operation_with(
             HostEcho { value: request.value },
             Some(harmos::OperationPolicy {
                 retries: Some(harmos::RetryPolicy {
@@ -446,7 +446,7 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
             }),
         )
         .await?;
-    ctx.call(HostEcho { value: first.value }).await
+    ctx.operation(HostEcho { value: first.value }).await
 }
 
 async fn projected(_: &Context, request: Graph) -> Result<Value> {
@@ -472,8 +472,8 @@ async fn echo(ctx: &Context, request: Value) -> Result<Value> {
 }
 
 async fn children(ctx: &Context, _: Value) -> Result<Value> {
-    let first = ctx.call(HostEcho { value: vec![1] });
-    let second = ctx.call(HostEcho { value: vec![2] });
+    let first = ctx.operation(HostEcho { value: vec![1] });
+    let second = ctx.operation(HostEcho { value: vec![2] });
     let (first, second) = futures_util::future::try_join(first, second).await?;
     Ok(Value {
         value: [first.value, second.value].concat(),
@@ -481,11 +481,11 @@ async fn children(ctx: &Context, _: Value) -> Result<Value> {
 }
 
 async fn cancel(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.call(HostPending { value: request.value }).await
+    ctx.operation(HostPending { value: request.value }).await
 }
 
 async fn child_failure(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.call(HostFail { value: request.value }).await
+    ctx.operation(HostFail { value: request.value }).await
 }
 
 async fn failure(_: &Context, _: Value) -> Result<Value> {
@@ -538,12 +538,12 @@ async fn device(ctx: &Context, publisher: Publisher<Value>) -> Result<()> {
 
 async fn resources(ctx: &Context, request: Value) -> Result<Value> {
     ctx.set(request.clone());
-    ctx.call(HostEcho { value: request.value }).await?;
+    ctx.operation(HostEcho { value: request.value }).await?;
     Ok((*ctx.get::<Value>()?).clone())
 }
 
 async fn cancel_reason(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.call(HostEcho { value: request.value }).await?;
+    ctx.operation(HostEcho { value: request.value }).await?;
     Ok(Value {
         value: ctx.cancelled().await.into_bytes(),
     })
@@ -567,7 +567,7 @@ async fn local(context: &Context, request: Value) -> Result<Value> {
         return Ok(request);
     }
     if request.value == b"cancel" {
-        context.call(HostEcho { value: request.value }).await?;
+        context.operation(HostEcho { value: request.value }).await?;
         return Ok(Value {
             value: context.cancelled().await.into_bytes(),
         });
@@ -587,14 +587,14 @@ async fn peer_call(context: &Context, request: Value) -> Result<Value> {
     match request.value.as_slice() {
         b"public" => {
             context
-                .call(PeerPublic {
+                .operation(PeerPublic {
                     value: context.scope()?.as_bytes().to_vec(),
                 })
                 .await
         }
-        b"protected" => context.call(PeerProtected { value: request.value }).await,
-        b"self" => context.call(OwnProtected { value: request.value }).await,
-        _ => context.call(PeerLocal { value: request.value }).await,
+        b"protected" => context.operation(PeerProtected { value: request.value }).await,
+        b"self" => context.operation(OwnProtected { value: request.value }).await,
+        _ => context.operation(PeerLocal { value: request.value }).await,
     }
 }
 
@@ -627,7 +627,7 @@ async fn discover(context: &Context, _: Value) -> Result<Value> {
 }
 
 async fn window_children(context: &Context) -> Result<Value> {
-    let (first, second) = tokio::join!(context.call(HostEcho { value: vec![1] }), context.call(HostEcho { value: vec![2] }));
+    let (first, second) = tokio::join!(context.operation(HostEcho { value: vec![1] }), context.operation(HostEcho { value: vec![2] }));
     let mut value = first?.value;
     value.extend(second?.value);
     Ok(Value { value })
@@ -635,7 +635,7 @@ async fn window_children(context: &Context) -> Result<Value> {
 
 async fn window_context(context: &Context) -> Result<Value> {
     let echo = context
-        .call(HostEcho {
+        .operation(HostEcho {
             value: context.scope()?.as_bytes().to_vec(),
         })
         .await?
@@ -655,7 +655,7 @@ async fn window_context(context: &Context) -> Result<Value> {
 }
 
 async fn window_failure(context: &Context) -> Result<Value> {
-    match context.call(HostFail { value: Vec::new() }).await {
+    match context.operation(HostFail { value: Vec::new() }).await {
         Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
         Err(error) => Err(error),
         Ok(_) => Err(harmos::Error::Invalid("Call Failure Fixture: Expected Failure".into())),
@@ -680,8 +680,8 @@ async fn window_watch(context: &Context) -> Result<Value> {
 
 async fn window_cancel(context: &Context) -> Result<Value> {
     {
-        let pending = context.call(HostPending { value: Vec::new() });
-        let release = context.call(HostEcho { value: b"release".to_vec() });
+        let pending = context.operation(HostPending { value: Vec::new() });
+        let release = context.operation(HostEcho { value: b"release".to_vec() });
         tokio::pin!(pending, release);
         tokio::select! {
             biased;
@@ -689,7 +689,7 @@ async fn window_cancel(context: &Context) -> Result<Value> {
             result = &mut release => { result?; },
         }
     }
-    let pending = context.call(HostPending { value: Vec::new() });
+    let pending = context.operation(HostPending { value: Vec::new() });
     tokio::pin!(pending);
     futures_util::future::poll_fn(|cx| match pending.as_mut().poll(cx) {
         Poll::Ready(result) => Poll::Ready(result.map(|_| ())),

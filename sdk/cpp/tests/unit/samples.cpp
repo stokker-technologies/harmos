@@ -301,8 +301,8 @@ string little_endian(uint64_t number) {
 
 TEST_CASE("Samples Correlate Reverse Replies Across Windows and Streams") {
   SamplesHost host([](Context &context) {
-    auto first = context.call(echo, value("first"));
-    auto second = context.call(echo, value("second"));
+    auto first = context.operation(echo, value("first"));
+    auto second = context.operation(echo, value("second"));
     return value(first.get().value() + second.get().value());
   });
   Samples first(host);
@@ -345,8 +345,8 @@ TEST_CASE("A One-Sample Observer Answers Each Sample of a Window in Order") {
 
 TEST_CASE("Children Stay Open Across a Window's Samples Until It Is Answered") {
   SamplesHost host([](Context &context) {
-    auto open = context.call(echo, value("open"));
-    return context.call(echo, value("done")).get();
+    auto open = context.operation(echo, value("open"));
+    return context.operation(echo, value("done")).get();
   });
   Samples samples(host);
   samples.window(1, 1, 2);
@@ -471,7 +471,7 @@ TEST_CASE("Samples Refuse Invalid Windows") {
 
 TEST_CASE("Samples Refuse a Window While Another Is Unanswered") {
   SamplesHost host([](Context &context) {
-    return context.call(echo, Value{}).get();
+    return context.operation(echo, Value{}).get();
   });
   Samples samples(host);
   samples.window(1, 1);
@@ -544,7 +544,7 @@ TEST_CASE("A Window Calls the Clock Settings and a Demand-Bounded Watch") {
 TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   SamplesHost host([](Context &context) {
     try {
-      context.call(echo, Value{}).get();
+      context.operation(echo, Value{}).get();
     } catch (const harmos::Failure &failure) {
       return value(harmos::plugin::detail::encode(failure.value));
     }
@@ -574,9 +574,9 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
 
 TEST_CASE("Answering a Window Cancels Children and Rejects Late Replies") {
   SamplesHost host([](Context &context) {
-    auto cancelled = context.call(echo, Value{});
+    auto cancelled = context.operation(echo, Value{});
     cancelled.cancel();
-    context.call(echo, Value{});
+    context.operation(echo, Value{});
     return Value{};
   });
   Samples samples(host);
@@ -603,7 +603,7 @@ TEST_CASE("Samples Refuse Outside-Window and Duplicate Child Traffic") {
   SECTION("A Publisher Cannot Call Host Operations") {
     SamplesHost host(
         [](Context &context) {
-          return context.call(echo, Value{}).get();
+          return context.operation(echo, Value{}).get();
         },
         true);
     Samples samples(host);
@@ -611,8 +611,8 @@ TEST_CASE("Samples Refuse Outside-Window and Duplicate Child Traffic") {
   }
   SECTION("A Duplicate Reply Cannot Satisfy Another Child") {
     SamplesHost host([](Context &context) {
-      context.call(echo, Value{}).get();
-      return context.call(echo, Value{}).get();
+      context.operation(echo, Value{}).get();
+      return context.operation(echo, Value{}).get();
     });
     Samples samples(host);
     samples.window(1, 1);
@@ -629,7 +629,7 @@ TEST_CASE("Ending Samples Settles Open Child Calls") {
   auto done = settled.get_future();
   SamplesHost host([&settled](Context &context) {
     try {
-      context.call(echo, Value{}).get();
+      context.operation(echo, Value{}).get();
     } catch (const harmos::TransportError &) {
       settled.set_value();
       throw;

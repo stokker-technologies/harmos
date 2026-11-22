@@ -579,7 +579,7 @@ fn main() -> Result<()> {
                 ctx.register(Dependency::<ProtectedInput>::new())?;
                 ctx.register(
                     Operation::new("fixture.self", async |context: &Context, input: Value| {
-                        context.call(ProtectedInput { value: input.value }).await
+                        context.operation(ProtectedInput { value: input.value }).await
                     })
                     .visibility(Visibility::Protected),
                 )?;
@@ -754,8 +754,8 @@ async fn scoped(context: &Context, input: Value) -> Result<Value> {
     if input.value != scope.as_bytes() {
         return Err(harmos::Error::Invalid("Payload Differs From Invocation Scope".into()));
     }
-    let host = context.call(HostInput { value: b"scope".to_vec() }).await?;
-    let plugin = context.call(PublicInput { value: Vec::new() }).await?;
+    let host = context.operation(HostInput { value: b"scope".to_vec() }).await?;
+    let plugin = context.operation(PublicInput { value: Vec::new() }).await?;
     let mut value = scope.as_bytes().to_vec();
     value.push(0);
     value.extend_from_slice(&host.value);
@@ -796,39 +796,39 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
 
 async fn forward(context: &Context, input: Value) -> Result<Value> {
     if input.value == b"client-only" {
-        context.call(CallerProbe(StatusGetRequest {})).await?;
+        context.operation(CallerProbe(StatusGetRequest {})).await?;
         return Ok(input);
     }
     if input.value == b"control" {
-        context.call(HostControl {}).await?;
+        context.operation(HostControl {}).await?;
         return Ok(input);
     }
     if input.value == b"application-context" {
-        let response = context.call(ApplicationContext {}).await?;
+        let response = context.operation(ApplicationContext {}).await?;
         return Ok(Value {
             value: response.now.unwrap().seconds.to_le_bytes().to_vec(),
         });
     }
     if input.value == b"application-client" {
-        context.call(ApplicationClient {}).await?;
+        context.operation(ApplicationClient {}).await?;
         return Ok(input);
     }
     if input.value == b"application-instance" {
-        context.call(ApplicationInstance {}).await?;
+        context.operation(ApplicationInstance {}).await?;
         return Ok(input);
     }
     match input.value.first() {
         Some(b'h') => Ok(Value {
-            value: context.call(HostInput { value: input.value }).await?.value,
+            value: context.operation(HostInput { value: input.value }).await?.value,
         }),
-        Some(b'p') => context.call(PublicInput { value: input.value }).await,
-        Some(b's') => context.call(ProtectedInput { value: input.value }).await,
-        _ => context.call(MissingInput { value: input.value }).await,
+        Some(b'p') => context.operation(PublicInput { value: input.value }).await,
+        Some(b's') => context.operation(ProtectedInput { value: input.value }).await,
+        _ => context.operation(MissingInput { value: input.value }).await,
     }
 }
 
 async fn wait(context: &Context, input: Value) -> Result<Value> {
-    context.call(HostInput { value: input.value.clone() }).await?;
+    context.operation(HostInput { value: input.value.clone() }).await?;
     context.cancelled().await;
     Ok(input)
 }
@@ -858,7 +858,7 @@ async fn setting_value(context: &Context, request: Value) -> Result<Value> {
 }
 
 async fn peer_forward(context: &Context, input: Value) -> Result<Value> {
-    match context.call(PeerInput { value: input.value.clone() }).await {
+    match context.operation(PeerInput { value: input.value.clone() }).await {
         Err(harmos::Error::Failure(failure)) if failure.classification() == Classification::Cancelled => Ok(input),
         result => result,
     }

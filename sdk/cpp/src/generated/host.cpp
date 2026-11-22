@@ -43,7 +43,7 @@ namespace harmos::plugin {
 Timestamp HostTimeResource::get(HostTimeGetOptions options) {
   TimeGetRequest request;
   auto operation = Operation<TimeGetRequest, TimeGetResponse>("harmos.plugin.v1.Time/Get", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   if (!response.has_now()) {
     throw runtime_error("Read TimeGet: Missing Payload");
   }
@@ -53,13 +53,13 @@ Timestamp HostTimeResource::get(HostTimeGetOptions options) {
   TimeSleepRequest request;
   *request.mutable_duration() = duration;
   auto operation = Operation<TimeSleepRequest, TimeSleepResponse>("harmos.plugin.v1.Time/Sleep", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   return response;
 }
 ::harmos::plugin::StateGetResponse HostPluginsStateResource::get(HostPluginsStateGetOptions options) {
   StateGetRequest request;
   auto operation = Operation<StateGetRequest, StateGetResponse>("harmos.plugin.v1.plugins.State/Get", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   return response;
 }
 uint64_t HostPluginsStateResource::put(const uint64_t &expected_revision, const string &value, HostPluginsStatePutOptions options) {
@@ -67,7 +67,7 @@ uint64_t HostPluginsStateResource::put(const uint64_t &expected_revision, const 
   request.set_expected_revision(expected_revision);
   request.set_value(value);
   auto operation = Operation<StatePutRequest, StatePutResponse>("harmos.plugin.v1.plugins.State/Put", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   return response.revision();
 }
 ::harmos::plugin::SettingsListResponse HostPluginsSettingsResource::list(HostPluginsSettingsListOptions options) {
@@ -79,20 +79,20 @@ uint64_t HostPluginsStateResource::put(const uint64_t &expected_revision, const 
     *request.mutable_at() = *options.at;
   }
   auto operation = Operation<SettingsListRequest, SettingsListResponse>("harmos.plugin.v1.plugins.Settings/List", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   return response;
 }
 vector<DiscoveredOperation> HostOperationsResource::list(HostOperationsListOptions options) {
   OperationsListRequest request;
   auto operation = Operation<OperationsListRequest, OperationsListResponse>("harmos.plugin.v1.Operations/List", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   return vector<DiscoveredOperation>(response.operations().begin(), response.operations().end());
 }
 DiscoveredOperation HostOperationsResource::get(const string &id, HostOperationsGetOptions options) {
   OperationsGetRequest request;
   request.set_id(id);
   auto operation = Operation<OperationsGetRequest, OperationsGetResponse>("harmos.plugin.v1.Operations/Get", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   if (!response.has_operation()) {
     throw runtime_error("Read OperationsGet: Missing Payload");
   }
@@ -102,7 +102,7 @@ InstanceState HostInvocationsResource::get(const uint64_t &instance, HostInvocat
   InvocationsGetRequest request;
   request.set_instance(instance);
   auto operation = Operation<InvocationsGetRequest, InvocationsGetResponse>("harmos.plugin.v1.Invocations/Get", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   if (!response.has_invocation()) {
     throw runtime_error("Read InvocationsGet: Missing Payload");
   }
@@ -113,7 +113,7 @@ InstanceState HostInvocationsResource::cancel(const uint64_t &instance, const st
   request.set_instance(instance);
   request.set_reason(reason);
   auto operation = Operation<InvocationsCancelRequest, InvocationsCancelResponse>("harmos.plugin.v1.Invocations/Cancel", VISIBILITY_PUBLIC);
-  auto response = context.call(operation, request, options.policy).get();
+  auto response = context.operation(operation, request, options.policy).get();
   if (!response.has_invocation()) {
     throw runtime_error("Read InvocationsCancel: Missing Payload");
   }

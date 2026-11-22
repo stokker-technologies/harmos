@@ -180,7 +180,7 @@ pub fn harmos_register() -> Registration {
             *initialization_owner.configuration.lock().unwrap() = mode.clone();
             *initialization_owner.initialized.lock().unwrap() = Some(context.clone());
             if mode == "dependencies" {
-                context.call(ProviderEchoOperation { say: "initialize".into() }).await?;
+                context.operation(ProviderEchoOperation { say: "initialize".into() }).await?;
             }
             if mode == "publications" || mode == "failed-publications" {
                 progress(context, "initialize").await?;
@@ -207,7 +207,7 @@ pub fn harmos_register() -> Registration {
             if mode == "publications" && progress(&saved, "cleanup").await.is_ok() {
                 return Err(Error::Invalid("Retirement Accepted a Publication".into()));
             }
-            if mode == "dependencies" && saved.call(ProviderEchoOperation { say: "cleanup".into() }).await.is_ok() {
+            if mode == "dependencies" && saved.operation(ProviderEchoOperation { say: "cleanup".into() }).await.is_ok() {
                 return Err(Error::Invalid("Retirement Accepted a Dependency Call".into()));
             }
             Ok(())
@@ -238,7 +238,7 @@ fn policy(attempts: u32, delay_millis: i32) -> OperationPolicy {
 }
 async fn progress(context: &Context, value: &str) -> Result<()> {
     context
-        .call(PublishProgress {
+        .operation(PublishProgress {
             stream: "progress".into(),
             payload: Echoed { said: value.into() }.encode_to_vec(),
         })
@@ -246,10 +246,10 @@ async fn progress(context: &Context, value: &str) -> Result<()> {
 }
 async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Result<Echoed> {
     if request.say == "caller-refusal" {
-        context.call(ClientEchoOperation { say: request.say.clone() }).await?;
+        context.operation(ClientEchoOperation { say: request.say.clone() }).await?;
     }
     if let Some(say) = request.say.strip_prefix("local:") {
-        return context.call(LocalEcho { say: say.into() }).await;
+        return context.operation(LocalEcho { say: say.into() }).await;
     }
     if let Some(value) = request.say.strip_prefix("saved-publish:") {
         let saved = owner.initialized.lock().unwrap().clone().ok_or_else(|| Error::Invalid("Initialization Context Is Missing".into()))?;
@@ -258,7 +258,7 @@ async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Resul
     }
     if let Some(value) = request.say.strip_prefix("saved-dependency:") {
         let saved = owner.initialized.lock().unwrap().clone().ok_or_else(|| Error::Invalid("Initialization Context Is Missing".into()))?;
-        return saved.call(ProviderEchoOperation { say: value.into() }).await;
+        return saved.operation(ProviderEchoOperation { say: value.into() }).await;
     }
     if let Some(value) = request.say.strip_prefix("saved-submit:") {
         let saved = owner.initialized.lock().unwrap().clone().ok_or_else(|| Error::Invalid("Initialization Context Is Missing".into()))?;
@@ -267,7 +267,7 @@ async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Resul
     }
     if let Some(say) = request.say.strip_prefix("dependency:") {
         let policy = context.value::<RetryChoice>()?.map(|choice| policy(choice.retries + 1, choice.delay_millis as i32));
-        return context.call_with(ProviderEchoOperation { say: say.into() }, policy).await;
+        return context.operation_with(ProviderEchoOperation { say: say.into() }, policy).await;
     }
     if let Some(value) = request.say.strip_prefix("publish:") {
         progress(context, value).await?;
@@ -310,11 +310,11 @@ async fn read(owner: &Owner, context: &Context, mut request: ReadOperation) -> R
     if request.value == "parent" {
         let saved = owner.saved.lock().unwrap().remove(&request.value);
         if let Some(saved) = saved
-            && saved.call(ReadOperation { value: "leaf".into() }).await.is_ok()
+            && saved.operation(ReadOperation { value: "leaf".into() }).await.is_ok()
         {
             return Err(Error::Invalid("Stale Attempt Context Was Accepted".into()));
         }
-        let child = context.call(ReadOperation { value: "leaf".into() }).await?;
+        let child = context.operation(ReadOperation { value: "leaf".into() }).await?;
         if attempt > 1 {
             return Ok(Value {
                 value: format!("parent:{attempt}:stale:{}", child.value),

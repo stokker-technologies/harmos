@@ -184,7 +184,7 @@ public:
   std::uint64_t sequence = 0;
 
   explicit Context(std::shared_ptr<detail::Invocation> state);
-  template <class Q, class R> Call<R> call(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
+  template <class Q, class R> Call<R> operation(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
   google::protobuf::Struct operation(const std::string &operation, const google::protobuf::Struct &payload = {},
                                      std::optional<OperationPolicy> policy = {});
   template <class Q, class R> Watching<R> watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes);
@@ -506,7 +506,7 @@ template <class R> Subscription<R> Context::subscribe(const std::string &stream,
 }
 
 template <class Q, class R>
-Call<R> Context::call(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy) {
+Call<R> Context::operation(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy) {
   if (operation.definition.watch)
     throw std::invalid_argument("Call " + operation.definition.contract.id() + ": Use Watch for a Streaming Contract");
   const auto payload = detail::encode(request);

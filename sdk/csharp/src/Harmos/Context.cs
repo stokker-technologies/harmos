@@ -123,7 +123,7 @@ public sealed class Context
           : throw new InvalidOperationException($"Missing Invocation Resource: {typeof(T).Name}");
   }
 
-  public async Task<TResponse> CallAsync<TRequest, TResponse>(Operation<TRequest, TResponse> operation, TRequest request,
+  public async Task<TResponse> Operation<TRequest, TResponse>(Operation<TRequest, TResponse> operation, TRequest request,
       OperationPolicy? policy = null, CancellationToken cancellationToken = default)
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
@@ -318,7 +318,7 @@ public sealed class Context
           children.Add(context);
         using var timerStopped = new CancellationTokenSource();
         var executing = handler.Execute(context, request);
-        var timer = bound.HasValue ? guard.CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = DurationNanos(bound.Value) }, cancellationToken: timerStopped.Token) : Task.Delay(Timeout.Infinite, timerStopped.Token);
+        var timer = bound.HasValue ? guard.Operation(HostContracts.TimeSleep, new TimeSleepRequest { Duration = DurationNanos(bound.Value) }, cancellationToken: timerStopped.Token) : Task.Delay(Timeout.Infinite, timerStopped.Token);
         try
         {
           var completed = await Task.WhenAny(executing, timer, CancelledAsync());
@@ -331,7 +331,7 @@ public sealed class Context
             var deadlineReached = completed == timer;
             if (grace > 0 && !deadlineReached)
             {
-              var settling = guard.CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = DurationNanos(grace) }, cancellationToken: timerStopped.Token);
+              var settling = guard.Operation(HostContracts.TimeSleep, new TimeSleepRequest { Duration = DurationNanos(grace) }, cancellationToken: timerStopped.Token);
               deadlineReached = await Task.WhenAny(executing, settling, timer) == timer;
             }
             if (grace == 0 || deadlineReached || !executing.IsCompleted)
@@ -393,11 +393,11 @@ public sealed class Context
     Action = "Invoke Again If Safe"
   });
 
-  internal async Task SleepAsync(Duration duration) => await CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = duration });
+  internal async Task SleepAsync(Duration duration) => await Operation(HostContracts.TimeSleep, new TimeSleepRequest { Duration = duration });
 
   internal async Task<Timestamp> NowAsync()
   {
-    var time = await CallAsync(HostContracts.TimeGet, new TimeGetRequest());
+    var time = await Operation(HostContracts.TimeGet, new TimeGetRequest());
     return time.Now;
   }
 

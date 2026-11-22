@@ -307,7 +307,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         self.assertIn("request.Modes.Add(modes)", host_source)
         self.assertNotIn("Modes = modes", host_source)
         self.assertIn("request.Count = count.Value", host_source)
-        self.assertIn("context.CallAsync(HostContracts.NestedJobsDelete", host_source)
+        self.assertIn("context.Operation(HostContracts.NestedJobsDelete", host_source)
         inventory = {path: (source / path).read_bytes() for path in sdk.inventory(source, full)}
 
         # Separate the Python Import Package From the Protocol Namespace.

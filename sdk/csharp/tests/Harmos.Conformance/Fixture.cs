@@ -128,7 +128,7 @@ public sealed class Fixture
     try
     {
       var invocation = Wire.InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
-      await context.CallAsync(createInvocation, invocation);
+      await context.Operation(createInvocation, invocation);
     }
     catch (PluginFailureException error)
     {
@@ -155,7 +155,7 @@ public sealed class Fixture
 
   private async Task<Value> SampleContext(global::Harmos.Plugins.Context context)
   {
-    var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
+    var echo = await context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
     var settings = await context.Host.Plugins.Settings.List();
     using var value = new MemoryStream();
@@ -174,7 +174,7 @@ public sealed class Fixture
   {
     try
     {
-      return await context.CallAsync(hostFail, new Value());
+      return await context.Operation(hostFail, new Value());
     }
     catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
   }
@@ -182,26 +182,26 @@ public sealed class Fixture
   private async Task<Value> SampleCancel(global::Harmos.Plugins.Context context)
   {
     using var cancelled = new CancellationTokenSource();
-    var pending = context.CallAsync(hostPending, new Value(), cancellationToken: cancelled.Token);
+    var pending = context.Operation(hostPending, new Value(), cancellationToken: cancelled.Token);
     _ = pending.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
-    await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("release") });
+    await context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("release") });
     await cancelled.CancelAsync();
     try
     {
       await pending;
     }
     catch (OperationCanceledException) { }
-    var automatic = context.CallAsync(hostPending, new Value());
+    var automatic = context.Operation(hostPending, new Value());
     _ = automatic.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
     return new Value { Value_ = ByteString.CopyFromUtf8("cancelled") };
   }
 
   private Task<Value> PeerCall(global::Harmos.Plugins.Context context, Value request) => request.Value_.ToStringUtf8() switch
   {
-    "public" => context.CallAsync(peerPublic, new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }),
-    "protected" => context.CallAsync(peerProtected, request),
-    "self" => context.CallAsync(ownProtected, request),
-    _ => context.CallAsync(peerLocal, request),
+    "public" => context.Operation(peerPublic, new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }),
+    "protected" => context.Operation(peerProtected, request),
+    "self" => context.Operation(ownProtected, request),
+    _ => context.Operation(peerLocal, request),
   };
 
   private async Task<Value> Local(global::Harmos.Plugins.Context context, Value request)
@@ -213,7 +213,7 @@ public sealed class Fixture
     }
     if (request.Value_ == ByteString.CopyFromUtf8("cancel"))
     {
-      await context.CallAsync(hostEcho, request);
+      await context.Operation(hostEcho, request);
       return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
     }
     if (request.Value_.ToStringUtf8() is not ("retry" or "retry-bound"))
@@ -233,7 +233,7 @@ public sealed class Fixture
       "retry-bound" => new OperationPolicy { Timeout = new Duration { Seconds = 1 }, Retries = new RetryPolicy { TotalAttempts = 2, Initial = new Duration { Seconds = 3600 } } },
       _ => null
     };
-    return context.CallAsync(local, request, policy);
+    return context.Operation(local, request, policy);
   }
 
   private async Task<Value> Watch(global::Harmos.Plugins.Context context, Value request)
@@ -251,13 +251,13 @@ public sealed class Fixture
   private async Task<Value> Resources(global::Harmos.Plugins.Context context, Value request)
   {
     context.Set(request.Clone());
-    await context.CallAsync(hostEcho, request);
+    await context.Operation(hostEcho, request);
     return context.Get<Value>();
   }
 
   private async Task<Value> CancelReason(global::Harmos.Plugins.Context context, Value request)
   {
-    await context.CallAsync(hostEcho, request);
+    await context.Operation(hostEcho, request);
     return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
   }
 
@@ -290,8 +290,8 @@ public sealed class Fixture
 
   private async Task<Value> Children(global::Harmos.Plugins.Context context, Value request)
   {
-    var first = context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFrom([1]) });
-    var second = context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFrom([2]) });
+    var first = context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFrom([1]) });
+    var second = context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFrom([2]) });
     var replies = await Task.WhenAll(first, second);
     var bytes = replies.SelectMany(reply => reply.Value_).ToArray();
     return new Value { Value_ = ByteString.CopyFrom(bytes) };
@@ -299,13 +299,13 @@ public sealed class Fixture
 
   private async Task<Value> Policy(global::Harmos.Plugins.Context context, Value request)
   {
-    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } });
-    return await context.CallAsync(hostEcho, first);
+    var first = await context.Operation(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } });
+    return await context.Operation(hostEcho, first);
   }
 
-  private Task<Value> Cancel(global::Harmos.Plugins.Context context, Value request) => context.CallAsync(hostPending, request);
+  private Task<Value> Cancel(global::Harmos.Plugins.Context context, Value request) => context.Operation(hostPending, request);
 
-  private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.CallAsync(hostFail, request);
+  private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.Operation(hostFail, request);
 
   private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new PluginFailureException(new Failure
   {

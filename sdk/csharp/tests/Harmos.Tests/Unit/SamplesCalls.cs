@@ -69,8 +69,8 @@ public sealed class SamplesCalls
     // Open Two Independent Demand Calls.
     var service = Service(async context =>
     {
-      var first = context.CallAsync(Echo, new StringValue { Value = "first" });
-      var second = context.CallAsync(Echo, new StringValue { Value = "second" });
+      var first = context.Operation(Echo, new StringValue { Value = "first" });
+      var second = context.Operation(Echo, new StringValue { Value = "second" });
       var replies = await Task.WhenAll(first, second);
       return new StringValue { Value = string.Concat(replies.Select(reply => reply.Value)) };
     });
@@ -196,7 +196,7 @@ public sealed class SamplesCalls
     };
     var service = Service(async context =>
     {
-      var error = await Assert.ThrowsAsync<PluginFailureException>(() => context.CallAsync(Echo, new StringValue()));
+      var error = await Assert.ThrowsAsync<PluginFailureException>(() => context.Operation(Echo, new StringValue()));
       Assert.Equal(failure, error.Failure);
       return new StringValue { Value = "handled" };
     });
@@ -216,7 +216,7 @@ public sealed class SamplesCalls
     var pending = new List<Task<StringValue>>();
     var service = Service(context =>
     {
-      pending.Add(context.CallAsync(Echo, new StringValue()));
+      pending.Add(context.Operation(Echo, new StringValue()));
       return Task.FromResult(new StringValue());
     });
     var call = new Call();
@@ -240,7 +240,7 @@ public sealed class SamplesCalls
   public async Task StreamEndCancelsTheUnansweredWindow()
   {
     Task<StringValue>? pending = null;
-    var service = Service(context => pending = context.CallAsync(Echo, new StringValue()));
+    var service = Service(context => pending = context.Operation(Echo, new StringValue()));
     var call = new Call();
     var serving = service.Samples(call, call, call.Context);
     await call.Grant(1);
@@ -296,7 +296,7 @@ public sealed class SamplesCalls
   [InlineData("unanswered window")]
   public async Task InvalidWindowsAreRefused(string invalid)
   {
-    var service = Service(context => context.CallAsync(Echo, new StringValue()), invalid == "device window");
+    var service = Service(context => context.Operation(Echo, new StringValue()), invalid == "device window");
     var call = new Call();
     var serving = service.Samples(call, call, call.Context);
     var window = new Harmos.Internal.Plugin.Window { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = 1, Sequence = 1 };

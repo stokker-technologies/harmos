@@ -95,7 +95,7 @@ extern crate self as harmos;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connection::{Client, ClientSettings};
 use context::Context;
-pub use context::{Untyped, untyped};
+pub use context::{OperationInput, Untyped, untyped};
 pub use error::{Error, Result};
 include!("exports.rs");
 pub use harmos_sdk_derive::Message;
