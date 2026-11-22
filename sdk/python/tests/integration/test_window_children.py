@@ -19,7 +19,6 @@ from unittest import IsolatedAsyncioTestCase
 import grpc
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.timestamp_pb2 import Timestamp
-from google.protobuf.wrappers_pb2 import BytesValue
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
@@ -42,7 +41,7 @@ from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
 from harmos.plugin import Catalog, Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
-from tests.fixtures.conformance import Values
+from tests.fixtures.conformance import Value, Values
 
 # Type Checking Imports
 
@@ -50,8 +49,8 @@ from tests.fixtures.conformance import Values
 
 # === Constants === #
 
-ECHO = Operation("example.echo", BytesValue, BytesValue, visibility=VISIBILITY_PUBLIC)
-WATCH = Operation("example.watch", BytesValue, BytesValue, visibility=VISIBILITY_PUBLIC, watch=True)
+ECHO = Operation("conformance.example.echo", Value, Value, visibility=VISIBILITY_PUBLIC)
+WATCH = Operation("conformance.example.watch", Value, Value, visibility=VISIBILITY_PUBLIC, watch=True)
 
 # === Types === #
 
@@ -61,44 +60,42 @@ WATCH = Operation("example.watch", BytesValue, BytesValue, visibility=VISIBILITY
 class Reader:
     def __init__(self) -> None:
         self.answer = Event()
-        self.pending: Task[BytesValue] | None = None
+        self.pending: Task[Value] | None = None
         self.escaped: Context | None = None
         self.settings: SettingsListResponse | None = None
 
-    @observer("example.readings", row=BytesValue, interval=Duration(seconds=1))
-    async def read(self, context: Context) -> BytesValue:
+    @observer("conformance.example.readings", row=Value, interval=Duration(seconds=1))
+    async def read(self, context: Context) -> Value:
         self.escaped = context
         if context.sequence == 1:
-            first, second = await asyncio.gather(
-                context.call(ECHO, BytesValue(value=b"first")), context.call(ECHO, BytesValue(value=b"second"))
-            )
-            return BytesValue(value=first.value + second.value + context.scope().encode())
+            first, second = await asyncio.gather(context.call(ECHO, Value(value=b"first")), context.call(ECHO, Value(value=b"second")))
+            return Value(value=first.value + second.value + context.scope().encode())
         if context.sequence == 2:
             settings = await context.host.plugins.settings.list()
             self.settings = settings
             now = await context.host.time.get()
             await context.host.time.sleep(settings.value.values["interval"].duration)
             result = b""
-            items = context.watch(WATCH, BytesValue(), max_item_bytes=4096)
+            items = context.watch(WATCH, Value(), max_item_bytes=4096)
             try:
                 async for item in items:
                     result += item.value
                     break
             finally:
                 await items.aclose()
-            return BytesValue(value=result + now.seconds.to_bytes(8, "little"))
+            return Value(value=result + now.seconds.to_bytes(8, "little"))
         if context.sequence == 3:
-            self.pending = asyncio.create_task(context.call(ECHO, BytesValue(value=b"pending")))
+            self.pending = asyncio.create_task(context.call(ECHO, Value(value=b"pending")))
             await self.answer.wait()
-            return BytesValue(value=b"answered")
+            return Value(value=b"answered")
         try:
-            return await context.call(ECHO, BytesValue(value=b"failure"))
+            return await context.call(ECHO, Value(value=b"failure"))
         except FailureError as failure:
-            return BytesValue(value=failure.value.SerializeToString())
+            return Value(value=failure.value.SerializeToString())
 
-    @publisher("example.device", row=BytesValue)
+    @publisher("conformance.example.device", row=Value)
     async def device(self, context: Context, publisher: Publisher) -> None:
-        await publisher.publish(BytesValue(value=b"device"))
+        await publisher.publish(Value(value=b"device"))
         await context.cancelled()
 
 
@@ -113,7 +110,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
             maximum=SettingValue(duration=Duration(seconds=3)),
         )
         plugin = Plugin(
-            id="example",
+            id="conformance",
             version="1.0.0",
             register=lambda ctx: ctx.register(
                 Catalog(
@@ -134,7 +131,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
 
         # Complete Concurrent Children Out of Order, Preserving the Parent Scope.
         stream = host.Samples()
-        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
+        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.example.readings", scope="selected")))
         at = Timestamp(seconds=100)
         await stream.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         first = (await stream.read()).child
@@ -145,7 +142,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).batch, SampleBatch(count=1, columns=_columns(b"firstsecondselected"), last=True))
         assert reader.escaped is not None
         with self.assertRaises(ValueError):
-            await reader.escaped.call(ECHO, BytesValue())
+            await reader.escaped.call(ECHO, Value())
 
         # Settings and the Controlled Host Clock Drive the Next Window's Watch.
         await stream.write(
@@ -181,9 +178,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertTrue(child.watch)
         self.assertEqual(child.operation, WATCH.id)
         self.assertEqual((await stream.read()).child_demand.call, child.call)
-        await stream.write(
-            InstanceSamplesRequest(child=ChildResponse(call=child.call, item=BytesValue(value=b"observed").SerializeToString()))
-        )
+        await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, item=Value(value=b"observed").SerializeToString())))
         self.assertEqual((await stream.read()).child_cancel.call, child.call)
         batch = (await stream.read()).batch
         self.assertEqual(batch, SampleBatch(count=1, columns=_columns(b"observed" + at.seconds.to_bytes(8, "little")), last=True))
@@ -222,10 +217,10 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertIs(await stream.read(), EOF)
 
         # Refuse Child Replies Without an Unanswered Window, Including Device Demand.
-        for name in ("example.readings", "example.device"):
+        for name in ("conformance.example.readings", "conformance.example.device"):
             invalid = host.Samples()
             await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream=name)))
-            if name == "example.device":
+            if name == "conformance.example.device":
                 await invalid.read()
             await invalid.write(InstanceSamplesRequest(child=ChildResponse(call=1, payload=b"")))
             with self.assertRaises(AioRpcError) as error:
@@ -235,7 +230,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         # Unknown or Duplicate Terminal Replies Cannot Settle Another Child.
         for duplicate in (False, True):
             invalid = host.Samples()
-            await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
+            await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.example.readings", scope="selected")))
             await invalid.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
             first = (await invalid.read()).child
             second = (await invalid.read()).child
@@ -251,7 +246,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
 
         # A Second Window Cannot Overwrite the Unanswered Window's Context.
         invalid = host.Samples()
-        await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
+        await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.example.readings", scope="selected")))
         await invalid.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         await invalid.read()
         await invalid.read()
@@ -262,7 +257,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
 
         # Closing Demand Settles the Active Context and Its Outstanding Children.
         closing = host.Samples()
-        await closing.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
+        await closing.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.example.readings", scope="selected")))
         await closing.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         await closing.read()
         await closing.read()
@@ -272,16 +267,18 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertIs(await closing.read(), EOF)
         await active.cancelled()
         with self.assertRaises(ValueError):
-            await active.call(ECHO, BytesValue())
+            await active.call(ECHO, Value())
 
         # Reject Incomplete or Duplicate Settings at Declarations Construction.
         for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):
-            with self.assertRaises(ValueError):
-                Plugin(
-                    id="example",
+            self.assertRaises(
+                ValueError,
+                lambda declarations=declarations: Plugin(
+                    id="conformance",
                     version="1.0.0",
                     register=lambda ctx, declarations=declarations: ctx.register(Catalog(reader, settings=declarations)),
-                ).declarations()
+                ).declarations(),
+            )
 
 
 # === Public Functions === #

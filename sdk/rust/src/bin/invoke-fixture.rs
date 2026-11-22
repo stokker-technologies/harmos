@@ -93,22 +93,26 @@ host_message!(HostOutput, 4);
 /* === Structs === */
 
 #[derive(harmos::Message)]
+#[harmos(package = "fixture", file = "fixture.proto")]
 struct Value {
     value: Vec<u8>,
 }
 
 #[derive(harmos::Message)]
+#[harmos(package = "fixture", file = "fixture.proto")]
 struct Reading {
     value: f64,
 }
 
 #[derive(harmos::Message)]
+#[harmos(package = "fixture", file = "fixture.proto")]
 struct OptionalReading {
     value: Option<f64>,
 }
 
 /// The Columns of `Reading`.
 #[derive(harmos::Message)]
+#[harmos(package = "fixture", file = "fixture.proto")]
 struct Readings {
     value: Vec<f64>,
 }
@@ -255,7 +259,7 @@ impl harmos::Message for PublicInput {
 }
 impl OperationRequest for PublicInput {
     type Response = Value;
-    const ID: &'static str = "example.plugin.v1.Steps/Execute";
+    const ID: &'static str = "fixture.plugin.v1.Steps/Execute";
 }
 impl harmos::Message for ProtectedInput {
     fn name() -> String {
@@ -267,7 +271,7 @@ impl harmos::Message for ProtectedInput {
 }
 impl OperationRequest for ProtectedInput {
     type Response = Value;
-    const ID: &'static str = "example.plugin.v1.Lifecycle/Initialize";
+    const ID: &'static str = "fixture.plugin.v1.Lifecycle/Initialize";
 }
 impl harmos::Message for MissingInput {
     fn name() -> String {
@@ -326,7 +330,7 @@ fn main() -> Result<()> {
             Ok(OptionalReading { value })
         })
         .every(prost_types::Duration { seconds: 1, nanos: 0 });
-        Plugin::new("optional_window", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(stream)?;
                 ctx.register(observer)?;
@@ -336,7 +340,7 @@ fn main() -> Result<()> {
     } else if mode == "scoped-sleep" {
         let stream = Stream::<Value>::new("fixture.scoped_samples");
         let observer = Observer::new(&stream, scoped_sleep_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
-        Plugin::new("scoped_sleep", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(HostOperation::TimeGet)?;
                 ctx.register(HostOperation::TimeSleep)?;
@@ -348,7 +352,7 @@ fn main() -> Result<()> {
     } else if mode == "counted-sleep" {
         let stream = Stream::<Value>::new("fixture.counted_samples");
         let observer = Observer::new(&stream, counted_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
-        Plugin::new("counted_sleep", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(HostOperation::TimeSleep)?;
                 ctx.register(stream)?;
@@ -360,7 +364,7 @@ fn main() -> Result<()> {
     } else if mode == "scoped-publications" {
         let stream = Stream::<Value>::new("fixture.scoped_samples");
         let observer = Observer::new(&stream, scoped_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
-        Plugin::new("scoped_publications", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(HostOperation::TimeGet)?;
                 ctx.register(HostOperation::TimeSleep)?;
@@ -377,7 +381,7 @@ fn main() -> Result<()> {
         let overridden = Stream::<Value>::new("fixture.override");
         let override_observer =
             Observer::new(&overridden, observe).every(prost_types::Duration { seconds: 1, nanos: 0 }).window_setting("window");
-        Plugin::new("windows", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(duration_setting("window", "Window", 3, 0))?;
                 ctx.register(counts)?;
@@ -392,7 +396,7 @@ fn main() -> Result<()> {
         let stream = Stream::<Reading>::new("fixture.split");
         let observer =
             Observer::window(&stream, split_observe).every(prost_types::Duration { seconds: 0, nanos: 1_000 }).window_setting("window");
-        Plugin::new("split", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(duration_setting("window", "Window", 2, 0))?;
                 ctx.register(stream)?;
@@ -405,7 +409,7 @@ fn main() -> Result<()> {
         let stream = Stream::<Value>::new("fixture.bulky");
         let observer = Observer::new(&stream, async |_: &Context| Ok(Value { value: vec![0; 1 << 20] }))
             .every(prost_types::Duration { seconds: 1, nanos: 0 });
-        Plugin::new("bulky", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(stream)?;
                 ctx.register(observer)?;
@@ -418,7 +422,7 @@ fn main() -> Result<()> {
         let observer =
             Observer::new(&stream, async |_: &Context| -> Result<Value> { Err(harmos::Error::Invalid("Sensor Offline".into())) })
                 .every(prost_types::Duration { seconds: 1, nanos: 0 });
-        Plugin::new("failing", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(stream)?;
                 ctx.register(observer)?;
@@ -429,7 +433,7 @@ fn main() -> Result<()> {
         // One-Microsecond Readings Without a Window Setting: the Host's Window Length Alone Sizes Each Window.
         let stream = Stream::<Reading>::new("fixture.dense");
         let observer = Observer::window(&stream, split_observe).every(prost_types::Duration { seconds: 0, nanos: 1_000 });
-        Plugin::new("dense", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(stream)?;
                 ctx.register(observer)?;
@@ -439,7 +443,7 @@ fn main() -> Result<()> {
     } else if mode == "interval" {
         let stream = Stream::<Value>::new("fixture.interval");
         let observer = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 60, nanos: 0 }).interval_setting("interval");
-        Plugin::new("observer", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(SettingsDeclarations {
                     values: vec![SettingDeclaration {
@@ -460,7 +464,7 @@ fn main() -> Result<()> {
             })
             .expect("Register Plugin Declarations")
     } else if mode == "retry" {
-        Plugin::new("retry", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(Operation::new("fixture.retry", retry).visibility(Visibility::Protected).replay_safe().policy(
                     OperationPolicy {
@@ -476,7 +480,7 @@ fn main() -> Result<()> {
             })
             .expect("Register Plugin Declarations")
     } else if mode == "deadline" {
-        Plugin::new("deadline", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(HostOperation::TimeGet)?;
                 ctx.register(HostOperation::TimeSleep)?;
@@ -493,7 +497,7 @@ fn main() -> Result<()> {
         let right = Stream::<Value>::new("fixture.right");
         let left_observer = Observer::new(&left, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         let right_observer = Observer::new(&right, observe).every(prost_types::Duration { seconds: 2, nanos: 0 });
-        Plugin::new("twins", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(left)?;
                 ctx.register(right)?;
@@ -505,7 +509,7 @@ fn main() -> Result<()> {
             .expect("Register Plugin Declarations")
     } else if mode == "device" {
         let stream = Stream::<Value>::new("fixture.device").publish_on(device);
-        Plugin::new("device", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(stream)?;
                 ctx.register(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))?;
@@ -519,7 +523,7 @@ fn main() -> Result<()> {
                 Ok(())
             })
     } else if mode == "scoped" {
-        Plugin::new("scoped", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(Dependency::<HostInput>::new())?;
                 ctx.register(Dependency::<PublicInput>::new())?;
@@ -528,14 +532,14 @@ fn main() -> Result<()> {
             })
             .expect("Register Plugin Declarations")
     } else if mode == "scoped-provider" {
-        Plugin::new("provider", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
-                ctx.register(Operation::new("example.plugin.v1.Steps/Execute", scope_identity).visibility(Visibility::Public))?;
+                ctx.register(Operation::new("fixture.plugin.v1.Steps/Execute", scope_identity).visibility(Visibility::Public))?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
     } else if mode == "values" {
-        Plugin::new("values", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(HostOperation::PluginsSettingsList)?;
                 ctx.register(Descriptor::<TimeGetResponse>::new())?;
@@ -556,7 +560,7 @@ fn main() -> Result<()> {
             })
             .expect("Register Plugin Declarations")
     } else if mode == "watch" {
-        Plugin::new("watcher", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(HostOperation::InvocationsWatch)?;
                 ctx.register(Operation::new("fixture.watch", watch_invocation).visibility(Visibility::Protected))?;
@@ -564,7 +568,7 @@ fn main() -> Result<()> {
             })
             .expect("Register Plugin Declarations")
     } else if mode == "provider" {
-        Plugin::new("provider", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(Operation::new("fixture.step.0", echo).visibility(Visibility::Public))?;
                 ctx.register(Dependency::<HostInput>::new())?;
@@ -579,29 +583,29 @@ fn main() -> Result<()> {
                     cancellation_timeout: Some(prost_types::Duration { seconds: 30, nanos: 0 }),
                     ..Default::default()
                 }))?;
-                ctx.register(Operation::new("example.plugin.v1.Steps/Execute", echo).visibility(Visibility::Public))?;
-                ctx.register(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(Visibility::Protected))?;
+                ctx.register(Operation::new("fixture.plugin.v1.Steps/Execute", echo).visibility(Visibility::Public))?;
+                ctx.register(Operation::new("fixture.plugin.v1.Lifecycle/Initialize", echo).visibility(Visibility::Protected))?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
     } else if mode == "incompatible" {
-        Plugin::new("incompatible", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(
-                    Operation::new("example.plugin.v1.Steps/Execute", async |_: &Context, _: ()| Ok(())).visibility(Visibility::Public),
+                    Operation::new("fixture.plugin.v1.Steps/Execute", async |_: &Context, _: ()| Ok(())).visibility(Visibility::Public),
                 )?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
     } else if mode == "duplicate" {
-        Plugin::new("duplicate", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
     } else {
-        Plugin::new("caller", "1.0.0")
+        Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(Dependency::<HostInput>::new())?;
                 ctx.register(Dependency::<HostControl>::new())?;

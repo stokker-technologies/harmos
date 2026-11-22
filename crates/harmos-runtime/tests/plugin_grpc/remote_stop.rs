@@ -64,7 +64,7 @@ async fn unmanaged_removal_and_disable_preserve_the_server_for_registration() {
     assert!(!first.is_connected());
     assert!(first.get().await.is_err());
     assert_eq!(remote.stops(), 0);
-    assert_eq!(remote.get().await.id, "remote");
+    assert_eq!(remote.get().await.id, "fixture");
     let request = PluginsSetRequest {
         name: disabled.name,
         value: Some(PluginValue { enabled: true }),
@@ -85,7 +85,7 @@ async fn unmanaged_removal_and_disable_preserve_the_server_for_registration() {
     assert!(!second.is_connected());
     assert!(host.manager.activation("remote").await.is_err());
     assert_eq!(remote.stops(), 0);
-    assert_eq!(remote.get().await.id, "remote");
+    assert_eq!(remote.get().await.id, "fixture");
     let mut request = manager::support::remote("remote", &remote.address);
     request.request_id = "remote-again".into();
     host.client.create(request).await.unwrap();
@@ -94,7 +94,7 @@ async fn unmanaged_removal_and_disable_preserve_the_server_for_registration() {
     drop(watch);
     host.close().await;
     assert_eq!(remote.stops(), 0);
-    assert_eq!(remote.get().await.id, "remote");
+    assert_eq!(remote.get().await.id, "fixture");
 }
 
 #[tokio::test]
@@ -113,8 +113,8 @@ async fn replacing_an_unmanaged_attachment_preserves_both_servers() {
     assert!(next.activation().unwrap().is_connected());
     assert_eq!(original.stops(), 0);
     assert_eq!(replacement.stops(), 0);
-    assert_eq!(original.get().await.id, "remote");
-    assert_eq!(replacement.get().await.id, "remote");
+    assert_eq!(original.get().await.id, "fixture");
+    assert_eq!(replacement.get().await.id, "fixture");
 
     // The Original Process Can Register Again After Both Attachments End.
     next.stop("Complete").await.unwrap();

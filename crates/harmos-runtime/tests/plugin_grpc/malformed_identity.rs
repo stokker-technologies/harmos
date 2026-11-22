@@ -78,7 +78,7 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
     // A Canonical Application Plugin Identity Can Be Admitted After Repair.
     let mut catalog = support::catalog();
     let operation = &mut catalog.operations[0];
-    operation.id = "example.plugin.v1.Steps/Execute".into();
+    operation.id = "fixture.plugin.v1.Steps/Execute".into();
     operation.visibility = model::Visibility::Public as i32;
     operation.fingerprint =
         schema::fingerprint(&operation.id, catalog.types.as_ref().unwrap(), &operation.request, &operation.response).unwrap();

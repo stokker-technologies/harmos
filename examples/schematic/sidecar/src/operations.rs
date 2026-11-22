@@ -53,7 +53,7 @@ use schematic_protocol::plugin::{
 /* === Public Functions === */
 
 pub fn plugin(directory: PathBuf) -> Plugin {
-    Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
+    Plugin::new("schematic", env!("CARGO_PKG_VERSION"))
         .register(|ctx| ctx.register(catalog(directory)))
         .expect("Register Plugin Declarations")
 }

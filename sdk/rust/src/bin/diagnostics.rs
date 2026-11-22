@@ -15,23 +15,20 @@
 
 /* === Imports === */
 
-use harmos::plugin::HostOperation;
-
 // Standard Library Imports
+use std::{env, fs, future, num::NonZeroUsize, path::PathBuf, sync::Mutex, time::Duration};
 
 // Third Party Imports
-
-// Local Imports
-use harmos::plugin::HostInvocationsWatch;
-use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
-use harmos::{Error, Message, Result, Visibility};
-use harmos_protocol::model::setting_value;
-
-use prost::Message as _;
+use prost::Message;
 use prost_types::Timestamp;
-use std::{env, fs, future, num::NonZeroUsize, path::PathBuf, sync::Mutex, time::Duration};
 use tokio::sync::Notify;
 use tonic::Code;
+
+// Local Imports
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
+use harmos::plugin::{HostInvocationsWatch, HostOperation};
+use harmos::{Error, Result, Visibility};
+use harmos_protocol::model::setting_value;
 
 /* === Constants === */
 
@@ -45,16 +42,17 @@ static READING_RELEASED: Notify = Notify::const_new();
 
 /* === Structs === */
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 struct Input {}
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 struct Evidence {
     resource: u64,
     at: Option<Timestamp>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
+#[harmos(package = "execution", file = "execution.proto")]
 struct Isolation {
     absent: bool,
 }
@@ -63,7 +61,8 @@ struct Reading {
     cleanup: PathBuf,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
+#[harmos(package = "execution", file = "execution.proto")]
 pub struct SampleReading {
     pub sequence: u64,
     pub seconds: i64,

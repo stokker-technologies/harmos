@@ -42,7 +42,8 @@ use harmos_protocol::schema;
 
 /* === Public Functions === */
 
-pub(super) fn verify(declarations: &Declarations) -> Result<(), Error> {
+pub(super) fn verify(plugin: &str, declarations: &Declarations) -> Result<(), Error> {
+    verify_identifiers(plugin, declarations)?;
     schema::plugin_collections(declarations).map_err(|error| Error::Invalid(error.to_string()))?;
     if declarations.digest != schema::declarations_digest(declarations) {
         return Err(Error::Invalid("Declarations Digest Mismatch".into()));
@@ -93,4 +94,60 @@ pub(super) fn verify(declarations: &Declarations) -> Result<(), Error> {
 
 /* === Private Functions === */
 
+fn verify_identifiers(plugin: &str, declarations: &Declarations) -> Result<(), Error> {
+    let identifiers = declarations
+        .operations
+        .iter()
+        .map(|operation| operation.id.as_str())
+        .chain(declarations.streams.iter().flat_map(|stream| [stream.id.as_str(), stream.row.as_str()]));
+    for identifier in identifiers {
+        let qualified = identifier.strip_prefix(plugin).and_then(|local| local.strip_prefix('.')).is_some_and(|local| !local.is_empty());
+        if !qualified {
+            return Err(Error::Invalid(format!(
+                "Register Identifier {identifier:?} for Plugin {plugin:?}: rename it to {plugin}.<local> with a non-empty local part and update its references"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_qualified_identifiers_are_required() {
+        let mut declarations = model::Declarations {
+            operations: vec![model::OperationContract {
+                id: "conformance.echo".into(),
+                ..Default::default()
+            }],
+            streams: vec![model::StreamDeclaration {
+                id: "conformance.rows".into(),
+                row: "conformance.Row".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        declarations.requires.push(model::Requirement {
+            id: "peer.echo".into(),
+            ..Default::default()
+        });
+        assert!(verify_identifiers("conformance", &declarations).is_ok());
+        for identifier in ["", "conformance", "conformance.", "other.echo", "conformance_peer.echo", "echo"] {
+            let mut invalid = declarations.clone();
+            invalid.operations[0].id = identifier.into();
+            assert!(matches!(verify_identifiers("conformance", &invalid), Err(Error::Invalid(_))));
+
+            let mut invalid = declarations.clone();
+            invalid.streams[0].id = identifier.into();
+            assert!(matches!(verify_identifiers("conformance", &invalid), Err(Error::Invalid(_))));
+
+            let mut invalid = declarations.clone();
+            invalid.streams[0].row = identifier.into();
+            assert!(matches!(verify_identifiers("conformance", &invalid), Err(Error::Invalid(_))));
+        }
+    }
+}

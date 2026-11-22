@@ -88,7 +88,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .unwrap()
         .operations
         .iter()
-        .find(|operation| operation.id == "example.plugin.v1.Steps/Execute")
+        .find(|operation| operation.id == "fixture.plugin.v1.Steps/Execute")
         .unwrap();
     let input = payload(b"client request");
     let response = client
@@ -110,7 +110,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .unwrap()
         .operations
         .iter()
-        .find(|operation| operation.id == "example.plugin.v1.Lifecycle/Initialize")
+        .find(|operation| operation.id == "fixture.plugin.v1.Lifecycle/Initialize")
         .unwrap();
     let error = client
         .create(InvocationsCreateRequest {
@@ -120,7 +120,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         })
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("example.plugin.v1.Lifecycle/Initialize"));
+    assert!(error.to_string().contains("fixture.plugin.v1.Lifecycle/Initialize"));
     // The Same Client Cannot Reach a Protected Host Built-In.
     let error = client
         .create(InvocationsCreateRequest {

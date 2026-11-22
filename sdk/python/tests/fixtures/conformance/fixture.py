@@ -71,7 +71,7 @@ HOST_FAIL = Operation("conformance.host.fail", Value, Value, visibility=VISIBILI
 PEER_PUBLIC = Operation("conformance.peer.public", Value, Value, visibility=VISIBILITY_PUBLIC)
 PEER_PROTECTED = Operation("conformance.peer.protected", Value, Value, visibility=VISIBILITY_PROTECTED)
 PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=VISIBILITY_PROTECTED)
-OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
+OWN_PROTECTED = Operation("conformance.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISIBILITY_PUBLIC)
 CREATE_INVOCATION = Operation(
     "application.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
@@ -188,11 +188,11 @@ class Fixture:
         after = await ctx.host.time.get()
         return Value(value=(after.seconds - before.seconds).to_bytes(8, "little", signed=True))
 
-    @operation("example.plugin.v1.Lifecycle/Initialize", request=Value, response=Value, visibility=VISIBILITY_PROTECTED)
+    @operation("conformance.plugin.v1.Lifecycle/Initialize", request=Value, response=Value, visibility=VISIBILITY_PROTECTED)
     async def protected(self, ctx: Context, request: Value) -> Value:
         return request
 
-    @operation("example.plugin.v1.Steps/Execute", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, replay_safe=True)
+    @operation("conformance.plugin.v1.Steps/Execute", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, replay_safe=True)
     async def resources(self, ctx: Context, request: Value) -> Value:
         ctx.set(request)
         await ctx.call(HOST_ECHO, request)

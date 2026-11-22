@@ -24,9 +24,7 @@ use tokio::sync::oneshot;
 
 // Local Imports
 use super::scoped::Generation;
-use super::{
-    Activation, Attached, Connection, Error, Placement, PlacementSettings, ScopedBinding, Startup, catalog, describe, managed::Process,
-};
+use super::{Activation, Attached, Connection, Error, Placement, PlacementSettings, ScopedBinding, Startup, describe, managed::Process};
 use crate::facade::{Call, CallOptions};
 use crate::operations::{CallContext, ExecutionContext, HostContext, Manager, NativeOperation, OperationPolicy, ServingError};
 use crate::runtime::StopParticipant;
@@ -435,7 +433,6 @@ async fn inspect_owned(
             Error::Invalid(format!("Inspect Plugin Metadata: {error}; supply metadata within metadata_bytes and a reachable endpoint"))
         })?;
         super::validate_description(&metadata)?;
-        catalog::verify(metadata.declarations.as_ref().expect("validated declarations"))?;
         Ok(Inspection { metadata })
     };
     let result = tokio::select! {

@@ -2,6 +2,32 @@
 
 ## Shared Owners
 
+Plugin description admission owns namespace validation once, in
+`crates/harmos-runtime/src/plugin/grpc/catalog.rs`. Inspection and activation use
+the same description validator before admitting declarations. Every registered
+operation, stream and stream row/schema identifier starts with the plugin's exact
+identifier followed by a dot and a non-empty local part. Collection identities
+already name their first member stream and therefore obey the same rule. Refusals
+identify the declaration, plugin and required rename, including peer references.
+Requirements may name other plugins' qualified identifiers. Operation payload
+types, opaque contribution section types and local lane/setting keys are references
+or instance-local keys, not additional host registrations.
+
+The conformance fixture uses `conformance.plugin.v1` for its lifecycle and steps
+operations. Runtime invoke modes are variants of the `fixture` plugin; their row
+types live under `fixture`, and independent instances keep separate carrier
+ownership. Remote runtime fixtures also use `fixture` and publish their own
+`fixture.ClockRow`, retaining the existing timestamp wire shape. These are clean
+fixture replacements, with no admission-time renaming or compatibility path.
+
+The conformance lane forwarder retains the target's plugin identity when selecting
+its declarations, instead of inventing an unrelated identity. SDK carrier tests
+also use qualified streams and row types; test plugins using standard protobuf or
+library rows take that row's existing namespace as their plugin identifier.
+The Rust example uses `example` consistently with its `example.echo` operation.
+The library sidecar and guest examples use `schematic` consistently with their
+existing operations. Local lane and setting keys remain instance-local.
+
 The resource descriptor catalog owns caller-option parsing for both generation
 and source auditing. A protocol file importing the caller-option definition
 requires an annotation on every service method. Annotated plugin methods project

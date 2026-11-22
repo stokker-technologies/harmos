@@ -214,8 +214,7 @@ impl Instance for Forward {
         let mut response = self.client.clone().get(request).await?;
         let description = response.get_mut();
         if self.lanes {
-            // The Lane Adapter Owns Its Identity; Only Lane Facts Come From the Target.
-            description.id = "conformance-lanes".into();
+            // Retain the Target's Namespace and Identify the Lane Adapter's Carrier.
             description.version = "1.0.0".into();
             description.sdk = "conformance-lanes".into();
             description.sdk_version = env!("CARGO_PKG_VERSION").into();

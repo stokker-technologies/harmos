@@ -36,7 +36,7 @@ use schematic_operations::{AnalyzeExchange, AnalyzeSchematic, AnalyzeUpload, tra
 
 /* === Constants === */
 
-pub const NAME: &str = "schematic_tools";
+pub const NAME: &str = "schematic";
 
 /* === Macros === */
 

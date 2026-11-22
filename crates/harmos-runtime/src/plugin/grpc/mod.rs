@@ -818,7 +818,6 @@ async fn connect(
         ));
     }
     validate_description(&description)?;
-    catalog::verify(description.declarations.as_ref().expect("description catalog was checked"))?;
     let generation = super::fresh_generation()
         .map_err(|error| Error::Invalid(format!("Admit Plugin: {error}; restart the host before admitting another plugin")))?;
     Ok(Activation {
@@ -854,7 +853,7 @@ fn validate_description(description: &InstanceGetResponse) -> Result<(), Error> 
     {
         return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
     }
-    Ok(())
+    catalog::verify(&description.id, description.declarations.as_ref().expect("description catalog was checked"))
 }
 
 async fn disconnected(mut closed: watch::Receiver<bool>) {

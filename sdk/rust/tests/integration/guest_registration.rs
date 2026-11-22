@@ -48,7 +48,7 @@ use harmos_protocol::model::Visibility;
 #[test]
 fn guest_registration_describes_values_before_initialization() {
     // Compose the Same Unary Builder Used by Native Plugins
-    let plugin = Plugin::new("guest_fixture", "1.0.0")
+    let plugin = Plugin::new("guest", "1.0.0")
         .register(|ctx| {
             ctx.register(
                 Operation::new("guest.echo", async |_: &Context, _: ()| -> Result<()> { panic!("inspection entered a handler") })

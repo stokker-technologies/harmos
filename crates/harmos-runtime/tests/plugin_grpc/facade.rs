@@ -147,10 +147,10 @@ async fn plugin_inspection_is_metadata_only_and_detaches() {
         })
         .await
         .unwrap();
-    assert_eq!(metadata.metadata.id, "remote");
+    assert_eq!(metadata.metadata.id, "fixture");
     assert!(runtime.operations.definition("fixture.echo").is_err());
     assert_eq!(remote.stops(), 0);
-    assert_eq!(remote.get().await.id, "remote");
+    assert_eq!(remote.get().await.id, "fixture");
     runtime.stop().await.unwrap();
 }
 
@@ -213,7 +213,7 @@ async fn plugin_inspection_cancellation_settles_the_connection() {
     assert!(inspecting.await.err().unwrap().is_cancelled());
     release.send(()).unwrap();
     runtime.stop().await.unwrap();
-    assert_eq!(remote.get().await.id, "remote");
+    assert_eq!(remote.get().await.id, "fixture");
     assert_eq!(remote.stops(), 0);
 }
 

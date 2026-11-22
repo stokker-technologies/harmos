@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn declarations_describes_values_without_running_handlers_or_cleanup() {
-        let plugin = Plugin::new("declarations_fixture", "1.0.0")
+        let plugin = Plugin::new("declarations", "1.0.0")
             .register(|ctx| {
                 ctx.register(Operation::new("declarations.read", not_called).visibility(Visibility::Protected))?;
                 ctx.register(crate::plugin::Contribution(Settings { interval_ms: 250 }))?;

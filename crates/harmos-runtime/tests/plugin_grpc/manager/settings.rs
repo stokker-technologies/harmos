@@ -250,9 +250,10 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     support::state(&mut watch, "remote", host::PluginState::Ready, 1).await;
 
     let descriptor = SettingsListRequest::default().descriptor();
-    let types = prost_types::FileDescriptorSet {
+    let mut types = prost_types::FileDescriptorSet {
         file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };
+    types.file.extend(super::super::support::clock_types().file.into_iter().filter(|file| file.package.as_deref() == Some("fixture")));
     let id = "harmos.plugin.v1.plugins.Settings/List";
     let fingerprint = harmos_protocol::schema::fingerprint(
         id,
@@ -268,9 +269,9 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
             fingerprint: fingerprint.clone(),
         }],
         streams: vec![model::StreamDeclaration {
-            id: "probe".into(),
+            id: "fixture.probe".into(),
             // An Interval Row Holds One Singular Value per Field.
-            row: "harmos.host.v1.TimeGetResponse".into(),
+            row: "fixture.ClockRow".into(),
             interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }],
@@ -321,7 +322,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     host.client.create(support::remote("caller", &managed.address)).await.unwrap();
     let ready = support::state(&mut watch, "caller", host::PluginState::Ready, 1).await;
     drop(watch);
-    let _watching = host.runtime.streams.current_publication("probe").unwrap().watch();
+    let _watching = host.runtime.streams.current_publication("fixture.probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || completed.load(Ordering::SeqCst)).await.unwrap();
     for _ in 0..2 {
         let reply = checked.recv().await.unwrap();
@@ -347,7 +348,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
 
     let attacker = Remote::start().await;
     // Both Instances Report "remote"; Only The Manager Selects The Entry Identity.
-    description.streams[0].id = "unmanaged_probe".into();
+    description.streams[0].id = "fixture.unmanaged_probe".into();
     description.digest = harmos_protocol::schema::declarations_digest(&description);
     attacker.declarations(description);
     let refused = Arc::new(AtomicBool::new(false));
@@ -386,7 +387,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     });
     let attached = host.runtime.attach_grpc(Placement::Remote(attacker.address.clone()), super::super::support::settings()).await.unwrap();
     assert!(attached.activation().unwrap().entry_name.is_none());
-    let _watching = host.runtime.streams.current_publication("unmanaged_probe").unwrap().watch();
+    let _watching = host.runtime.streams.current_publication("fixture.unmanaged_probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || refused.load(Ordering::SeqCst)).await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.close().await;

@@ -24,6 +24,28 @@ use harmos_runtime::plugin::grpc::{Error, Placement};
 /* === Tests === */
 
 #[tokio::test]
+async fn declarations_must_belong_to_the_plugin_namespace() {
+    let runtime = support::runtime(None).await;
+    let remote = Remote::start().await;
+    for id in ["echo", "other.echo", "fixture_peer.echo", "fixture."] {
+        let mut catalog = support::catalog();
+        let operation = &mut catalog.operations[0];
+        operation.id = id.into();
+        operation.fingerprint = schema::fingerprint(id, catalog.types.as_ref().unwrap(), &operation.request, &operation.response).unwrap();
+        catalog.digest = schema::declarations_digest(&catalog);
+        remote.declarations(catalog);
+        let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
+        assert!(matches!(result, Err(Error::Invalid(_))));
+        assert!(runtime.operations.definition(id).is_err());
+    }
+    remote.declarations(support::catalog());
+    let attached = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
+    assert!(runtime.operations.definition("fixture.echo").is_ok());
+    attached.stop("Complete").await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn host_refuses_tampered_catalogs_before_activation() {
     // Start A Host And Remote Endpoint
     let runtime = support::runtime(None).await;

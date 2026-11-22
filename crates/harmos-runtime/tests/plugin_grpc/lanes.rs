@@ -266,7 +266,7 @@ async fn story(language: &str) {
     peer_attached.stop("Complete").await.unwrap();
     peer.close().await;
     // Two Instances of One Plugin Also Own Independent Capacity.
-    let mut twin = Fixture::start(language, "twin", "lanes").await;
+    let mut twin = Fixture::start(language, "lanes.twin", "lanes").await;
     let twin_attached = attach(&runtime, &twin).await;
     let independent = twin.submit(&runtime, "first", "twin");
     twin.event("twin").await;

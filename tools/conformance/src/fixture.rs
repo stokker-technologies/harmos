@@ -231,7 +231,7 @@ pub fn declarations() -> Declarations {
         "conformance.peer.public",
         "conformance.peer.protected",
         "conformance.peer.local",
-        "example.plugin.v1.Lifecycle/Initialize",
+        "conformance.plugin.v1.Lifecycle/Initialize",
     ]
     .into_iter()
     .map(|id| Requirement {
@@ -289,8 +289,8 @@ pub fn declarations() -> Declarations {
         ..Default::default()
     });
     for (id, visibility, replay_safe) in [
-        ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
-        ("example.plugin.v1.Steps/Execute", Visibility::Public, true),
+        ("conformance.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
+        ("conformance.plugin.v1.Steps/Execute", Visibility::Public, true),
         ("conformance.cancel_reason", Visibility::Public, false),
         ("conformance.watch", Visibility::Public, false),
         ("conformance.peer_call", Visibility::Public, false),

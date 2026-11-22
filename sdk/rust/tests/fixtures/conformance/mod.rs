@@ -103,7 +103,7 @@ macro_rules! peer_request {
 peer_request!(PeerPublic, "conformance.peer.public");
 peer_request!(PeerProtected, "conformance.peer.protected");
 peer_request!(PeerLocal, "conformance.peer.local");
-peer_request!(OwnProtected, "example.plugin.v1.Lifecycle/Initialize");
+peer_request!(OwnProtected, "conformance.plugin.v1.Lifecycle/Initialize");
 
 /* === Enums === */
 
@@ -293,8 +293,8 @@ pub fn catalog() -> impl Registration {
         ctx.register(Operation::new("conformance.nested", nested).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.projected", projected).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.clock", clock).visibility(Visibility::Public))?;
-        ctx.register(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::Visibility::Protected))?;
-        ctx.register(Operation::new("example.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())?;
+        ctx.register(Operation::new("conformance.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::Visibility::Protected))?;
+        ctx.register(Operation::new("conformance.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())?;
         ctx.register(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.watch", watch).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.peer_call", peer_call).visibility(Visibility::Public))?;

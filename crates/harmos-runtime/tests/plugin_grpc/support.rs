@@ -26,6 +26,7 @@ use std::{
 // Third Party Imports
 use futures_core::Stream;
 use futures_util::stream;
+use prost_reflect::ReflectMessage;
 use tokio::{
     net::{TcpListener, TcpStream},
     process::{Child, Command},
@@ -58,6 +59,12 @@ type SamplesHandler = Arc<dyn Fn(Streaming<InstanceSamplesRequest>) -> Output<In
 type WithheldSamples = (oneshot::Sender<()>, oneshot::Sender<()>);
 
 /* === Structs === */
+
+#[derive(harmos::Message)]
+#[harmos(package = "fixture", file = "fixture/clock.proto")]
+pub struct ClockRow {
+    pub now: Option<prost_types::Timestamp>,
+}
 
 #[derive(Clone)]
 pub struct Manual {
@@ -338,7 +345,7 @@ impl Instance for Fixture {
         }
         Ok(Response::new(InstanceGetResponse {
             message_bytes: self.message_bytes.load(Ordering::SeqCst),
-            id: "remote".into(),
+            id: "fixture".into(),
             version: "1.0.0".into(),
             revision: 1,
             sdk: "fixture".into(),
@@ -377,6 +384,19 @@ impl Instance for Fixture {
 }
 
 /* === Public Functions === */
+
+pub fn clock_types() -> prost_types::FileDescriptorSet {
+    let descriptor = model::SettingsDeclarations::default().descriptor();
+    let mut types = prost_types::FileDescriptorSet {
+        file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+    };
+    for file in <ClockRow as harmos::Message>::types().file {
+        if !types.file.iter().any(|existing| existing.name == file.name) {
+            types.file.push(file);
+        }
+    }
+    types
+}
 
 pub fn catalog() -> model::Declarations {
     let types = prost_types::FileDescriptorSet {

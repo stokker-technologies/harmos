@@ -228,6 +228,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     let pool = host::TimeGetResponse::default().descriptor().parent_pool().clone();
     let mut files: BTreeMap<_, _> = pool.files().map(|file| (file.name().to_owned(), file.file_descriptor_proto().clone())).collect();
     files.extend(descriptor.parent_pool().files().map(|file| (file.name().to_owned(), file.file_descriptor_proto().clone())));
+    files.extend(support::clock_types().file.into_iter().map(|file| (file.name.clone().unwrap(), file)));
     let types = prost_types::FileDescriptorSet { file: files.into_values().collect() };
     let settings_id = "harmos.plugin.v1.plugins.Settings/List";
     let settings_fingerprint = harmos_protocol::schema::fingerprint(
@@ -261,14 +262,22 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                 fingerprint: clock_fingerprint.clone(),
             },
         ],
-        streams: ["alpha", "beta", "outside", "device", "duplicate", "mixed", "unknown_demand"]
-            .map(|id| model::StreamDeclaration {
-                id: id.into(),
-                row: "harmos.host.v1.TimeGetResponse".into(),
-                interval: (id != "device").then_some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                ..Default::default()
-            })
-            .into(),
+        streams: [
+            "fixture.alpha",
+            "fixture.beta",
+            "fixture.outside",
+            "fixture.device",
+            "fixture.duplicate",
+            "fixture.mixed",
+            "fixture.unknown_demand",
+        ]
+        .map(|id| model::StreamDeclaration {
+            id: id.into(),
+            row: "fixture.ClockRow".into(),
+            interval: (id != "fixture.device").then_some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            ..Default::default()
+        })
+        .into(),
         ..Default::default()
     };
     catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
@@ -286,11 +295,11 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
             let Some(instance_samples_request::Frame::Open(open)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Open");
             };
-            if open.stream == "outside" || open.stream == "device" {
-                child(&output, 1, "fixture.window_child", fingerprint, payload(b"outside")).await;
+            if open.stream == "fixture.outside" || open.stream == "fixture.device" {
+                child(&output, 1, "fixture.window_child", fingerprint, payload(b"fixture.outside")).await;
                 assert!(input.message().await.unwrap().is_none());
                 signals.refusals.fetch_add(1, Ordering::SeqCst);
-                if open.stream == "outside" {
+                if open.stream == "fixture.outside" {
                     signals.rejected.notify_one();
                 }
                 return;
@@ -301,8 +310,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                     panic!("Expected a Window");
                 };
                 sequence += 1;
-                if open.stream == "duplicate" {
-                    child(&output, 1, "fixture.window_child", fingerprint.clone(), payload(b"duplicate")).await;
+                if open.stream == "fixture.duplicate" {
+                    child(&output, 1, "fixture.window_child", fingerprint.clone(), payload(b"fixture.duplicate")).await;
                     if sequence == 1 {
                         let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                             panic!("Expected Child Reply");
@@ -315,7 +324,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                     signals.refusals.fetch_add(1, Ordering::SeqCst);
                     return;
                 }
-                if open.stream == "mixed" {
+                if open.stream == "fixture.mixed" {
                     output
                         .send(Ok(plugin::InstanceSamplesResponse {
                             samples: vec![plugin::Sample { at: window.start, sequence, row: vec![] }],
@@ -327,7 +336,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                     signals.refusals.fetch_add(1, Ordering::SeqCst);
                     return;
                 }
-                if open.stream == "unknown_demand" {
+                if open.stream == "fixture.unknown_demand" {
                     frame(&output, instance_samples_response::Frame::ChildDemand(ChildDemand { call: 99 })).await;
                     assert!(input.message().await.unwrap().is_none());
                     signals.refusals.fetch_add(1, Ordering::SeqCst);
@@ -412,15 +421,20 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     manager::support::state(&mut watch, "window_owner", host::PluginState::Ready, 1).await;
     drop(watch);
     // The Unscoped Demand Grants Windows Only on Watched Streams.
-    let _watching = ["alpha", "beta", "outside", "duplicate", "mixed", "unknown_demand"]
+    let _watching = ["fixture.alpha", "fixture.beta", "fixture.outside", "fixture.duplicate", "fixture.mixed", "fixture.unknown_demand"]
         .map(|id| host.runtime.streams.current_publication(id).unwrap().watch());
     signals.rejected.notified().await;
     let mut feed = host.runtime.streams.follow(harmos_runtime::storage::Cursor::ORIGIN);
     let collect = async {
         let mut rows = 0;
         while rows < 4 {
-            rows +=
-                feed.next().await.unwrap().publications().filter(|(definition, _, _)| ["alpha", "beta"].contains(&definition.id())).count();
+            rows += feed
+                .next()
+                .await
+                .unwrap()
+                .publications()
+                .filter(|(definition, _, _)| ["fixture.alpha", "fixture.beta"].contains(&definition.id()))
+                .count();
         }
         drop(feed);
     };
@@ -433,7 +447,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     };
     tokio::try_join!(collected, drive).unwrap();
     assert!(
-        signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("window_owner") && reported == "remote")
+        signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("window_owner") && reported == "fixture")
     );
     host.close().await;
 }

@@ -35,11 +35,11 @@ async fn protected_peer_operation_is_refused_across_plugins() {
     // Refuse The Call Across Plugin Owners
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"secret")).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), Classification::Refused);
-    assert!(call_error(&error).to_string().contains("example.plugin.v1.Lifecycle/Initialize"));
+    assert!(call_error(&error).to_string().contains("fixture.plugin.v1.Lifecycle/Initialize"));
 
     // The Host Can Still Invoke That Protected Operation
     let input = payload(b"host access");
-    assert_eq!(host.runtime.operations.call_encoded("example.plugin.v1.Lifecycle/Initialize", input.clone()).await.unwrap(), input);
+    assert_eq!(host.runtime.operations.call_encoded("fixture.plugin.v1.Lifecycle/Initialize", input.clone()).await.unwrap(), input);
     // The Declaring Plugin Also Calls It Through the Host Carrier.
     assert_eq!(host.runtime.operations.call_encoded("fixture.self", input.clone()).await.unwrap(), input);
     host.runtime.stop().await.unwrap();

@@ -230,7 +230,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     let schematic = super::support::component("schematic-guest");
     assert_eq!(world(&sandbox), world(&schematic));
     let example = Session::new(&schematic).await;
-    assert_eq!(example.metadata.id, "schematic_tools");
+    assert_eq!(example.metadata.id, "schematic");
     let declarations = example.metadata.declarations.as_ref().unwrap();
     let operations = declarations.operations.iter().map(|operation| operation.id.as_str()).collect::<BTreeSet<_>>();
     assert_eq!(operations, BTreeSet::from(["schematic.plugin.v1.Schematic/ProposeRoute", "schematic.plugin.v1.Schematic/Validate"]));

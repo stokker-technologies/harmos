@@ -663,8 +663,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             }
             for (id, visibility) in [
                 ("conformance.step.0", Visibility::Public),
-                ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected),
-                ("example.plugin.v1.Steps/Execute", Visibility::Public),
+                ("conformance.plugin.v1.Lifecycle/Initialize", Visibility::Protected),
+                ("conformance.plugin.v1.Steps/Execute", Visibility::Public),
             ] {
                 let operation = declarations
                     .operations
@@ -674,7 +674,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 require(operation.visibility == visibility as i32, "Declare: Wire Operation Visibility Differs")?;
                 let payload = fixture::payload(b"wire identity");
                 let (send, mut input) = invoke(&mut client, id, payload.clone()).await?;
-                if id == "example.plugin.v1.Steps/Execute" {
+                if id == "conformance.plugin.v1.Steps/Execute" {
                     child(&mut input, 1, "conformance.host.echo", &payload).await?;
                     send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;
                 }
@@ -1104,8 +1104,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         21 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
             for (id, visibility, replay_safe) in [
-                ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
-                ("example.plugin.v1.Steps/Execute", Visibility::Public, true),
+                ("conformance.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
+                ("conformance.plugin.v1.Steps/Execute", Visibility::Public, true),
                 ("conformance.step.0", Visibility::Public, false),
             ] {
                 let operation = declarations
@@ -1123,9 +1123,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Interleave Calls Across Two Independent Invocation Resource Stores.
             let first_payload = fixture::payload(b"first");
             let second_payload = fixture::payload(b"second");
-            let (first_send, mut first) = invoke(&mut client, "example.plugin.v1.Steps/Execute", first_payload.clone()).await?;
+            let (first_send, mut first) = invoke(&mut client, "conformance.plugin.v1.Steps/Execute", first_payload.clone()).await?;
             child(&mut first, 1, "conformance.host.echo", &first_payload).await?;
-            let (second_send, mut second) = invoke(&mut client, "example.plugin.v1.Steps/Execute", second_payload.clone()).await?;
+            let (second_send, mut second) = invoke(&mut client, "conformance.plugin.v1.Steps/Execute", second_payload.clone()).await?;
             child(&mut second, 1, "conformance.host.echo", &second_payload).await?;
             send_child(&second_send, 1, child_response::Result::Payload(second_payload.clone())).await?;
             require(terminal(&mut second).await? == response::Result::Payload(second_payload), "Second Invocation Resource Differs")?;
@@ -1177,7 +1177,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         29 => {
             for (mode, operation) in [
                 (b"public".as_slice(), "conformance.peer.public"),
-                (b"self", "example.plugin.v1.Lifecycle/Initialize"),
+                (b"self", "conformance.plugin.v1.Lifecycle/Initialize"),
                 (b"protected", "conformance.peer.protected"),
                 (b"local", "conformance.peer.local"),
             ] {
