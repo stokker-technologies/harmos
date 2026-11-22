@@ -12,21 +12,41 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{process::Stdio, sync::Arc, time::Duration};
+use std::{
+    convert::Infallible,
+    fs,
+    future::{self, Future},
+    num::NonZeroUsize,
+    path::Path,
+    pin::Pin,
+    process::{ExitStatus, Stdio},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    task::Poll,
+    time::Duration,
+};
 
 // Third Party Imports
 use prost::Message;
 use tokio::{
+    io,
     net::{TcpListener, TcpStream},
+    process,
     sync::{Notify, mpsc, oneshot},
     task::{JoinHandle, JoinSet},
 };
 
 // Local Imports
 use super::support;
+use harmos_operations::operations::{OperationSpec, RequestShape, WireDeclaration};
 use harmos_runtime::{
-    Runtime,
+    Error, Resource, Response, Runtime, Scope,
+    clock::Clock,
+    grpc, operations,
     operations::{OperationPolicy, Registration, RetryPolicy},
+    plugin, storage, streams,
 };
 
 /* === Structs === */
@@ -44,7 +64,7 @@ pub struct Reply {
 #[derive(Default)]
 pub struct Signals {
     pub entered: Notify,
-    pub storage_hold: std::sync::atomic::AtomicBool,
+    pub storage_hold: AtomicBool,
     pub storage_entered: Notify,
     pub storage_release: Notify,
     pub storage_ingested: Notify,
@@ -54,28 +74,25 @@ pub struct HostFixture {
     pub runtime: Runtime<support::App>,
     pub clock: support::Manual,
     pub signals: Arc<Signals>,
-    pub stored: Arc<std::sync::Mutex<Vec<(harmos_runtime::streams::Definition, harmos_runtime::streams::PublicationRow)>>>,
+    pub stored: Arc<Mutex<Vec<(streams::Definition, streams::PublicationRow)>>>,
     types: tempfile::TempDir,
     request: String,
     response: String,
 }
 
-struct Store(
-    Arc<std::sync::Mutex<Vec<(harmos_runtime::streams::Definition, harmos_runtime::streams::PublicationRow)>>>,
-    harmos_runtime::storage::Cursor,
-    Arc<Signals>,
-);
+struct Store(Arc<Mutex<Vec<(streams::Definition, streams::PublicationRow)>>>, storage::Cursor, Arc<Signals>);
 
-impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
-    fn resume(&self) -> harmos_runtime::storage::Cursor {
+impl storage::StreamConsumer<support::App> for Store {
+    fn resume(&self) -> storage::Cursor {
         self.1
     }
-    async fn drain(&mut self, batch: harmos_runtime::storage::Batch<support::App>) -> harmos_runtime::storage::Cursor {
-        if self.2.storage_hold.swap(false, std::sync::atomic::Ordering::SeqCst) {
+    async fn drain(&mut self, batch: storage::Batch<support::App>) -> storage::Cursor {
+        if self.2.storage_hold.swap(false, Ordering::SeqCst) {
             self.2.storage_entered.notify_one();
             self.2.storage_release.notified().await;
         }
-        let publications = batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.clone())).collect::<Vec<_>>();
+        let publications =
+            batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.row().clone())).collect::<Vec<_>>();
         let published = !publications.is_empty();
         self.0.lock().unwrap().extend(publications);
         self.1 = batch.reaches();
@@ -88,25 +105,25 @@ impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
 
 pub struct Python {
     pub address: String,
-    process: tokio::process::Child,
+    process: process::Child,
 }
 
 pub struct Sdk {
     pub address: String,
-    process: tokio::process::Child,
+    process: process::Child,
     proxy: JoinHandle<()>,
     disconnect: mpsc::Sender<oneshot::Sender<()>>,
 }
 
 /* === Implementations === */
 
-impl harmos_operations::operations::RequestShape for Host {
+impl RequestShape for Host {
     type Request = Self;
     type Response = Reply;
-    type Input = harmos_runtime::operations::NoStream;
-    type Output = harmos_runtime::operations::NoStream;
+    type Input = operations::NoStream;
+    type Output = operations::NoStream;
 }
-static HOST_DESCRIPTION: harmos_operations::operations::WireDeclaration = harmos_operations::operations::WireDeclaration::request::<Host>(
+static HOST_DESCRIPTION: WireDeclaration = WireDeclaration::request::<Host>(
     "fixture.host",
     OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -115,32 +132,21 @@ static HOST_DESCRIPTION: harmos_operations::operations::WireDeclaration = harmos
         retries: RetryPolicy::Never,
     },
 )
-.visibility(harmos_runtime::operations::Visibility::Public)
-.grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Host", "Call"));
+.visibility(operations::Visibility::Public)
+.grpc(operations::Grpc::new("fixture.host.v1", "Host", "Call"));
 
-const HOST_OPERATION: harmos_operations::operations::OperationSpec<Host> =
-    harmos_operations::operations::OperationSpec::<Host>::new(&HOST_DESCRIPTION);
+const HOST_OPERATION: OperationSpec<Host> = OperationSpec::<Host>::new(&HOST_DESCRIPTION);
 
-pub(crate) async fn host_handler(
-    request: Host, context: harmos_runtime::operations::FunctionContext<Host>,
-) -> Result<harmos_runtime::Response<Reply>, std::convert::Infallible> {
+pub(crate) async fn host_handler(request: Host, context: operations::FunctionContext<Host>) -> Result<Response<Reply>, Infallible> {
     context.resource::<Signals>().expect("declared resource is registered").entered.notify_one();
-    let value = if request.value == b"scope" {
-        context.call().get::<harmos_runtime::Scope>().unwrap().as_str().as_bytes().to_vec()
-    } else {
-        request.value
-    };
+    let value = if request.value == b"scope" { context.call().get::<Scope>().unwrap().as_str().as_bytes().to_vec() } else { request.value };
     Ok(Reply { value }.into())
 }
 
-pub(crate) fn host_operation()
--> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
-    harmos_runtime::operations::OperationFactory::function(
-        HOST_OPERATION,
-        const { &[harmos_runtime::Resource::of::<Signals>()] },
-        host_handler,
-        |_| harmos_runtime::operations::FailureKind::Permanent,
-    )
+pub(crate) fn host_operation() -> Result<operations::OperationFactory, operations::ServingError> {
+    operations::OperationFactory::function(HOST_OPERATION, const { &[Resource::of::<Signals>()] }, host_handler, |_| {
+        operations::FailureKind::Permanent
+    })
 }
 
 impl HostFixture {
@@ -148,46 +154,45 @@ impl HostFixture {
         Self::with_clock(None).await
     }
 
-    pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
-        Self::configured(source, std::num::NonZeroUsize::new(4096).unwrap(), None).await
+    pub async fn with_clock(source: Option<Clock>) -> Self {
+        Self::configured(source, NonZeroUsize::new(4096).unwrap(), None).await
     }
 
-    pub async fn with_middleware(middleware: Arc<dyn harmos_runtime::operations::middleware::Middleware>) -> Self {
-        Self::configured(None, std::num::NonZeroUsize::new(4096).unwrap(), Some(middleware)).await
+    pub async fn with_middleware(middleware: Arc<dyn operations::middleware::Middleware>) -> Self {
+        Self::configured(None, NonZeroUsize::new(4096).unwrap(), Some(middleware)).await
     }
 
     pub(super) async fn configured(
-        source: Option<harmos_runtime::clock::Clock>, preparation_bytes: std::num::NonZeroUsize,
-        middleware: Option<Arc<dyn harmos_runtime::operations::middleware::Middleware>>,
+        source: Option<Clock>, preparation_bytes: NonZeroUsize, middleware: Option<Arc<dyn operations::middleware::Middleware>>,
     ) -> Self {
         let clock = support::Manual::new();
         let signals = Arc::new(Signals::default());
-        let stored = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let stored = Arc::new(Mutex::new(Vec::new()));
         let runtime = crate::support::booted(Default::default(), |setup| {
             if let Some(middleware) = middleware {
                 setup.settings().operation_middleware(middleware);
             }
-            setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
+            setup.settings().clock(source.unwrap_or_else(|| Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());
-            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            setup.settings().operation_settings(operations::Settings {
                 preparation_bytes: Some(preparation_bytes),
                 ..Default::default()
             });
-            setup.settings().attach_streams(Store(stored.clone(), harmos_runtime::storage::Cursor::ORIGIN, signals.clone()));
+            setup.settings().attach_streams(Store(stored.clone(), storage::Cursor::ORIGIN, signals.clone()));
         })
         .await;
-        let registration = Registration::new(harmos_runtime::operations::Lane::default())
+        let registration = Registration::new(operations::Lane::default())
             .operation(host_operation().expect("representable operation"), "fixture.host")
             .unwrap();
         runtime.register_batch(registration).await.unwrap();
         let contract = HOST_OPERATION.wire().contract().unwrap();
         let binding = contract.grpc().unwrap();
-        let service = harmos_runtime::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, &contract)]).unwrap();
+        let service = grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, &contract)]).unwrap();
         let method = service.methods().find(|method| method.name() == "Call").unwrap();
         let request = method.input().full_name().to_owned();
         let response = method.output().full_name().to_owned();
         let types = tempfile::tempdir().unwrap();
-        std::fs::write(types.path().join("host.pb"), service.parent_pool().encode_to_vec()).unwrap();
+        fs::write(types.path().join("host.pb"), service.parent_pool().encode_to_vec()).unwrap();
         Self {
             runtime,
             clock,
@@ -200,14 +205,11 @@ impl HostFixture {
     }
 
     /// Watch a Plugin Stream: While a Watch Is Held, the Activation's Unscoped Demand Grants Its Windows.
-    pub fn watch(
-        &self, stream: &str,
-    ) -> impl futures_core::Stream<Item = harmos_runtime::streams::Item<harmos_runtime::streams::PublicationRow>> + Send + Unpin + use<>
-    {
+    pub fn watch(&self, stream: &str) -> impl futures_core::Stream<Item = streams::Item<streams::PublicationRow>> + Send + Unpin + use<> {
         self.runtime.streams.current_publication(stream).expect("an attached plugin stream").watch()
     }
 
-    pub fn rows(&self) -> Vec<harmos_runtime::streams::PublicationRow> {
+    pub fn rows(&self) -> Vec<streams::PublicationRow> {
         self.stored.lock().unwrap().iter().map(|(_, row)| row.clone()).collect()
     }
 
@@ -272,8 +274,8 @@ impl HostFixture {
         samples
     }
 
-    pub fn managed_sdk(&self, mode: &str) -> harmos_runtime::plugin::grpc::Placement {
-        harmos_runtime::plugin::grpc::Placement::Managed(harmos_runtime::plugin::grpc::Managed {
+    pub fn managed_sdk(&self, mode: &str) -> plugin::grpc::Placement {
+        plugin::grpc::Placement::Managed(plugin::grpc::Managed {
             executable: support::binary("harmos-sdk-invoke-fixture"),
             directory: None,
             arguments: vec![
@@ -289,7 +291,7 @@ impl HostFixture {
 
     pub async fn sdk(&self, mode: &str) -> Sdk {
         let (process, upstream) = support::announced(
-            tokio::process::Command::new(support::binary("harmos-sdk-invoke-fixture"))
+            process::Command::new(support::binary("harmos-sdk-invoke-fixture"))
                 .args([mode, self.types.path().join("host.pb").to_str().unwrap(), &self.request, &self.response])
                 .stderr(Stdio::inherit()),
         )
@@ -306,7 +308,7 @@ impl HostFixture {
                         let upstream = upstream.clone();
                         tunnels.spawn(async move {
                             let mut upstream = TcpStream::connect(upstream).await.unwrap();
-                            let _ = tokio::io::copy_bidirectional(&mut downstream, &mut upstream).await;
+                            let _ = io::copy_bidirectional(&mut downstream, &mut upstream).await;
                         });
                     }
                     Some(reply) = commands.recv() => {
@@ -324,11 +326,11 @@ impl HostFixture {
 
 impl Python {
     pub async fn start(arguments: &[&str]) -> Self {
-        let sdk = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/python");
+        let sdk = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/python");
         let python = sdk.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
         assert!(python.is_file(), "Python SDK Environment: Run mise run prepare");
         let (process, address) = support::announced(
-            tokio::process::Command::new(python)
+            process::Command::new(python)
                 .args(["-m", "tests.fixtures.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
                 .args(arguments)
                 .current_dir(sdk)
@@ -342,7 +344,7 @@ impl Python {
         }
     }
 
-    pub async fn close(mut self) -> std::process::ExitStatus {
+    pub async fn close(mut self) -> ExitStatus {
         drop(self.process.stdin.take());
         self.process.wait().await.unwrap()
     }
@@ -371,8 +373,8 @@ impl Drop for Sdk {
 
 /* === Public Functions === */
 
-pub async fn pending<F: std::future::Future>(mut future: std::pin::Pin<&mut F>) -> bool {
-    std::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx).is_pending())).await
+pub async fn pending<F: Future>(mut future: Pin<&mut F>) -> bool {
+    future::poll_fn(|cx| Poll::Ready(future.as_mut().poll(cx).is_pending())).await
 }
 
 pub fn payload(value: &[u8]) -> Vec<u8> {
@@ -384,9 +386,9 @@ pub fn payload(value: &[u8]) -> Vec<u8> {
     Value { value: value.into() }.encode_to_vec()
 }
 
-pub fn call_error(error: &harmos_runtime::Error) -> &harmos_runtime::plugin::grpc::CallError {
+pub fn call_error(error: &Error) -> &plugin::grpc::CallError {
     match error {
-        harmos_runtime::Error::OperationFailed { source, .. } => source.downcast_ref().expect("Protocol Call Failure"),
+        Error::OperationFailed { source, .. } => source.downcast_ref().expect("Protocol Call Failure"),
         error => panic!("Expected Protocol Failure: {error:?}"),
     }
 }

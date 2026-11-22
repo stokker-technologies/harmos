@@ -13,24 +13,32 @@
 
 // Standard Library Imports
 use std::num::NonZeroU32;
+use std::ptr;
 use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{StringArray, StructArray, UInt64Array};
 
 // Local Imports
-use crate::support::{Bank, Ledger};
+use crate::support::{Bank, Ledger, Pulse, pulse, streams};
+use crate::{storage::fixture, support, support::app};
+use harmos_domain::model::storage::query::Query;
+use harmos_operations::StreamDeclaration;
 use harmos_query::QueryArrow;
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
+use harmos_runtime::operations::{OperationManager, PluginRegistration};
+use harmos_runtime::schema::{Described, graph::Schema};
+use harmos_runtime::state::Position;
 use harmos_runtime::storage::query::RowSlice;
 use harmos_runtime::storage::query::Source;
 use harmos_runtime::storage::query::StreamSelection;
 use harmos_runtime::storage::{Cursor, PayloadEncoding, RecordInput, SchemaKey, StorageManager, StreamInput};
-use harmos_runtime::streams::{PublicationRow, PublishedStream, StreamManager, StreamRegistration, StreamWriter};
-use harmos_runtime::{Error, Message, Result, Runtime};
+use harmos_runtime::streams::{PublicationRow, PublishedStream, StreamFeed, StreamManager, StreamRegistration, StreamWriter};
+use harmos_runtime::{Error, Identifier, Message, Metadata, Result, Runtime};
+use harmos_storage::StorageBackends;
 
 /* === Type Aliases === */
 
@@ -51,13 +59,13 @@ struct Text {
 #[derive(Default)]
 struct Resources {
     endpoint: Option<PluginEndpoint>,
-    operations: Option<harmos_runtime::operations::PluginRegistration>,
+    operations: Option<PluginRegistration>,
     streams: Option<StreamRegistration>,
 }
 
 struct Host {
     streams: StreamManager<Bank>,
-    operations: harmos_runtime::operations::OperationManager,
+    operations: OperationManager,
     lease: Option<Arc<StreamWriter>>,
     fail: bool,
     before: Option<u32>,
@@ -121,17 +129,13 @@ impl PluginLifecycle for Host {
 /* === Private Functions === */
 
 fn candidate(text: bool, label: &str) -> PluginDefinitions {
-    let row = if text {
-        <Text as harmos_runtime::schema::Described>::DEFINITION
-    } else {
-        <Number as harmos_runtime::schema::Described>::DEFINITION
-    };
-    let stream = harmos_operations::StreamDeclaration {
+    let row = if text { <Text as Described>::DEFINITION } else { <Number as Described>::DEFINITION };
+    let stream = StreamDeclaration {
         id: "revision.samples".into(),
-        metadata: harmos_runtime::Metadata::new(harmos_runtime::Identifier::new("revision.samples").unwrap(), label, None),
+        metadata: Metadata::new(Identifier::new("revision.samples").unwrap(), label, None),
         row_metadata: Vec::new(),
         window: 4,
-        row: harmos_runtime::schema::graph::Schema::from_declaration(row, &Default::default()).unwrap(),
+        row: Schema::from_declaration(row, &Default::default()).unwrap(),
     };
     PluginDefinitions::new(
         [PluginDefinition {
@@ -151,7 +155,8 @@ fn candidate(text: bool, label: &str) -> PluginDefinitions {
 }
 
 async fn setup(text: bool, storage: Option<&StorageManager>) -> (Runtime<Bank>, PluginManager<Resources, Resources>, Host) {
-    let runtime = crate::support::booted(Ledger::default(), |setup| {
+    let runtime = support::booted(Ledger::default(), |setup| {
+        setup.settings().register(streams());
         if let Some(storage) = storage {
             setup.settings().storage(storage);
         }
@@ -171,11 +176,11 @@ fn current(host: &Host) -> PublishedStream {
     host.streams.current_publication("revision.samples").unwrap()
 }
 
-async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::StreamFeed<Bank>) -> SchemaKey {
+async fn capture(storage: &StorageManager, feed: &mut StreamFeed<Bank>) -> SchemaKey {
     let batch = feed.next().await.unwrap();
     let (definition, _, row) = batch.publications().next().unwrap();
     let key = SchemaKey {
-        id: harmos_runtime::Identifier::new(definition.id()).unwrap(),
+        id: Identifier::new(definition.id()).unwrap(),
         version: NonZeroU32::new(definition.version()).unwrap(),
         payload_encoding: PayloadEncoding::PostcardV1,
     };
@@ -185,12 +190,12 @@ async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::S
             record: RecordInput {
                 schema: key.clone(),
                 scope: None,
-                item: harmos_runtime::Identifier::new("sample").unwrap(),
+                item: Identifier::new("sample").unwrap(),
                 source: None,
                 source_time: None,
-                payload: row.value.payload.clone(),
+                payload: row.value.payload().to_vec(),
             },
-            stream: harmos_runtime::Identifier::new("samples").unwrap(),
+            stream: Identifier::new("samples").unwrap(),
             sequence: 1,
         }])
         .await
@@ -200,6 +205,50 @@ async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::S
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn delayed_batch_preserves_publication_identity_after_restart() {
+    let (runtime, mut manager, mut host) = setup(false, None).await;
+    let mut feed = host.streams.follow(Cursor::ORIGIN);
+    runtime.streams.publish(pulse(19));
+    manager.initialize(&mut host).await.unwrap();
+    let row = PublicationRow {
+        payload: Number { value: 11 }.encode(),
+        published_unix_micros: Some(17),
+        context: Some("fixture".into()),
+    };
+    let original = host.lease.as_ref().unwrap().admit_row(row.clone(), 2, 0).unwrap();
+    let original_cursor = host.streams.frontier();
+    let generation = original.generation().unwrap();
+    let definition = current(&host).definition().clone();
+
+    host.before = Some(definition.version());
+    manager.reload(candidate(false, "Restarted Numbers"), &mut host).await.unwrap();
+    let restarted = host.lease.as_ref().unwrap().admit_row(row, 2, 0).unwrap();
+    let restarted_cursor = host.streams.frontier();
+    assert_ne!(restarted.generation(), Some(generation));
+
+    let batch = feed.next().await.unwrap();
+    let (delivered_definition, cursor, delivered) = batch.publications().find(|(_, cursor, _)| *cursor == original_cursor).unwrap();
+    assert_eq!(delivered.value.owner(), definition.owner().unwrap());
+    assert_eq!(delivered.value.generation(), Some(generation));
+    assert_eq!(delivered.value.schema(), definition.version());
+    assert_eq!(delivered_definition.id(), definition.id());
+    assert_eq!(delivered_definition.schema(), definition.schema());
+    assert_eq!(cursor, original_cursor);
+    assert_eq!(delivered.value.sequence(), original.sequence());
+    assert_eq!(delivered.position, Position::ORIGIN);
+    assert!(ptr::eq(delivered.value.row(), original.row()));
+    assert_eq!(
+        batch.publications().find(|(_, cursor, _)| *cursor == restarted_cursor).unwrap().2.value.generation(),
+        restarted.generation()
+    );
+    assert_eq!(batch.select::<Pulse>().map(|row| row.value.sample).collect::<Vec<_>>(), [19]);
+    assert_eq!(batch.select_shared::<Pulse>().map(|row| row.value.sample).collect::<Vec<_>>(), [19]);
+
+    manager.shutdown(&mut host).await.unwrap();
+    app::stop(&runtime).await.unwrap();
+}
 
 #[tokio::test]
 async fn changed_row_commits_a_new_current_revision() {
@@ -230,7 +279,7 @@ async fn changed_row_commits_a_new_current_revision() {
     manager.reload(candidate(false, "Numbers Again"), &mut host).await.unwrap();
     assert_eq!(current(&host).definition().version(), old_revision);
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::stop(&runtime).await.unwrap();
+    app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -250,7 +299,7 @@ async fn failed_reload_keeps_old_revision_current() {
     let rows = current(&host).query(..).await.unwrap().collect::<Vec<_>>();
     assert_eq!(Number::decode(&rows.last().unwrap().value.payload).unwrap().value, 9);
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::stop(&runtime).await.unwrap();
+    app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -263,19 +312,19 @@ async fn label_only_reload_preserves_revision() {
     assert_eq!(current(&host).definition().version(), old.definition().version());
     assert_ne!(current(&host).definition().metadata(), old.definition().metadata());
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::stop(&runtime).await.unwrap();
+    app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
-    let data = Arc::new(crate::storage::fixture::Backend::new(crate::storage::fixture::history()));
+    let data = Arc::new(fixture::Backend::new(fixture::history()));
     let mut keys = Vec::new();
     for text in [false, true] {
-        let backends = harmos_storage::StorageBackends {
+        let backends = StorageBackends {
             primary: data.clone(),
-            state: Arc::new(crate::storage::fixture::RecoveryBackend::new(crate::storage::fixture::history())),
+            state: Arc::new(fixture::RecoveryBackend::new(fixture::history())),
         };
-        let storage = StorageManager::new(backends, crate::storage::fixture::config()).unwrap();
+        let storage = StorageManager::new(backends, fixture::config()).unwrap();
         let (runtime, mut manager, mut host) = setup(text, Some(&storage)).await;
         let mut feed = host.streams.follow(Cursor::ORIGIN);
         manager.initialize(&mut host).await.unwrap();
@@ -283,7 +332,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         assert_eq!(keys.last().unwrap().version.get(), current(&host).definition().version());
         for (index, key) in keys.iter().enumerate() {
             let mut reader = storage
-                .query(harmos_domain::model::storage::query::Query {
+                .query(Query {
                     merge: None,
                     at: storage.get_saved_position(),
                     source: Source::Stream(StreamSelection {
@@ -319,7 +368,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         manager.shutdown(&mut host).await.unwrap();
         drop(feed);
         storage.close().await.unwrap();
-        crate::support::app::stop(&runtime).await.unwrap();
+        app::stop(&runtime).await.unwrap();
     }
     assert_ne!(keys[0], keys[1]);
 }

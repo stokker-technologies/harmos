@@ -19,9 +19,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 // Third Party Imports
 use harmos_domain::message::postcard::{Reader, Value};
 use harmos_protocol::columns::batch;
+use prost_types::Timestamp;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 // Local Imports
-use super::{PublicationRow, StreamPublicationError};
+use super::window::Window;
+use super::{Definition, PublicationRow, StreamPublicationError};
+use crate::clock::Clock;
 
 /* === Constants === */
 
@@ -53,7 +56,7 @@ struct Owned {
     missed: u64,
     units: u64,
     row: PublicationRow,
-    received: prost_types::Timestamp,
+    received: Timestamp,
     _bytes: OwnedSemaphorePermit,
     _slot: OwnedSemaphorePermit,
 }
@@ -62,7 +65,7 @@ pub(super) struct Pool {
     bytes: Arc<Semaphore>,
     rows: Arc<Semaphore>,
     admission: Mutex<()>,
-    clock: crate::clock::Clock,
+    clock: Clock,
 }
 
 /* === Enums === */
@@ -72,7 +75,7 @@ pub(super) struct Pool {
 /* === Implementations === */
 
 impl Pool {
-    pub(super) fn new(clock: crate::clock::Clock) -> Self {
+    pub(super) fn new(clock: Clock) -> Self {
         Self {
             bytes: Arc::new(Semaphore::new(RETAINED_BYTES)),
             rows: Arc::new(Semaphore::new(RETAINED_ROWS)),
@@ -82,8 +85,8 @@ impl Pool {
     }
 
     pub(super) fn retain(
-        &self, definition: &crate::streams::Definition, generation: Option<u64>, row: PublicationRow, wire_sequence: u64, missed: u64,
-        window: Option<(&super::window::Window, u64)>,
+        &self, definition: &Definition, generation: Option<u64>, row: PublicationRow, wire_sequence: u64, missed: u64,
+        window: Option<(&Window, u64)>,
     ) -> Result<ManagedPublication, StreamPublicationError> {
         let received = self.clock.date().into();
         let fields = &definition.schema().definitions[definition.schema().root];
@@ -134,7 +137,7 @@ impl Pool {
 }
 
 impl ManagedPublication {
-    pub(super) fn received(&self) -> prost_types::Timestamp {
+    pub(super) fn received(&self) -> Timestamp {
         self.0.received
     }
 
@@ -190,7 +193,7 @@ impl ManagedPublication {
         self.0.row.context.as_deref()
     }
 
-    pub(super) fn row(&self) -> &PublicationRow {
+    pub fn row(&self) -> &PublicationRow {
         &self.0.row
     }
 }

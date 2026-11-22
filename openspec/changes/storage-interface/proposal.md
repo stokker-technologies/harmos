@@ -13,6 +13,7 @@ Applications need these generic facilities without exposing concrete backend API
 - Add durable materialized projections with readable frontiers and revision invalidation.
 - Add `Transform::TimeBuckets` with late-sample replacement and changed-key visibility.
 - Add atomic conditional object updates.
+- Expose original publication owner, admitted plugin generation and schema through existing storage batches.
 - Define backend obligations, a memory reference backend and conformance kit, retaining existing row, file,
   recovery and durability contracts. Prove correctness and measure before/after performance,
   including multi-day data; no performance improvement is assumed.
@@ -35,6 +36,7 @@ all-disk ownership API, storage migration policy or cross-method transaction ass
 ### New Capabilities
 
 - `storage-extensions`: the five generic capabilities, backend semantics and benchmark proof.
+- `storage-delivery`: original admitted publication identity in existing storage batches.
 
 ## Impact
 
