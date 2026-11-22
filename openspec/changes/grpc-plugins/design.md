@@ -15,6 +15,49 @@ Controlled-clock runtime tests and four-language conformance prove the distincti
 Owner documentation impact: `docs/project/architecture.md:1241` and each
 `docs/sdks/{python,rust,csharp,cpp}.md` must describe these APIs; README remains accurate.
 
+## Storage Close and Live Reads
+
+Close signals storage's existing change channel before taking exclusive lifecycle
+ownership. Snapshot, file-production, query-definition and raw recovery reads use
+one manager-owned read boundary that races lifecycle acquisition and the existing
+bounded backend call against closing. Closing cancels the read and releases its
+shared lifecycle guard; idle reader handles and queued query admission do not hold
+shutdown open. The read boundary constructs backend futures only after acquiring
+lifecycle ownership, including backends that do synchronous work at construction.
+Close also closes active query admission to wake queued queries.
+Persistence, deletion, checkpointing and backend teardown retain their existing
+ownership and deadlines. No second cancellation registry or shutdown budget exists.
+
+The deterministic backend-gate reproduction blocks an immutable file read inside
+the backend. Previously its shared lifecycle guard held close at the exclusive
+lock until backend I/O completed or its deadline expired. The controlled-clock
+regression requires close to finish while that gate stays closed. This proves a
+failure mechanism consistent with the reported storage phase; the report alone
+does not identify the exact backend call from the affected process.
+
+Open private staging is discarded; resumable public productions keep their
+acknowledged prefix and durable checkpoint across close, with their old live
+handles fenced. Reopen may resume that checkpoint through the existing generation
+mechanism. Permanently abandoning those resumable productions at close would
+contradict the retained durability contract and is not part of this repair.
+
+Source inventory: `crates/harmos-storage/src/manager/{shutdown,state,recovery}.rs`,
+`crates/harmos-storage/src/{snapshot,file_production}.rs`,
+`crates/harmos-storage/src/query/manager.rs`,
+`crates/harmos-storage/tests/integration/manager/cancellation.rs` and
+`crates/harmos-runtime/tests/runtime/lifecycle/stop.rs`, plus this design and tasks.
+Runtime lifecycle sequencing and public signatures are unchanged. README claims
+remain accurate. Owner documentation: `docs/guides/storage.md:278` should state
+that close cancels active backend reads and wakes queued queries while retaining
+resumable production checkpoints.
+
+The dormant startup `RecoveryReader` in
+`crates/harmos-storage/src/state/reader.rs:40` retains lifecycle ownership until
+finish or drop, unlike active-runtime readers. Changing that contract also changes
+the exclusion between managed recovery and worker startup. This separate ownership
+question remains for owner review; this repair does not replace its guard with an
+uncoordinated reader or change its public finish contract.
+
 ## Interval Lag Recovery
 
 `PlacementSettings::interval_lag` skips overdue samples instead of ending a demand.

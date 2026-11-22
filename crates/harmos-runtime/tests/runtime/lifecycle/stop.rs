@@ -48,6 +48,7 @@ impl JournalConsumer<Editor> for HeldDrain {
 struct Cancellation {
     started: Notify,
     finalized: AtomicUsize,
+    file: std::sync::Mutex<Option<harmos_runtime::storage::StorageFile>>,
 }
 
 struct PendingGuard(Arc<Cancellation>);
@@ -88,6 +89,7 @@ async fn pending_contract_declaration_handler(
 ) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
     let cancellation = ctx.resource::<Cancellation>().expect("declared resource is registered");
     let _guard = PendingGuard(cancellation.clone());
+    let _file = cancellation.file.lock().unwrap().take();
     cancellation.started.notify_one();
     std::future::pending().await
 }
@@ -221,4 +223,35 @@ async fn stop_budget_shared() {
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     release.notify_one();
     crate::support::app::stop(&runtime).await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn stop_interrupts_a_scope_owning_an_unfinished_file() {
+    let trace = Arc::new(Cancellation::default());
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
+        setup.resource::<Cancellation>(trace.clone());
+    })
+    .await
+    .unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    let storage = runtime.storage().unwrap();
+    let mut file = storage
+        .create_file(harmos_runtime::storage::FileMetadata {
+            id: harmos_runtime::Identifier::new("interrupted").unwrap(),
+            scope: None,
+            media_type: "application/octet-stream".into(),
+            expected_length: None,
+            expected_sha256: None,
+        })
+        .await
+        .unwrap();
+    file.write_all(b"unfinished".to_vec()).await.unwrap();
+    *trace.file.lock().unwrap() = Some(file);
+    let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
+    trace.started.notified().await;
+    runtime.stop_with_timeout(Duration::from_secs(1)).await.unwrap();
+    assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
+    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
+    assert!(storage.status().closed);
+    assert_eq!(storage.status().pending_bytes, 0);
 }
