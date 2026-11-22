@@ -22,10 +22,10 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import harmos_tools.package.run
-
 # Third Party Imports
 # Local Imports
+import harmos_tools.package.run
+from harmos_tools.ci import tasks
 from harmos_tools.package import conformance
 from harmos_tools.release import layout, notices, policy, sbom
 
@@ -43,6 +43,62 @@ from harmos_tools.release import layout, notices, policy, sbom
 
 
 class ReleasePackage(unittest.TestCase):
+    def test_python_selection_stages_existing_wheel_without_rebuilding(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        try:
+            directory = Path(temporary_directory.name)
+            (directory / "tools").mkdir()
+            (directory / "tools/project.toml").write_text('[version]\nvalue = "1.2.3"\n')
+            for profile in ("dev", "release"):
+                source = directory / "target/build" / profile / "any/python"
+                source.mkdir(parents=True)
+                wheel = source / "harmos_sdk-1.2.3-py3-none-any.whl"
+                wheel.write_bytes(profile.encode())
+                destination = directory / "target/package" / profile / "any/python"
+                destination.mkdir(parents=True)
+                (destination / "stale.whl").write_bytes(b"stale")
+                other = destination.parent / "rust/retained.crate"
+                other.parent.mkdir()
+                other.write_bytes(b"retained")
+
+                with (
+                    self.subTest(profile=profile),
+                    patch.object(Path, "cwd", return_value=directory),
+                    patch("sys.argv", ["package.run", "python", "--profile", profile, "--target", "any"]),
+                ):
+                    harmos_tools.package.run.main()
+
+                self.assertEqual(list(destination.iterdir()), [destination / wheel.name])
+                self.assertEqual((destination / wheel.name).read_bytes(), wheel.read_bytes())
+                self.assertEqual(other.read_bytes(), b"retained")
+        finally:
+            temporary_directory.cleanup()
+
+    def test_python_selection_refuses_missing_build_output(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        try:
+            directory = Path(temporary_directory.name)
+            (directory / "tools").mkdir()
+            (directory / "tools/project.toml").write_text('[version]\nvalue = "1.2.3"\n')
+            for empty in (False, True):
+                if empty:
+                    (directory / "target/build/dev/any/python").mkdir(parents=True)
+                with (
+                    self.subTest(empty=empty),
+                    patch.object(Path, "cwd", return_value=directory),
+                    patch("sys.argv", ["package.run", "python", "--target", "any"]),
+                    self.assertRaises(policy.ToolError),
+                ):
+                    harmos_tools.package.run.main()
+        finally:
+            temporary_directory.cleanup()
+
+    def test_python_task_selects_existing_platform_independent_packages(self) -> None:
+        for profile in ("dev", "release"):
+            with self.subTest(profile=profile), patch("harmos_tools.task.execute.module", return_value=0) as module:
+                self.assertEqual(tasks.dispatch(["package", "python", "--profile", profile]), 0)
+            module.assert_called_once_with("package.run", "python", "--profile", profile, "--target", "any")
+
     def test_matching_product_bytes_and_locked_licenses_become_release_inputs(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         temporary = temporary_directory.name

@@ -33,6 +33,10 @@ from . import csharp, execute
 
 
 def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if options.selection:
+        if options.language:
+            parser.error("select either python or --language")
+        return execute.module("package.run", "python", "--profile", options.profile, "--target", "any")
     if options.language == "csharp":
         return csharp.run(options, parser)
     return execute.task("package:rust", "--profile", options.profile)
