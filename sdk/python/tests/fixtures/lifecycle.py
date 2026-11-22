@@ -17,8 +17,15 @@ import sys
 from pathlib import Path
 
 # Third Party Imports
-from harmos import CLASSIFICATION_PERMANENT, VISIBILITY_PUBLIC, SettingDeclaration, SettingValue, model
-from harmos._invocation import FailureError
+from harmos import (
+    CLASSIFICATION_PERMANENT,
+    CLASSIFICATION_REFUSED,
+    VISIBILITY_PUBLIC,
+    FailureError,
+    SettingDeclaration,
+    SettingValue,
+    model,
+)
 from harmos.plugin import Catalog, Context, HostOperation, Plugin, operation
 
 # Local Imports
@@ -51,7 +58,13 @@ class Author:
             await self.release.wait()
             if self.mode == "failure":
                 raise FailureError(model.Failure(classification=CLASSIFICATION_PERMANENT, code="acquire_failed", message="Acquire Failed"))
-            await ctx.host.time.get()
+            try:
+                await ctx.host.time.get()
+            except FailureError as failure:
+                if self.mode == "host_failure":
+                    if failure.value.classification != CLASSIFICATION_REFUSED or "fixture_missing" not in str(failure):
+                        raise ValueError("Initialize Plugin: Preserve the Host Failure Classification and Cause") from failure
+                raise
             if self.mode == "settings":
                 settings = await ctx.host.plugins.settings.list()
                 if settings.value.values["count"].integer != 3:

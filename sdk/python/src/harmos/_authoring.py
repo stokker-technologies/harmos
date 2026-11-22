@@ -32,6 +32,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import Server, ServicerContext
 
+# Local Imports
 from harmos._wire.model.v1.description_pb2 import Declarations
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
 from harmos._wire.model.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
@@ -54,8 +55,6 @@ from harmos._wire.plugin.v1.stream_pb2 import Sample
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Lane, Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
-
-# Local Imports
 from ._invocation import Context, FailureError, Handler, ProtocolError, Publisher, validate_timestamp
 from ._transfer import message_bytes
 from ._wire.model.v1.transfer_pb2 import StorageTransferSettings

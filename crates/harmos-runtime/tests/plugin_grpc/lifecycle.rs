@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{fs, num::NonZeroUsize, path::Path, process::Stdio, time::Duration};
+use std::{fs, num::NonZeroUsize, path::Path, process::Stdio, sync::Arc, time::Duration};
 
 // Third Party Imports
 use tokio::{
@@ -34,6 +34,7 @@ use harmos_protocol::host::{
 };
 use harmos_runtime::{
     Runtime,
+    operations::middleware::{Enter, Invocation, Middleware},
     plugin::grpc::{Attached, Placement},
 };
 use tonic::transport::Endpoint;
@@ -52,11 +53,29 @@ struct Python {
     address: String,
 }
 
+struct MissingTime;
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Middleware for MissingTime {
+    fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a> {
+        Box::pin(async move {
+            if call.operation().id.as_str() == "harmos.plugin.v1.Time/Get" {
+                return Err(harmos_runtime::Error::OperationFailed {
+                    operation: call.operation().id.to_string(),
+                    source: Arc::new(harmos_operations::execution::ServingError::Native(Arc::new(tonic::Status::not_found(
+                        "fixture_missing: Restore the Missing Entry",
+                    )))),
+                });
+            }
+            Ok(())
+        })
+    }
+}
 
 impl Python {
     async fn start(mode: &str) -> Self {
@@ -404,6 +423,33 @@ async fn manager_retains_the_initialize_failure() {
     assert_eq!(failure.code, "acquire_failed");
     assert_eq!(failure.classification, harmos_protocol::model::Classification::Permanent as i32);
     assert_eq!(failure.operation, "lifecycle.initialize");
+    assert!(host.manager.activation("lifecycle").await.is_err());
+    drop(watch);
+    host.close().await;
+    plugin.close().await;
+}
+
+#[tokio::test]
+async fn host_failure_activation() {
+    // A Host Child Refuses With an Actionable Cause During Python Initialize.
+    let root = tempfile::tempdir().unwrap();
+    let backends = manager::support::Backends::new();
+    let mut host = manager::support::Host::start(root.path(), &backends).await;
+    host.runtime.operations.register_middleware(Arc::new(MissingTime)).unwrap();
+    let mut plugin = Python::start("host_failure").await;
+    let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
+    host.client.create(manager::support::remote("lifecycle", &plugin.address)).await.unwrap();
+    plugin.event("initialize").await;
+    plugin.command("release").await;
+    plugin.event("initialized").await;
+    plugin.event("finalize:0:1").await;
+
+    // Python Checks FailureError Before Rethrowing; Activation Retains the Failure.
+    let entry = manager::support::state(&mut watch, "lifecycle", PluginState::Unavailable, 1).await;
+    let failure = entry.failure.unwrap();
+    assert_eq!(failure.classification(), harmos_protocol::model::Classification::Refused);
+    assert!(failure.message.contains("fixture_missing"));
+    assert_eq!(failure.operation, "harmos.plugin.v1.Time/Get");
     assert!(host.manager.activation("lifecycle").await.is_err());
     drop(watch);
     host.close().await;
