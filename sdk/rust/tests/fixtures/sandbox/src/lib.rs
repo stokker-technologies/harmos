@@ -291,7 +291,7 @@ async fn read(owner: &Owner, context: &Context, mut request: ReadOperation) -> R
     }
     if request.value == "context-parent" {
         let parent = context.value::<Stage>()?.ok_or_else(|| Error::Invalid("Stage Is Missing".into()))?;
-        let child = context.with_value(Stage { id: "child".into() }).call(ReadOperation { value: "context-leaf".into() }).await?;
+        let child = context.with_value(Stage { id: "child".into() }).operation(ReadOperation { value: "context-leaf".into() }).await?;
         return Ok(Value {
             value: format!("{}:{}", parent.id, child.value),
         });
