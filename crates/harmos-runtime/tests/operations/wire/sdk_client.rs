@@ -198,7 +198,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         samples: vec![0, 127, 128],
         annotation: Some(String::new()),
     };
-    let response = client.call(&echo, request.clone()).await.unwrap();
+    let response = client.operation(&echo, request.clone()).await.unwrap();
     assert_eq!(response, expected);
     assert!(client.start(&echo, request.clone()).await.is_err());
 
@@ -291,7 +291,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         ..Default::default()
     };
     assert!(prost::Message::encoded_len(&compact) < 384);
-    let error = bounded.call(&echo, compact.clone()).await.unwrap_err();
+    let error = bounded.operation(&echo, compact.clone()).await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
     assert!(error.message().contains("retained_bytes"));
     let mut running = bounded.watch(&watch, compact).await.unwrap();
@@ -305,14 +305,14 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert!(error.message().contains("operations.list"));
 
     // Retained Caller Values Do Not Consume SDK Claims In Later Calls Or Cancellation.
-    let first = bounded.call(&echo, Request::default()).await.unwrap();
-    let second = bounded.call(&echo, Request::default()).await.unwrap();
+    let first = bounded.operation(&echo, Request::default()).await.unwrap();
+    let second = bounded.operation(&echo, Request::default()).await.unwrap();
     assert_eq!(first, second);
     let mut running = bounded.start(&wait, Request { offset: 23, ..Default::default() }).await.unwrap();
     // An Unpolled Stream Keeps Wire Backpressure Without Reserving Decoded Values.
-    assert!(bounded.call(&echo, Request::default()).await.is_ok());
+    assert!(bounded.operation(&echo, Request::default()).await.is_ok());
     let item = running.next().await.unwrap().unwrap();
-    assert!(bounded.call(&echo, Request::default()).await.is_ok());
+    assert!(bounded.operation(&echo, Request::default()).await.is_ok());
     running.request_cancel().await.unwrap();
     assert!(running.next().await.unwrap().is_none());
 
@@ -321,17 +321,17 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         text: "retained".repeat(15),
         ..Default::default()
     };
-    assert_eq!(bounded.clone().call(&echo, competing.clone()).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    assert_eq!(bounded.clone().operation(&echo, competing.clone()).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
     assert_eq!(running.join().await.unwrap().offset, 23);
     assert_eq!(item.offset, 0);
-    assert_eq!(bounded.call(&echo, competing.clone()).await.unwrap().text, competing.text);
+    assert_eq!(bounded.operation(&echo, competing.clone()).await.unwrap().text, competing.text);
 
     // Refuse An Oversized Request Before It Enters The Outgoing Queue.
     let oversized = Request {
         text: "x".repeat(settings.message_bytes.get()),
         ..Default::default()
     };
-    assert_eq!(client.call(&echo, oversized).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    assert_eq!(client.operation(&echo, oversized).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Close The Listener And Host.
     drop(attached);
