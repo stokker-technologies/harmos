@@ -13,7 +13,7 @@
 
 #[cfg(feature = "streaming")]
 mod streaming {
-    use super::{EndpointSet, MemorySize, TypeId};
+    use super::{EndpointSet, Instant, MemorySize, Receiver, TypeId};
     use crate::execution::operations::{StreamError, StreamInput, StreamOutput, StreamSettings, stream};
 
     pub struct NativeOutput<T>(StreamOutput<T>);
@@ -25,7 +25,7 @@ mod streaming {
         fn transferred(&self) -> bool {
             self.0.transfer_flag().transferred()
         }
-        fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        fn progress(&self) -> Vec<Receiver<Option<Instant>>> {
             vec![self.0.transfer_flag().subscribe()]
         }
     }
@@ -54,9 +54,11 @@ pub use streaming::{NativeOutput, native_stream};
 /* === Imports === */
 
 // Standard Library Imports
-use std::{any::TypeId, error::Error, future::Future, marker::PhantomData, sync::Arc};
+use std::{any::TypeId, error::Error, future::Future, marker::PhantomData, sync::Arc, time::Duration};
 
 // Third Party Imports
+#[cfg(feature = "streaming")]
+use tokio::{sync::watch::Receiver, time::Instant};
 
 // Local Imports
 use super::{NativeInstance, OperationFactory, ServiceFuture};
@@ -65,7 +67,11 @@ use crate::execution::operations::{
     Calls, EndpointSet, ExecutionContext, OperationDefinition, OperationPolicy, ReplaySafety, Resource, ResourceSet, Response,
     ServingError, Target, Visibility,
 };
-use crate::operations::{ContractError, FailureKind};
+use crate::operations::{self, ContractError, FailureKind};
+use crate::schema::identity;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+use crate::clock::ClockAccess;
 use crate::{Fingerprint, Identifier, MemorySize, MessageError};
 
 /* === Constants === */
@@ -106,10 +112,12 @@ pub trait NativeOperation: Send + Sync + 'static {
     fn classify(_: &(dyn Error + Send + Sync + 'static)) -> FailureKind {
         FailureKind::Permanent
     }
+
     /// A Clock Wait This Request Performs, Registered When the Call Is Admitted.
-    fn admitted_wait(_request: &Self::Request) -> Option<std::time::Duration> {
+    fn admitted_wait(_request: &Self::Request) -> Option<Duration> {
         None
     }
+
     fn run(
         context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints,
     ) -> impl Future<Output = Result<Self::Response, ServingError>> + Send;
@@ -215,11 +223,7 @@ impl OperationFactory {
 impl<O: NativeOperation> NativeInstance for Instance<O> {
     fn admit(&mut self) {
         #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-        if let Some(duration) = O::admitted_wait(&self.request)
-            && let Ok(clock) = self.resources.resource::<crate::clock::ClockAccess>()
-        {
-            clock.0.register(duration);
-        }
+        admit_wait(O::admitted_wait(&self.request), &self.resources);
     }
     fn classify(&self, error: &(dyn Error + Send + Sync + 'static)) -> FailureKind {
         O::classify(error)
@@ -243,12 +247,21 @@ impl<O: NativeOperation> NativeInstance for Instance<O> {
         self.endpoints.transferred()
     }
     #[cfg(feature = "streaming")]
-    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+    fn progress(&self) -> Vec<Receiver<Option<Instant>>> {
         self.endpoints.progress()
     }
 }
 
 /* === Public Functions === */
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub(super) fn admit_wait(duration: Option<Duration>, resources: &ResourceSet) {
+    if let Some(duration) = duration
+        && let Ok(clock) = resources.resource::<ClockAccess>()
+    {
+        clock.0.register(duration);
+    }
+}
 
 /* === Private Functions === */
 
@@ -260,9 +273,9 @@ fn definition<O: NativeOperation>(id: &str) -> Result<OperationDefinition, Servi
 
 fn description<O: NativeOperation>(id: &str) -> Result<OperationDefinition, ServingError> {
     // Native Types Are Matched By TypeId; This Identity Is Never A Wire Contract.
-    let fingerprint = crate::schema::identity::operation(id, Fingerprint([0; 32]), Fingerprint([0; 32]), None, None);
+    let fingerprint = identity::operation(id, Fingerprint([0; 32]), Fingerprint([0; 32]), None, None);
     let definition = OperationDefinition {
-        id: Identifier::new(id).map_err(crate::operations::Error::from)?,
+        id: Identifier::new(id).map_err(operations::Error::from)?,
         description: String::new(),
         visibility: Visibility::Private,
         policy: O::POLICY,

@@ -235,9 +235,13 @@ class WindowBatches(IsolatedAsyncioTestCase):
 
     def test_declarations_refuse_rows_and_columns_without_one_value_per_field(self) -> None:
         # Interval Rows Hold One Plain Value per Field; Device Rows Are Unrestricted.
-        for row in (Graph, Graph.Nested, Struct, struct_pb2.Value):
-            self.assertRaises(ValueError, observer, "example.reading", row=row, interval=SECOND)
+        for row in (Graph, struct_pb2.ListValue, Struct, struct_pb2.Value):
+            with self.subTest(row=row.DESCRIPTOR.full_name):
+                self.assertRaises(ValueError, observer, "example.reading", row=row, interval=SECOND)
         publisher("example.device", row=Graph)
+
+        # Proto3 Optional Fields Use Synthetic Oneofs and Preserve Presence.
+        observer("example.optional", row=Graph.Nested, interval=SECOND)
 
         # Window Columns Repeat Every Row Field With Its Number and Type.
         for columns in (Value, Graph, Struct):
