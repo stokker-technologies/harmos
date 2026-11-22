@@ -61,7 +61,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     // Inspect and Package the Native Plugin Without an Embedded Inventory
     let binary = support::binary();
     let inspection = harmos_packaging::inspect(&binary).unwrap();
-    assert_eq!(inspection.id, "schematic_tools");
+    assert_eq!(inspection.id, "schematic");
     assert_eq!(
         inspection.operations,
         [
@@ -71,7 +71,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
         ]
     );
     let bundle = support::package(binary);
-    assert_eq!(bundle.manifest().identity.name, "schematic_tools");
+    assert_eq!(bundle.manifest().identity.name, "schematic");
     assert!(bundle.manifest().files[0].executable.as_ref().unwrap().registrations.is_empty());
     let staging = tempfile::tempdir().unwrap();
     let installed = bundle.extract(staging.path()).unwrap();

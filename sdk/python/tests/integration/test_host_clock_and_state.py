@@ -55,9 +55,12 @@ class HostClockAndState(IsolatedAsyncioTestCase):
             ctx.register(Catalog(author))
             ctx.register(Catalog(object(), settings=[SettingDeclaration(name="flag", default=SettingValue(flag=False))]))
 
-        plugin = Plugin(id="author", version="1.0.0", register=register)
+        plugin = Plugin(id="conformance", version="1.0.0", register=register)
         declarations = plugin.declarations()
-        self.assertEqual({operation.id for operation in declarations.operations}, {"author.wait", "author.state", "author.finalize"})
+        self.assertEqual(
+            {operation.id for operation in declarations.operations},
+            {"conformance.author.wait", "conformance.author.state", "conformance.finalize"},
+        )
         self.assertEqual(len(declarations.sections), 1)
         self.assertEqual(author.calls, 0)
         self.assertEqual(author.cleaned, 0)
@@ -114,7 +117,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # Serve an Instance with Clock Requirements and a Typed Settings Section.
         author = Author()
         plugin = Plugin(
-            id="author",
+            id="conformance",
             version="1.0.0",
             register=lambda ctx: ctx.register(
                 Catalog(author, requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_GET], sections=[Value(value=b"settings")])
@@ -130,7 +133,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         self.assertEqual(Value.FromString(description.declarations.sections[0].payload).value, b"settings")
 
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
-        call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
+        call = await calls.invoke(client, "conformance.author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
         self.assertEqual(sleep.operation, "harmos.plugin.v1.Time/Sleep")
         self.assertEqual(TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
@@ -147,13 +150,13 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         self.assertIs(await call.read(), EOF)
 
         # Instance State Survives Calls While Invocation Resources Stay Isolated.
-        state = await calls.invoke(client, "author.state", Value())
+        state = await calls.invoke(client, "conformance.author.state", Value())
         self.assertEqual(Value.FromString((await state.read()).response.payload).value, (1).to_bytes(8, "little"))
         self.assertIs(await state.read(), EOF)
 
         # Closing Demand Cancels an Observer's In-Progress Read.
         demand = client.Samples()
-        await demand.write(InstanceSamplesRequest(open=SamplesSelection(stream="author.reading")))
+        await demand.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.author.reading")))
         await demand.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         await author.reading.wait()
         await demand.done_writing()
@@ -162,7 +165,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
 
         # Reject Invalid Timestamp Ranges Without Losing the Connection.
         invalid = client.Samples()
-        await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="author.reading")))
+        await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.author.reading")))
         await invalid.write(
             InstanceSamplesRequest(window=Window(start=Timestamp(seconds=0, nanos=-1), period=Duration(seconds=1), count=1, sequence=1))
         )
@@ -171,7 +174,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         self.assertEqual(error.exception.code(), StatusCode.INVALID_ARGUMENT)
 
         # Finalize Releases State Through Invoke Before Stop Preserves the Endpoint.
-        finalized = await calls.invoke(client, "author.finalize", Empty())
+        finalized = await calls.invoke(client, "conformance.finalize", Empty())
         self.assertEqual((await finalized.read()).response.payload, b"")
         self.assertIs(await finalized.read(), EOF)
         await client.Stop(InstanceStopRequest(reason="Story Complete"))
@@ -179,12 +182,14 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         self.assertEqual(await client.Get(InstanceGetRequest(revision=1)), description)
 
         # Duplicate Declarations Fail When the Author Builds the Declarations.
-        with self.assertRaises(ValueError):
-            Plugin(
-                id="author",
+        self.assertRaises(
+            ValueError,
+            lambda: Plugin(
+                id="conformance",
                 version="1.0.0",
                 register=lambda ctx: ctx.register(Catalog(author, requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_SLEEP])),
-            ).declarations()
+            ).declarations(),
+        )
 
 
 # === Public Functions === #

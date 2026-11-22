@@ -91,7 +91,7 @@ async fn guest_composition_walks() {
     let bytes = crate::support::fixtures::component("schematic-guest");
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let loaded = host.load(&bytes).unwrap();
-    assert_eq!(loaded.declaration().id, "schematic_tools");
+    assert_eq!(loaded.declaration().id, "schematic");
     runtime
         .plugin
         .register_guest(
@@ -106,7 +106,7 @@ async fn guest_composition_walks() {
         .await
         .unwrap();
     runtime.plugin.initialize().await.unwrap();
-    let original = runtime.plugin.status("schematic_tools").unwrap();
+    let original = runtime.plugin.status("schematic").unwrap();
     assert_eq!(original.state, PluginState::Ready);
 
     // SchematicProposeRouteResponse and Validate With the Authoritative Application Messages
@@ -123,7 +123,7 @@ async fn guest_composition_walks() {
     assert_eq!(SchematicValidateResponse::decode(bytes.as_slice()).unwrap().diagnostics.len(), 2);
 
     // Read and Change the Guest's Stored Typed Settings Through Its Entry
-    let name = "schematic_tools".to_owned();
+    let name = "schematic".to_owned();
     let listed = entries.list(PluginsListRequest { at: None }).await.unwrap();
     assert_eq!(listed.entries.len(), 1);
     assert!(matches!(listed.entries[0].placement.as_ref().unwrap().kind, Some(Kind::Guest(_))));
@@ -158,8 +158,8 @@ async fn guest_composition_walks() {
     );
 
     // Replace the Activation and Keep Answering the Same Contract
-    runtime.plugin.reload("schematic_tools").await.unwrap();
-    let reloaded = runtime.plugin.status("schematic_tools").unwrap();
+    runtime.plugin.reload("schematic").await.unwrap();
+    let reloaded = runtime.plugin.status("schematic").unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(reloaded.generation, original.generation);
     assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_ok());
@@ -220,7 +220,7 @@ async fn guest_composition_walks() {
         .unwrap();
     assert!(entries.list(PluginsListRequest { at: None }).await.unwrap().entries.is_empty());
     assert!(entries.settings_list(SettingsListRequest { name: Some(name), at: old_cut }).await.is_err());
-    assert!(runtime.plugin.status("schematic_tools").is_none());
+    assert!(runtime.plugin.status("schematic").is_none());
     assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_err());
     runtime.stop().await.unwrap();
 }

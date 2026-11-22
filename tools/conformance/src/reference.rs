@@ -341,7 +341,7 @@ async fn invoke(
             let operation = if mode == b"public" {
                 "conformance.peer.public"
             } else if mode == b"self" {
-                "example.plugin.v1.Lifecycle/Initialize"
+                "conformance.plugin.v1.Lifecycle/Initialize"
             } else if mode == b"protected" {
                 "conformance.peer.protected"
             } else {
@@ -551,8 +551,8 @@ async fn invoke(
                 response::Result::Payload(request.payload)
             }
         }
-        "example.plugin.v1.Lifecycle/Initialize" => response::Result::Payload(request.payload),
-        "example.plugin.v1.Steps/Execute" | "conformance.cancel_reason" => {
+        "conformance.plugin.v1.Lifecycle/Initialize" => response::Result::Payload(request.payload),
+        "conformance.plugin.v1.Steps/Execute" | "conformance.cancel_reason" => {
             send_child(output, 1, "conformance.host.echo", request.payload.clone()).await?;
             let frame = input.message().await?.and_then(|frame| frame.frame);
             if !matches!(
@@ -564,7 +564,7 @@ async fn invoke(
             ) {
                 return Err(Status::invalid_argument("Expected Resource Child Reply"));
             }
-            if request.operation == "example.plugin.v1.Steps/Execute" {
+            if request.operation == "conformance.plugin.v1.Steps/Execute" {
                 response::Result::Payload(request.payload)
             } else {
                 let Some(instance_invoke_request::Frame::Cancel(cancel)) = input.message().await?.and_then(|frame| frame.frame) else {

@@ -18,6 +18,7 @@
 //! struct SetTemperature { target: f64 }
 //!
 //! #[derive(Message)]
+//! #[harmos(package = "thermal", file = "thermal.proto")]
 //! struct Temperature { celsius: f64 }
 //!
 //! async fn set_temperature(ctx: &Context, request: SetTemperature) -> Result<()> {

@@ -62,7 +62,7 @@ fn main() -> Result<()> {
             maximum: None,
         }],
     };
-    let plugin = Plugin::new("echo", "1.0.0")
+    let plugin = Plugin::new("example", "1.0.0")
         .register(|ctx| {
             ctx.register(settings)?;
             ctx.register(HostOperation::PluginsSettingsList)?;

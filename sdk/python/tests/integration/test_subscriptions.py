@@ -186,7 +186,7 @@ class Subscriptions(IsolatedAsyncioTestCase):
                 self.stopped = Event()
                 self.context: Context | None = None
 
-            @publisher("fixture.samples", row=TimeGetResponse)
+            @publisher("harmos.samples", row=TimeGetResponse)
             async def produce(self, ctx: Context, output: Publisher) -> None:
                 self.context = ctx
                 self.started.set()
@@ -196,13 +196,13 @@ class Subscriptions(IsolatedAsyncioTestCase):
                     self.stopped.set()
 
         device = Device()
-        endpoint = await Plugin(id="fixture", version="1.0.0", register=lambda ctx: ctx.register(Catalog(device))).start("127.0.0.1:0")
+        endpoint = await Plugin(id="harmos", version="1.0.0", register=lambda ctx: ctx.register(Catalog(device))).start("127.0.0.1:0")
         self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         demand = InstanceStub(channel).Samples()
         self.addCleanup(demand.cancel)
-        await demand.write(InstanceSamplesRequest(open=SamplesSelection(stream="fixture.samples")))
+        await demand.write(InstanceSamplesRequest(open=SamplesSelection(stream="harmos.samples")))
         await device.started.wait()
         demand.cancel()
         await device.stopped.wait()

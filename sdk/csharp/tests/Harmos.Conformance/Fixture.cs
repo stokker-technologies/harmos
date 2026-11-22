@@ -21,7 +21,7 @@ public sealed class Fixture
   private readonly Operation<Value, Value> peerPublic = new("conformance.peer.public", Visibility.Public);
   private readonly Operation<Value, Value> peerProtected = new("conformance.peer.protected", Visibility.Protected);
   private readonly Operation<Value, Value> peerLocal = new("conformance.peer.local", Visibility.Protected);
-  private readonly Operation<Value, Value> ownProtected = new("example.plugin.v1.Lifecycle/Initialize", Visibility.Protected);
+  private readonly Operation<Value, Value> ownProtected = new("conformance.plugin.v1.Lifecycle/Initialize", Visibility.Protected);
   private readonly Operation<Value, Value> hostWatch = new("conformance.host.watch", Visibility.Public, watch: true);
   private readonly Operation<Value, Value> local = new("conformance.local", Visibility.Private, replaySafe: true);
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
@@ -60,8 +60,8 @@ public sealed class Fixture
     ctx.Register(new Operation<Graph, Value>("conformance.projected", Visibility.Public),
           (context, request) => Task.FromResult(request.Tail?.Value ?? new Value()));
     ctx.Register(new Operation<Value, Value>("conformance.clock", Visibility.Public), ClockCall);
-    ctx.Register(new Operation<Value, Value>("example.plugin.v1.Lifecycle/Initialize", Visibility.Protected), Echo);
-    ctx.Register(new Operation<Value, Value>("example.plugin.v1.Steps/Execute", Visibility.Public, replaySafe: true), Resources);
+    ctx.Register(new Operation<Value, Value>("conformance.plugin.v1.Lifecycle/Initialize", Visibility.Protected), Echo);
+    ctx.Register(new Operation<Value, Value>("conformance.plugin.v1.Steps/Execute", Visibility.Public, replaySafe: true), Resources);
     ctx.Register(new Operation<Value, Value>("conformance.cancel_reason", Visibility.Public), CancelReason);
     ctx.Register(new Operation<Value, Value>("conformance.watch", Visibility.Public), Watch);
     ctx.Register(new Operation<Value, Value>("conformance.peer_call", Visibility.Public), PeerCall);

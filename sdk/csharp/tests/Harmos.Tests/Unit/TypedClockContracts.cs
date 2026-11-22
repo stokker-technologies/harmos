@@ -20,9 +20,9 @@ public sealed class TypedClockContracts
     var setting = new SettingValue { Duration = new Duration { Seconds = 2 } };
     var minimum = new SettingValue { Duration = new Duration { Seconds = 1 } };
     var maximum = new SettingValue { Duration = new Duration { Seconds = 3 } };
-    var plugin = new Harmos.Plugins.Plugin("settings", "1.0.0")
-        .Register(ctx => ctx.Register("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
-        .Register(ctx => ctx.Register("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
+    var plugin = new Harmos.Plugins.Plugin("harmos", "1.0.0")
+        .Register(ctx => ctx.Register("harmos.settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
+        .Register(ctx => ctx.Register("harmos.settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
         .Register(ctx => ctx.Register("interval", setting, minimum: minimum, maximum: maximum));
     var declarations = plugin.Declarations();
     Assert.Null(declarations.Streams[0].Interval);
@@ -40,29 +40,29 @@ public sealed class TypedClockContracts
   [Fact]
   public void WindowObserversDeclareWindowSettingsAndMirroredOneValueRows()
   {
-    var declarations = new Harmos.Plugins.Plugin("windows", "1.0.0")
-        .Register(ctx => ctx.Register("windows.sample", new Duration { Seconds = 1 }, context => Task.FromResult(new Reading()), windowSetting: "window"))
-        .Register(ctx => ctx.Register<Reading, ReadingColumns>("windows.columns", new Duration { Seconds = 1 },
+    var declarations = new Harmos.Plugins.Plugin("tests", "1.0.0")
+        .Register(ctx => ctx.Register("tests.windows.sample", new Duration { Seconds = 1 }, context => Task.FromResult(new Reading()), windowSetting: "window"))
+        .Register(ctx => ctx.Register<Reading, ReadingColumns>("tests.windows.columns", new Duration { Seconds = 1 },
             (context, window) => Task.FromResult(new ReadingColumns()), windowSetting: "window"))
         .Declarations();
     Assert.Equal(["window", "window"], declarations.Streams.Select(stream => stream.WindowSetting));
     Assert.Equal([Reading.Descriptor.FullName, Reading.Descriptor.FullName], declarations.Streams.Select(stream => stream.Row));
 
     // Columns Repeat Every Row Field with the Same Number and Type.
-    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0").Register(ctx => ctx.Register<Reading, RetypedColumns>(
-        "windows.retyped", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new RetypedColumns()))));
-    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0").Register(ctx => ctx.Register<Reading, PartialColumns>(
-        "windows.partial", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new PartialColumns()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("tests", "1.0.0").Register(ctx => ctx.Register<Reading, RetypedColumns>(
+        "tests.windows.retyped", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new RetypedColumns()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("tests", "1.0.0").Register(ctx => ctx.Register<Reading, PartialColumns>(
+        "tests.windows.partial", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new PartialColumns()))));
 
     // Interval Rows Hold One Value per Field in Both Forms.
-    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0")
-        .Register(ctx => ctx.Register("windows.listed", new Duration { Seconds = 1 }, context => Task.FromResult(new Listed()))));
-    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0")
-        .Register(ctx => ctx.Register("windows.present", new Duration { Seconds = 1 }, context => Task.FromResult(new Present()))));
-    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0")
-        .Register(ctx => ctx.Register("windows.choice", new Duration { Seconds = 1 }, context => Task.FromResult(new Choice()))));
-    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0").Register(ctx => ctx.Register<Listed, Listed>(
-        "windows.listed", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new Listed()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("tests", "1.0.0")
+        .Register(ctx => ctx.Register("tests.windows.listed", new Duration { Seconds = 1 }, context => Task.FromResult(new Listed()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("tests", "1.0.0")
+        .Register(ctx => ctx.Register("tests.windows.present", new Duration { Seconds = 1 }, context => Task.FromResult(new Present()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("tests", "1.0.0")
+        .Register(ctx => ctx.Register("tests.windows.choice", new Duration { Seconds = 1 }, context => Task.FromResult(new Choice()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("tests", "1.0.0").Register(ctx => ctx.Register<Listed, Listed>(
+        "tests.windows.listed", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new Listed()))));
   }
 
   [Fact]

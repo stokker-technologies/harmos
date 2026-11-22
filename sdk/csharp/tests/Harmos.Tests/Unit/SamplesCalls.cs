@@ -293,7 +293,7 @@ public sealed class SamplesCalls
         window.Count = 3;
         break;
       case "repeated open":
-        await call.Send(new InstanceSamplesRequest { Open = new SamplesSelection { Stream = "fixture" } });
+        await call.Send(new InstanceSamplesRequest { Open = new SamplesSelection { Stream = "google.fixture" } });
         break;
       case "unanswered window":
         await call.Send(new InstanceSamplesRequest { Window = window.Clone() });
@@ -320,14 +320,14 @@ public sealed class SamplesCalls
     ];
     var plugins = new[]
     {
-      new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 },
+      new Harmos.Plugins.Plugin("tests", "1.0.0").Register(ctx => ctx.Register("tests.fixture", new Duration { Seconds = 1 },
           context => Task.FromResult(rows[context.Sequence - 1]))),
-      new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register<Reading, ReadingColumns>("fixture", new Duration { Seconds = 1 },
+      new Harmos.Plugins.Plugin("tests", "1.0.0").Register(ctx => ctx.Register<Reading, ReadingColumns>("tests.fixture", new Duration { Seconds = 1 },
           (context, window) => Task.FromResult(columns)))
     };
     foreach (var plugin in plugins)
     {
-      var call = new Call();
+      var call = new Call("tests.fixture");
       var serving = Serve(plugin).Samples(call, call, call.Context);
       await call.Grant(1, 2);
       var batch = await call.ReadBatch();
@@ -343,7 +343,7 @@ public sealed class SamplesCalls
   public async Task WindowPartsSplitAtSampleBoundariesWithinTheMessageLimit()
   {
     const ulong limit = 40;
-    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 },
+    var plugin = new Harmos.Plugins.Plugin("google", "1.0.0").Register(ctx => ctx.Register("google.fixture", new Duration { Seconds = 1 },
         context => Task.FromResult(new StringValue { Value = $"sample{context.Sequence}" })));
     var call = new Call();
     var serving = Serve(plugin, limit).Samples(call, call, call.Context);
@@ -372,7 +372,7 @@ public sealed class SamplesCalls
   public async Task SampleLargerThanTheMessageLimitFailsTheWindowBeforeAnyPart(ulong large)
   {
     const ulong limit = 24;
-    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 },
+    var plugin = new Harmos.Plugins.Plugin("google", "1.0.0").Register(ctx => ctx.Register("google.fixture", new Duration { Seconds = 1 },
         context => Task.FromResult(new StringValue { Value = new string('x', context.Sequence == large ? 32 : 1) })));
     var call = new Call();
     var serving = Serve(plugin, limit).Samples(call, call, call.Context);
@@ -387,9 +387,9 @@ public sealed class SamplesCalls
   [Fact]
   public async Task WindowObserverColumnsMustHoldOneValuePerSample()
   {
-    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register<Reading, ReadingColumns>("fixture", new Duration { Seconds = 1 },
+    var plugin = new Harmos.Plugins.Plugin("tests", "1.0.0").Register(ctx => ctx.Register<Reading, ReadingColumns>("tests.fixture", new Duration { Seconds = 1 },
         (context, window) => Task.FromResult(new ReadingColumns { Level = { 1 }, Count = { 1 }, Label = { "" }, Tag = { new Tag() } })));
-    var call = new Call();
+    var call = new Call("tests.fixture");
     var serving = Serve(plugin).Samples(call, call, call.Context);
     await call.Grant(1, 2);
     var refusal = await Assert.ThrowsAsync<RpcException>(() => serving);
@@ -398,10 +398,10 @@ public sealed class SamplesCalls
 
   private static PluginService Service(Func<Harmos.Plugins.Context, Task<StringValue>> observer, bool device = false)
   {
-    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register(Echo)).Register(ctx => ctx.Register(Watch)).Register(ctx => ctx.Register(HostOperation.TimeGet)).Register(ctx => ctx.Register(HostOperation.PluginsSettingsList));
+    var plugin = new Harmos.Plugins.Plugin("google", "1.0.0").Register(ctx => ctx.Register(Echo)).Register(ctx => ctx.Register(Watch)).Register(ctx => ctx.Register(HostOperation.TimeGet)).Register(ctx => ctx.Register(HostOperation.PluginsSettingsList));
     plugin = device
-        ? plugin.Register(ctx => ctx.Register<StringValue>("fixture", async (context, publisher) => { await context.CancelledAsync(); }))
-        : plugin.Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 }, observer));
+        ? plugin.Register(ctx => ctx.Register<StringValue>("google.fixture", async (context, publisher) => { await context.CancelledAsync(); }))
+        : plugin.Register(ctx => ctx.Register("google.fixture", new Duration { Seconds = 1 }, observer));
     return Serve(plugin);
   }
 
@@ -412,7 +412,7 @@ public sealed class SamplesCalls
   {
     private readonly Channel<InstanceSamplesRequest> input = Channel.CreateUnbounded<InstanceSamplesRequest>();
     private readonly Channel<InstanceSamplesResponse> output = Channel.CreateUnbounded<InstanceSamplesResponse>();
-    public Call() => input.Writer.TryWrite(new InstanceSamplesRequest { Open = new SamplesSelection { Stream = "fixture", Scope = "opaque" } });
+    public Call(string stream = "google.fixture") => input.Writer.TryWrite(new InstanceSamplesRequest { Open = new SamplesSelection { Stream = stream, Scope = "opaque" } });
     public ServerCallContext Context { get; } = new ServerContext();
     public InstanceSamplesRequest Current { get; private set; } = new();
     public WriteOptions? WriteOptions

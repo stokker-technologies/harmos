@@ -35,7 +35,7 @@ async fn structured_failure_preserves_causes_and_leaves_the_connection_usable() 
     assert_eq!(failure.classification(), Classification::Permanent);
     assert_eq!(failure.code, "fixture_failure");
     assert_eq!(failure.operation, "fixture.failure");
-    assert_eq!(failure.plugin, "caller");
+    assert_eq!(failure.plugin, "fixture");
     assert_eq!(failure.details.get("fixture").unwrap(), "value");
     assert_eq!(failure.diagnostics, "Fixture Diagnostics");
     let cause = failure.cause.as_ref().unwrap();

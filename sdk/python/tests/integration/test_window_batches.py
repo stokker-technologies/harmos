@@ -267,7 +267,7 @@ def _reading() -> tuple[type[Message], type[Message], type[Message]]:
     pool = DescriptorPool()
     for imported in (duration_pb2, struct_pb2):
         pool.AddSerializedFile(imported.DESCRIPTOR.serialized_pb)
-    file = FileDescriptorProto(name="tests/window/reading.proto", package="tests.window", syntax="proto3")
+    file = FileDescriptorProto(name="tests/window/reading.proto", package="example.window", syntax="proto3")
     file.dependency.extend([duration_pb2.DESCRIPTOR.name, struct_pb2.DESCRIPTOR.name])
     inner = file.message_type.add(name="Inner")
     inner.field.add(name="x", number=1, label=FieldDescriptorProto.LABEL_OPTIONAL, type=FieldDescriptorProto.TYPE_INT32)
@@ -283,7 +283,7 @@ def _reading() -> tuple[type[Message], type[Message], type[Message]]:
         number=4,
         label=FieldDescriptorProto.LABEL_OPTIONAL,
         type=FieldDescriptorProto.TYPE_MESSAGE,
-        type_name=".tests.window.Inner",
+        type_name=".example.window.Inner",
     )
     row.field.add(
         name="span",
@@ -301,8 +301,8 @@ def _reading() -> tuple[type[Message], type[Message], type[Message]]:
     )
     pool.Add(file)
     return (
-        message_factory.GetMessageClass(pool.FindMessageTypeByName("tests.window.Reading")),
-        message_factory.GetMessageClass(pool.FindMessageTypeByName("tests.window.Inner")),
+        message_factory.GetMessageClass(pool.FindMessageTypeByName("example.window.Reading")),
+        message_factory.GetMessageClass(pool.FindMessageTypeByName("example.window.Inner")),
         message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.Duration")),
     )
 

@@ -55,6 +55,7 @@ use harmos_protocol::plugin::{
 /* === Structs === */
 
 #[derive(Clone, Message)]
+#[harmos(package = "fixture", file = "fixture/columns.proto")]
 struct Reading {
     value: u64,
 }
@@ -108,7 +109,7 @@ async fn open(
     output
         .send(InstanceSamplesRequest {
             frame: Some(instance_samples_request::Frame::Open(plugin::SamplesSelection {
-                stream: "alpha".into(),
+                stream: "fixture.alpha".into(),
                 scope: scope.into(),
             })),
         })
@@ -123,9 +124,9 @@ async fn open(
 
 #[tokio::test]
 async fn collections_publish_zero_and_many_rows_and_share_first_last_hooks() {
-    let alpha = Stream::<Reading>::new("alpha");
-    let beta = Stream::<Reading>::new("beta");
-    let silent = Stream::<Reading>::new("silent");
+    let alpha = Stream::<Reading>::new("fixture.alpha");
+    let beta = Stream::<Reading>::new("fixture.beta");
+    let silent = Stream::<Reading>::new("fixture.silent");
     let calls = Arc::new(AtomicUsize::new(0));
     let starts = Arc::new(AtomicUsize::new(0));
     let stops = Arc::new(AtomicUsize::new(0));
@@ -162,14 +163,14 @@ async fn collections_publish_zero_and_many_rows_and_share_first_last_hooks() {
     });
     let plugin = Plugin::new("fixture", "1.0.0").register(|ctx| ctx.register(collection)).unwrap();
     let declarations = plugin.declarations().unwrap();
-    assert!(declarations.streams.iter().all(|stream| stream.collection == "alpha"));
+    assert!(declarations.streams.iter().all(|stream| stream.collection == "fixture.alpha"));
     let mut listener = plugin.start("127.0.0.1:0").await.unwrap();
     let mut client = InstanceClient::connect(format!("http://{}", listener.address())).await.unwrap();
     let (first_output, mut first_input) = open(&mut client, "first").await;
     let (second_output, mut second_input) = open(&mut client, "second").await;
     assert_eq!(starts.load(Ordering::SeqCst), 0);
-    demand(&first_output, &mut first_input, &["alpha", "beta"]).await;
-    demand(&second_output, &mut second_input, &["silent"]).await;
+    demand(&first_output, &mut first_input, &["fixture.alpha", "fixture.beta"]).await;
+    demand(&second_output, &mut second_input, &["fixture.silent"]).await;
     assert_eq!(starts.load(Ordering::SeqCst), 1);
     first_output.send(grant(3)).await.unwrap();
     for offset in 0..3 {
@@ -179,14 +180,14 @@ async fn collections_publish_zero_and_many_rows_and_share_first_last_hooks() {
         };
         assert_eq!((batch.offset, batch.last), (offset, offset == 2));
         let rows: HashMap<_, _> = batch.streams.into_iter().map(|group| (group.stream, group.rows.len())).collect();
-        assert_eq!(rows, HashMap::from([("alpha".into(), 1), ("beta".into(), 3)]));
+        assert_eq!(rows, HashMap::from([("fixture.alpha".into(), 1), ("fixture.beta".into(), 3)]));
     }
     assert_eq!(calls.load(Ordering::SeqCst), 3);
     demand(&first_output, &mut first_input, &[]).await;
     assert_eq!(stops.load(Ordering::SeqCst), 0);
     demand(&second_output, &mut second_input, &[]).await;
     assert_eq!(stops.load(Ordering::SeqCst), 1);
-    demand(&first_output, &mut first_input, &["alpha"]).await;
+    demand(&first_output, &mut first_input, &["fixture.alpha"]).await;
     assert_eq!(starts.load(Ordering::SeqCst), 2);
     drop(first_output);
     assert!(first_input.message().await.unwrap().is_none());
@@ -211,7 +212,7 @@ async fn ending_collection_demand_settles_the_handler_before_last_stop() {
             Ok(())
         }
     })
-    .stream(Stream::<Reading>::new("alpha"))
+    .stream(Stream::<Reading>::new("fixture.alpha"))
     .every(Duration { seconds: 1, nanos: 0 })
     .on_stop({
         let released = released.clone();
@@ -226,7 +227,7 @@ async fn ending_collection_demand_settles_the_handler_before_last_stop() {
         Plugin::new("fixture", "1.0.0").register(|ctx| ctx.register(collection)).unwrap().start("127.0.0.1:0").await.unwrap();
     let mut client = InstanceClient::connect(format!("http://{}", listener.address())).await.unwrap();
     let (output, mut input) = open(&mut client, "first").await;
-    demand(&output, &mut input, &["alpha"]).await;
+    demand(&output, &mut input, &["fixture.alpha"]).await;
     output.send(grant(1)).await.unwrap();
     entered.notified().await;
     demand(&output, &mut input, &[]).await;
@@ -241,7 +242,7 @@ async fn failed_collection_start_does_not_acquire_a_demand_share() {
     let starts = Arc::new(AtomicUsize::new(0));
     let stops = Arc::new(AtomicUsize::new(0));
     let collection = Collection::operation(async |_: &Context, _: CollectionOutput| Ok(()))
-        .stream(Stream::<Reading>::new("alpha"))
+        .stream(Stream::<Reading>::new("fixture.alpha"))
         .every(Duration { seconds: 1, nanos: 0 })
         .on_start({
             let starts = starts.clone();
@@ -265,7 +266,7 @@ async fn failed_collection_start_does_not_acquire_a_demand_share() {
     let (output, mut input) = open(&mut client, "first").await;
     output
         .send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Demand(plugin::CollectionDemand { streams: vec!["alpha".into()] })),
+            frame: Some(instance_samples_request::Frame::Demand(plugin::CollectionDemand { streams: vec!["fixture.alpha".into()] })),
         })
         .await
         .unwrap();
@@ -273,7 +274,7 @@ async fn failed_collection_start_does_not_acquire_a_demand_share() {
     assert_eq!(stops.load(Ordering::SeqCst), 0);
     drop(output);
     let (output, mut input) = open(&mut client, "second").await;
-    demand(&output, &mut input, &["alpha"]).await;
+    demand(&output, &mut input, &["fixture.alpha"]).await;
     output.send(grant(2)).await.unwrap();
     for offset in 0..2 {
         let frame = input.message().await.unwrap().unwrap();
@@ -293,7 +294,7 @@ async fn failed_collection_start_does_not_acquire_a_demand_share() {
 async fn failed_collection_stop_releases_its_share_once_and_allows_new_demand() {
     let stops = Arc::new(AtomicUsize::new(0));
     let collection = Collection::operation(async |_: &Context, _: CollectionOutput| Ok(()))
-        .stream(Stream::<Reading>::new("alpha"))
+        .stream(Stream::<Reading>::new("fixture.alpha"))
         .every(Duration { seconds: 1, nanos: 0 })
         .on_stop({
             let stops = stops.clone();
@@ -308,7 +309,7 @@ async fn failed_collection_stop_releases_its_share_once_and_allows_new_demand() 
         Plugin::new("fixture", "1.0.0").register(|ctx| ctx.register(collection)).unwrap().start("127.0.0.1:0").await.unwrap();
     let mut client = InstanceClient::connect(format!("http://{}", listener.address())).await.unwrap();
     let (output, mut input) = open(&mut client, "first").await;
-    demand(&output, &mut input, &["alpha"]).await;
+    demand(&output, &mut input, &["fixture.alpha"]).await;
     output
         .send(InstanceSamplesRequest {
             frame: Some(instance_samples_request::Frame::Demand(plugin::CollectionDemand { streams: vec![] })),
@@ -319,7 +320,7 @@ async fn failed_collection_stop_releases_its_share_once_and_allows_new_demand() 
     drop(output);
     assert_eq!(stops.load(Ordering::SeqCst), 1);
     let (output, mut input) = open(&mut client, "second").await;
-    demand(&output, &mut input, &["alpha"]).await;
+    demand(&output, &mut input, &["fixture.alpha"]).await;
     drop(output);
     assert!(input.message().await.unwrap().is_none());
     assert_eq!(stops.load(Ordering::SeqCst), 2);
@@ -330,10 +331,10 @@ async fn failed_collection_stop_releases_its_share_once_and_allows_new_demand() 
 async fn collection_output_refuses_unregistered_members_and_still_runs_cleanup() {
     let stopped = Arc::new(AtomicUsize::new(0));
     let collection = Collection::operation(async |_: &Context, output: CollectionOutput| {
-        output.publish(&Stream::<Reading>::new("missing"), Reading { value: 1 });
+        output.publish(&Stream::<Reading>::new("fixture.missing"), Reading { value: 1 });
         Ok(())
     })
-    .stream(Stream::<Reading>::new("alpha"))
+    .stream(Stream::<Reading>::new("fixture.alpha"))
     .every(Duration { seconds: 1, nanos: 0 })
     .on_stop({
         let stopped = stopped.clone();
@@ -346,7 +347,7 @@ async fn collection_output_refuses_unregistered_members_and_still_runs_cleanup()
         Plugin::new("fixture", "1.0.0").register(|ctx| ctx.register(collection)).unwrap().start("127.0.0.1:0").await.unwrap();
     let mut client = InstanceClient::connect(format!("http://{}", listener.address())).await.unwrap();
     let (output, mut input) = open(&mut client, "first").await;
-    demand(&output, &mut input, &["alpha"]).await;
+    demand(&output, &mut input, &["fixture.alpha"]).await;
     output.send(grant(1)).await.unwrap();
     assert_eq!(input.message().await.unwrap_err().code(), Code::InvalidArgument);
     assert_eq!(stopped.load(Ordering::SeqCst), 1);
@@ -360,7 +361,7 @@ async fn closing_demand_during_acquisition_cancels_and_settles_the_start_hook() 
     let released = Arc::new(AtomicUsize::new(0));
     let stopped = Arc::new(AtomicUsize::new(0));
     let collection = Collection::operation(async |_: &Context, _: CollectionOutput| Ok(()))
-        .stream(Stream::<Reading>::new("alpha"))
+        .stream(Stream::<Reading>::new("fixture.alpha"))
         .every(Duration { seconds: 1, nanos: 0 })
         .on_start({
             let entered = entered.clone();
@@ -385,7 +386,7 @@ async fn closing_demand_during_acquisition_cancels_and_settles_the_start_hook() 
     let (output, mut input) = open(&mut client, "first").await;
     output
         .send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Demand(plugin::CollectionDemand { streams: vec!["alpha".into()] })),
+            frame: Some(instance_samples_request::Frame::Demand(plugin::CollectionDemand { streams: vec!["fixture.alpha".into()] })),
         })
         .await
         .unwrap();
@@ -405,7 +406,7 @@ async fn completed_acquisition_is_released_when_its_reply_is_lost() {
             let acquired = Arc::new(AtomicUsize::new(0));
             let stopped = Arc::new(AtomicUsize::new(0));
             let collection = Collection::operation(async |_: &Context, _: CollectionOutput| Ok(()))
-                .stream(Stream::<Reading>::new("alpha"))
+                .stream(Stream::<Reading>::new("fixture.alpha"))
                 .every(Duration { seconds: 1, nanos: 0 })
                 .on_start({
                     let acquired = acquired.clone();

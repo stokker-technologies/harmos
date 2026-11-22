@@ -26,7 +26,7 @@ use harmos_runtime::guest::{Host, Loaded};
 
 /* === Constants === */
 
-pub const NAME: &str = "schematic_tools";
+pub const NAME: &str = "schematic";
 
 /* === Macros === */
 

@@ -70,10 +70,10 @@ fn settings_catalog(declared: bool) -> model::Declarations {
 async fn device() -> Remote {
     let remote = Remote::start().await;
     let mut catalog = model::Declarations {
-        types: Some(harmos_protocol::clock::declarations_types()),
+        types: Some(support::clock_types()),
         streams: vec![model::StreamDeclaration {
-            id: "probe".into(),
-            row: "harmos.host.v1.TimeGetResponse".into(),
+            id: "fixture.probe".into(),
+            row: "fixture.ClockRow".into(),
             ..Default::default()
         }],
         ..Default::default()

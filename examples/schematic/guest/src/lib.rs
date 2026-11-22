@@ -55,9 +55,8 @@ const POLICY: OperationPolicy = OperationPolicy {
 
 #[unsafe(no_mangle)]
 pub fn harmos_register() -> Registration {
-    let plugin = Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
-        .register(|ctx| ctx.register(catalog()))
-        .expect("Register Plugin Declarations");
+    let plugin =
+        Plugin::new("schematic", env!("CARGO_PKG_VERSION")).register(|ctx| ctx.register(catalog())).expect("Register Plugin Declarations");
     Registration::new(plugin).capacity(8).lifecycle_policy(POLICY, POLICY).on_initialize(async |_: &Context, configuration: Vec<u8>| {
         serde_json::from_slice::<()>(&configuration).map_err(|error| harmos::Error::Invalid(error.to_string()))?;
         Ok(())

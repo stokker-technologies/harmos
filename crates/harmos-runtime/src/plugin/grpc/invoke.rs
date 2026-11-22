@@ -413,9 +413,6 @@ pub(crate) fn failure(mut error: &Error, operation: &str, plugin: &str) -> model
         let Some(inner) = source.source() else { break };
         source = inner;
     }
-    if let Some(failure) = error.failure() {
-        return model::Failure::from(failure);
-    }
     let classification = match error {
         Error::NotRegistered { .. } | Error::OperationUnauthorized { .. } | Error::PermissionDenied | Error::InvalidInput { .. } => {
             model::Classification::Refused
@@ -441,6 +438,30 @@ pub(crate) fn failure(mut error: &Error, operation: &str, plugin: &str) -> model
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structured_failure_fields_survive_nested_carriers() {
+        let expected = model::Failure {
+            classification: model::Classification::Refused as i32,
+            code: "fixture_code".into(),
+            message: "fixture_message".into(),
+            action: "fixture_action".into(),
+            operation: "fixture.echo".into(),
+            plugin: "fixture".into(),
+            cause: Some(Box::new(model::Failure {
+                classification: model::Classification::Transient as i32,
+                code: "fixture_cause".into(),
+                ..Default::default()
+            })),
+            details: [("key".into(), "value".into())].into(),
+            diagnostics: "fixture_diagnostics".into(),
+        };
+        let error = Error::OperationFailed {
+            operation: "fixture.outer".into(),
+            source: Arc::new(ServingError::Native(Arc::new(CallError::Remote(Box::new(expected.clone().into()))))),
+        };
+        assert_eq!(failure(&error, "fixture.outer", "other"), expected);
+    }
 
     #[test]
     fn host_causes() {

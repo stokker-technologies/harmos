@@ -42,7 +42,7 @@ class Author:
         self.reading = Event()
         self.released = Event()
 
-    @operation("author.wait", request=Value, response=TimeGetResponse, visibility=VISIBILITY_PROTECTED)
+    @operation("conformance.author.wait", request=Value, response=TimeGetResponse, visibility=VISIBILITY_PROTECTED)
     async def wait(self, ctx: Context, request: Value) -> TimeGetResponse:
         self.calls += 1
         ctx.set(request)
@@ -52,7 +52,7 @@ class Author:
             raise ValueError("Execution Lost Its Resource")
         return TimeGetResponse(now=at)
 
-    @operation("author.state", request=Value, response=Value, visibility=VISIBILITY_PROTECTED)
+    @operation("conformance.author.state", request=Value, response=Value, visibility=VISIBILITY_PROTECTED)
     async def state(self, ctx: Context, request: Value) -> Value:
         try:
             ctx.get(Value)
@@ -60,7 +60,7 @@ class Author:
             return Value(value=self.calls.to_bytes(8, "little"))
         raise ValueError("Another Invocation's Resource Leaked")
 
-    @observer("author.reading", row=Value, interval_setting="author.interval")
+    @observer("conformance.author.reading", row=Value, interval_setting="author.interval")
     async def observe(self, ctx: Context) -> Value:
         self.reading.set()
         try:

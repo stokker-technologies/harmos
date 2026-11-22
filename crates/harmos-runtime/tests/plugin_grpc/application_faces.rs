@@ -35,7 +35,7 @@ use harmos_operations::execution::operations::{
     ExecutionContext, NativeOperation, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility, access::CallingPlugin,
 };
 use harmos_operations::host::declarations::host;
-use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, TimeGetResponse};
+use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse};
 use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
 use harmos_protocol::plugin::{ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request, instance_samples_response};
 use harmos_runtime::{OperationPolicy, clock::Clock, operations::HostContext, plugin::grpc::Placement};
@@ -128,10 +128,10 @@ async fn harmos_host_operations_are_unreachable_on_the_wire() {
                 fingerprint: contract.fingerprint().0.to_vec(),
             })
             .collect(),
-        types: Some(harmos_protocol::clock::declarations_types()),
+        types: Some(support::clock_types()),
         streams: vec![StreamDeclaration {
-            id: "caller_probe".into(),
-            row: "harmos.host.v1.TimeGetResponse".into(),
+            id: "fixture.caller_probe".into(),
+            row: "fixture.ClockRow".into(),
             interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }],
@@ -179,13 +179,13 @@ async fn harmos_host_operations_are_unreachable_on_the_wire() {
                 };
                 results.send(reply).unwrap();
             }
-            output.send(Ok(support::answer(1, TimeGetResponse { now: window.start }.encode_to_vec()))).await.unwrap();
+            output.send(Ok(support::answer(1, support::ClockRow { now: window.start }.encode_to_vec()))).await.unwrap();
             complete.store(true, Ordering::SeqCst);
         });
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
     let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
-    let _watching = host.runtime.streams.current_publication("caller_probe").unwrap().watch();
+    let _watching = host.runtime.streams.current_publication("fixture.caller_probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || complete.load(Ordering::SeqCst)).await.unwrap();
     let first = observed.recv().await.unwrap();
     assert!(matches!(first.result, Some(child_response::Result::Payload(_))));
