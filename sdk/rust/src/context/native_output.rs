@@ -16,21 +16,21 @@
 /* === Imports === */
 
 // Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use crate::{Error, Result};
-use harmos_protocol::plugin::{InstanceInvokeResponse, InstanceSamplesResponse, instance_invoke_response, instance_samples_response};
 use std::{
-    result::Result as StdResult,
+    result,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
+
+// Third Party Imports
 use tokio::sync::mpsc;
 use tonic::Status;
+
+// Local Imports
+use crate::{Error, Result};
+use harmos_protocol::plugin::{InstanceInvokeResponse, InstanceSamplesResponse, instance_invoke_response, instance_samples_response};
 
 /* === Constants === */
 
@@ -44,8 +44,8 @@ use tonic::Status;
 
 #[derive(Clone)]
 pub(crate) enum ChildOutput {
-    Invoke(mpsc::Sender<StdResult<InstanceInvokeResponse, Status>>),
-    Samples { sender: mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>, active: Arc<AtomicBool> },
+    Invoke(mpsc::Sender<result::Result<InstanceInvokeResponse, Status>>),
+    Samples { sender: mpsc::Sender<result::Result<InstanceSamplesResponse, Status>>, active: Arc<AtomicBool> },
 }
 
 /* === Traits === */

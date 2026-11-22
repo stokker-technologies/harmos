@@ -105,7 +105,7 @@ reply = await ctx.operation("example.radio.set", {"radio": "wifi", "state": "off
 ```
 
 Python has one public generic operation call. Typed host resources remain available through
-`ctx.host`.
+`ctx.host`; `ctx.now()` and `ctx.sleep()` delegate to its generated `ctx.host.time` resource.
 Rust keeps typed request values and accepts `ctx.operation(harmos::untyped(id, payload))`
 for `serde_json::Value` replies. C# offers `ctx.Operation(id, payload)` returning `JsonNode`
 alongside typed declarations; the invocation's identifier is `OperationId`.
@@ -119,6 +119,7 @@ Operation failures expose kind, code, message, action, operation and retry evide
 Python raises `OperationError`, C# throws `OperationException`, and C++20 throws
 `harmos::OperationError`. Plugins can register one failure mapper; an unmapped
 handler error becomes Permanent and retains the exception text and handler identity.
+Native and WebAssembly Rust handlers share the same failure mapper and protobuf failure carrier.
 Rust handlers preserve arbitrary application errors with `Error::other(error)`;
 the plugin's mapper receives the original error for downcasting.
 

@@ -73,6 +73,17 @@ impl From<Failure> for Error {
 }
 
 impl Error {
+    pub(crate) fn mapped(self, mapper: Option<&FailureMapper>) -> Self {
+        if matches!(&self, Self::Failure(_)) {
+            return self;
+        }
+        let source: &(dyn error::Error + 'static) = match &self {
+            Self::Other(source) => source.as_ref(),
+            _ => &self,
+        };
+        mapper.and_then(|mapper| mapper(source)).unwrap_or(self)
+    }
+
     /// Preserve an Application Error for the Plugin's Failure Mapper.
     pub fn other(error: impl error::Error + Send + Sync + 'static) -> Self {
         Self::Other(Box::new(error))
@@ -137,6 +148,10 @@ impl Error {
     }
 
     pub(crate) fn response(self, operation: &str, plugin: &str) -> result::Result<response::Result, Status> {
+        Ok(response::Result::Failure(self.into_failure(operation, plugin)))
+    }
+
+    pub(crate) fn into_failure(self, operation: &str, plugin: &str) -> Failure {
         match self {
             Self::Failure(mut failure) => {
                 if failure.operation.is_empty() {
@@ -145,9 +160,9 @@ impl Error {
                 if failure.plugin.is_empty() {
                     failure.plugin = plugin.into();
                 }
-                Ok(response::Result::Failure(*failure))
+                *failure
             }
-            error => Ok(response::Result::Failure(Failure {
+            error => Failure {
                 classification: Classification::Permanent as i32,
                 code: "sdk_error".into(),
                 message: error.to_string(),
@@ -155,7 +170,7 @@ impl Error {
                 operation: operation.into(),
                 plugin: plugin.into(),
                 ..Default::default()
-            })),
+            },
         }
     }
 }

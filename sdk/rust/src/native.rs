@@ -166,7 +166,7 @@ impl Plugin {
 impl Context {
     pub(crate) async fn reply(&self, child: ChildResponse) -> result::Result<(), Status> {
         let watch = {
-            let mut calls = self.calls.lock().expect("Child Calls Poisoned");
+            let mut calls = self.queue.calls.lock().expect("Child Calls Poisoned");
             if matches!(&child.result, Some(child_response::Result::Item(_))) {
                 calls.watches.get(&child.call).cloned()
             } else {
@@ -187,7 +187,7 @@ impl Context {
             let _ = watch.sender.send(item).await;
             return Ok(());
         }
-        if self.calls.lock().expect("Child Calls Poisoned").cancelled.contains(&child.call) {
+        if self.queue.calls.lock().expect("Child Calls Poisoned").cancelled.contains(&child.call) {
             return Ok(());
         }
         let result = match child.result {
@@ -196,6 +196,7 @@ impl Context {
             Some(child_response::Result::Item(_)) | None => return Err(Status::invalid_argument("Unary Child Result Missing")),
         };
         let send = self
+            .queue
             .calls
             .lock()
             .expect("Child Calls Poisoned")

@@ -21,7 +21,6 @@ mod tests;
 // Standard Library Imports
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
-    error,
     future::{self, Future},
     net,
     pin::{Pin, pin},
@@ -182,7 +181,7 @@ impl instance_server::Instance for Server {
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
         context.failure_mapper = self.failure_mapper.clone();
         let (output, receiver) = mpsc::channel(1);
-        context.output = Some(ChildOutput::Invoke(output.clone()));
+        context.queue.output = Some(ChildOutput::Invoke(output.clone()));
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
             let result = invoke(jobs, handler, context, payload, &mut input, &output).await;
@@ -337,16 +336,7 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                     },
                 }
             };
-            let result = result.map_err(|error| {
-                if matches!(&error, Error::Failure(_)) {
-                    return error;
-                }
-                let source: &(dyn error::Error + 'static) = match &error {
-                    Error::Other(source) => source.as_ref(),
-                    _ => &error,
-                };
-                context.failure_mapper.as_ref().and_then(|mapper| mapper(source)).unwrap_or(error)
-            });
+            let result = result.map_err(|error| error.mapped(context.failure_mapper.as_ref()));
             let _ = complete.send(result);
         });
     }
@@ -382,13 +372,13 @@ async fn invoke(
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
-            _ = context.call_changes.notified() => context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?,
+            _ = context.queue.call_changes.notified() => context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?,
             result = &mut complete => break result.map_err(|_| Status::internal("Handler Panicked"))?,
             frame = input.message(), if !eof => match frame? {
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child).await?,
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::WindDown(true)) }) => context.request_wind_down(),
-                None => { eof = true; if !context.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
+                None => { eof = true; if !context.queue.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
                 _ => return Err(Status::invalid_argument("Repeated Request")),
             }
         }
@@ -434,7 +424,7 @@ async fn samples(
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
-            _ = context.call_changes.notified(), if observing.is_some() => {
+            _ = context.queue.call_changes.notified(), if observing.is_some() => {
                 context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?;
             }
             frame = input.message() => {
@@ -455,7 +445,7 @@ async fn samples(
                             return Err(Status::invalid_argument("Change Collection Demand: wait for the current window to finish"));
                         }
                         if let Some((_, complete)) = observing.take() {
-                            if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
+                            if let Some(ChildOutput::Samples { active, .. }) = &context.queue.output { active.store(false, Ordering::Release); }
                             context.cancellation.send_replace(Some("Collection Demand Ended".into()));
                             context.cancel_calls("Collection Demand Ended").await.map_err(|error| Status::unavailable(error.to_string()))?;
                             complete.cancel().await;
@@ -495,13 +485,13 @@ async fn samples(
                         let mut window_context = Context::new(plugin::Request {
                             operation: context.operation.clone(), scope: context.scope.clone(), ..Default::default()
                         }, context.plugin.clone(), context.requires.clone());
-                        window_context.calls = context.calls.clone();
-                        window_context.call_changes = context.call_changes.clone();
+                        window_context.queue.calls = context.queue.calls.clone();
+                        window_context.queue.call_changes = context.queue.call_changes.clone();
                         window_context.samples = context.samples.clone();
                         window_context.sequence = window.sequence;
                         window_context.capturing_executions = window.capturing_executions.clone();
                         window_context.failure_mapper = context.failure_mapper.clone();
-                        window_context.output = Some(ChildOutput::Samples {
+                        window_context.queue.output = Some(ChildOutput::Samples {
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
                         });
                         context = window_context;
@@ -525,7 +515,7 @@ async fn samples(
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (count, _) = observing.take().expect("Observer Active");
-                if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
+                if let Some(ChildOutput::Samples { active, .. }) = &context.queue.output { active.store(false, Ordering::Release); }
                 context.cancellation.send_replace(Some("Samples Window Answered".into()));
                 context.cancel_calls("Samples Window Answered").await.map_err(|error| Status::unavailable(error.to_string()))?;
                 let columns = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| match error {
@@ -557,11 +547,11 @@ async fn samples(
         }
     }
     }.await;
-    if let Some(ChildOutput::Samples { active, .. }) = &context.output {
+    if let Some(ChildOutput::Samples { active, .. }) = &context.queue.output {
         active.store(false, Ordering::Release);
     }
     context.cancellation.send_replace(Some("Samples Stream Ended".into()));
-    context.output = None;
+    context.queue.output = None;
     let cancellation = context.cancel_calls("Samples Stream Ended").await;
     if let Some((_, complete)) = observing {
         complete.cancel().await;
@@ -604,7 +594,7 @@ async fn transition(
     if let Some(hook) = hook {
         lifecycle.completed.store(false, Ordering::Release);
         let mut context = context.clone();
-        context.output = None;
+        context.queue.output = None;
         context.cancellation = watch::channel(None).0;
         let mut complete = dispatch(jobs, hook.clone(), context, Vec::new()).await?;
         let closing = async {
