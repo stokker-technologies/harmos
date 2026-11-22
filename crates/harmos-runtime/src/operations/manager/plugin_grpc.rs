@@ -574,36 +574,19 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     if contract.protobuf().is_some() {
         return Ok(contract.fingerprint().0.to_vec());
     }
-    #[cfg(not(feature = "grpc"))]
-    return Err(Error::InvalidInput {
-        field: "host contract",
-        reason: "native protobuf projections require the grpc feature",
-    });
-    #[cfg(feature = "grpc")]
-    {
-        let binding = contract.grpc().ok_or(Error::InvalidInput {
-            field: "host contract",
-            reason: "child calls require the host operation's protobuf projection",
-        })?;
-        let (package, service, method) = (binding.package.as_ref(), binding.service.as_ref(), binding.method.as_ref());
-        let service = crate::grpc::descriptor(package, service, &[(method, contract)]).map_err(|source| Error::OperationFailed {
-            operation: entry.id().into(),
-            source: Arc::new(source),
-        })?;
-        let method = service.methods().find(|candidate| candidate.name() == method).unwrap();
-        harmos_protocol::schema::fingerprint(
-            entry.id(),
-            &prost_types::FileDescriptorSet {
-                file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
-            },
-            method.input().full_name(),
-            method.output().full_name(),
-        )
-        .map_err(|source| Error::OperationFailed {
-            operation: entry.id().into(),
-            source: Arc::new(source),
-        })
-    }
+    let (request, response) = json_projected_descriptors(entry, contract)?;
+    harmos_protocol::schema::fingerprint(
+        entry.id(),
+        &prost_types::FileDescriptorSet {
+            file: request.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+        },
+        request.full_name(),
+        response.full_name(),
+    )
+    .map_err(|source| Error::OperationFailed {
+        operation: entry.id().into(),
+        source: Arc::new(source),
+    })
 }
 
 fn policy(policy: Option<&model::OperationPolicy>) -> Result<OperationPolicy> {
