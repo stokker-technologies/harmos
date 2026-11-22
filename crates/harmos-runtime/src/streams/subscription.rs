@@ -156,13 +156,13 @@ impl ProtobufOperation for Subscribe {
                 continue;
             };
             let (row, observation) = at.value;
-            let (message, source_time) = if let Some(encode) = observation.encode {
+            let (mut payload, source_time) = if let Some(encode) = observation.encode {
                 let payload = encode(&row).map_err(invalid)?;
-                (DynamicMessage::decode(descriptor.clone(), payload.as_slice()).map_err(invalid)?, observation.received)
+                (payload, observation.received)
             } else {
                 let publication =
                     row.downcast_ref::<ManagedPublication>().ok_or_else(|| invalid("Subscribe to Stream: unsupported row encoding"))?;
-                let message = codec.encode(publication.payload()).map_err(invalid)?;
+                let payload = codec.encode(publication.payload()).map_err(invalid)?;
                 let source_time = publication
                     .context()
                     .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
@@ -174,17 +174,24 @@ impl ProtobufOperation for Subscribe {
                         })
                     })
                     .unwrap_or(observation.received);
-                (message, source_time)
+                (payload, source_time)
             };
             // Release Shared Publication Credit Before Waiting for This Subscriber.
             drop(row);
-            let count = if ordinary {
-                1
+            let message = if ordinary {
+                None
             } else {
+                let message = DynamicMessage::decode(codec.descriptor.clone(), payload.as_slice()).map_err(invalid)?;
+                payload = Vec::new();
+                Some(message)
+            };
+            let count = if let Some(message) = &message {
                 message
                     .get_field_by_number(batch::COUNT)
                     .and_then(|value| value.as_u64())
                     .ok_or_else(|| invalid("Read Interval Stream: invalid sample count"))?
+            } else {
+                1
             };
             for index in 0..count {
                 if index > 0 {
@@ -194,11 +201,15 @@ impl ProtobufOperation for Subscribe {
                         result = crate::clock::waiting(output.requested_after(requested)) => result.map_err(ServingError::Stream)?,
                     };
                 }
-                let (row, source_time) =
-                    if ordinary { (message.clone(), source_time) } else { sample(&message, descriptor.clone(), index).map_err(invalid)? };
+                let (payload, source_time) = if let Some(message) = &message {
+                    let (row, source_time) = sample(message, descriptor.clone(), index).map_err(invalid)?;
+                    (row.encode_to_vec(), source_time)
+                } else {
+                    (std::mem::take(&mut payload), source_time)
+                };
                 let response = Self::Response {
                     item: Some(subscriptions_subscribe_response::Item::Row(SubscriptionRow {
-                        payload: row.encode_to_vec(),
+                        payload,
                         source: Some(source_time),
                         received: Some(observation.received),
                     })),
@@ -296,6 +307,8 @@ mod tests {
     use crate::streams::StreamEntry;
     use crate::{Application, Lifecycle, Runtime, Setup, Startup};
     use harmos_protocol::host::TimeGetResponse;
+    use prost_types::field_descriptor_proto::{Label, Type};
+    use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, OneofDescriptorProto};
     use std::num::NonZeroUsize;
     use std::time::{Duration, SystemTime};
 
@@ -416,7 +429,8 @@ mod tests {
         message.set_field_by_number(batch::COLUMNS, Value::Message(columns));
         let codec = protobuf::Row::new(derived.batch).unwrap();
         let canonical = codec.decode(&message.encode_to_vec()).unwrap();
-        let stored = codec.encode(&canonical).unwrap();
+        let payload = codec.encode(&canonical).unwrap();
+        let stored = DynamicMessage::decode(codec.descriptor.clone(), payload.as_slice()).unwrap();
         for index in 0..2 {
             let (row, source) = sample(&stored, descriptor.clone(), index).unwrap();
             assert_eq!(TimeGetResponse::decode(row.encode_to_vec().as_slice()).unwrap().now, Some(at));
@@ -427,6 +441,69 @@ mod tests {
                     nanos: 123456789 + index as i32 * 20
                 }
             );
+        }
+    }
+
+    #[test]
+    fn optional_interval_values_keep_absent_zero_and_nonzero_presence() {
+        let pool = DescriptorPool::from_file_descriptor_set(FileDescriptorSet {
+            file: vec![FileDescriptorProto {
+                name: Some("optional.proto".into()),
+                package: Some("fixture".into()),
+                syntax: Some("proto3".into()),
+                message_type: vec![DescriptorProto {
+                    name: Some("Optional".into()),
+                    field: vec![FieldDescriptorProto {
+                        name: Some("value".into()),
+                        number: Some(1),
+                        r#type: Some(Type::Double as i32),
+                        label: Some(Label::Optional as i32),
+                        proto3_optional: Some(true),
+                        oneof_index: Some(0),
+                        ..Default::default()
+                    }],
+                    oneof_decl: vec![OneofDescriptorProto {
+                        name: Some("_value".into()),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        })
+        .unwrap();
+        let descriptor = pool.get_message_by_name("fixture.Optional").unwrap();
+        let derived = harmos_protocol::columns::derive(&descriptor).unwrap();
+        let prost_reflect::Kind::Message(element) = derived.columns.get_field(1).unwrap().kind() else { unreachable!() };
+        let values = [None, Some(0.0), Some(2.5)];
+        let elements = values
+            .iter()
+            .map(|value| {
+                let mut message = DynamicMessage::new(element.clone());
+                if let Some(value) = value {
+                    message.set_field_by_number(1, Value::F64(*value));
+                }
+                Value::Message(message)
+            })
+            .collect();
+        let mut columns = DynamicMessage::new(derived.columns);
+        columns.set_field_by_number(1, Value::List(elements));
+        let mut message = DynamicMessage::new(derived.batch.clone());
+        message.set_field_by_number(batch::START_UNIX_NANOS, Value::I64(7_000_000_000));
+        message.set_field_by_number(batch::PERIOD_NANOS, Value::U64(20));
+        message.set_field_by_number(batch::COUNT, Value::U64(values.len() as u64));
+        message.set_field_by_number(batch::COLUMNS, Value::Message(columns));
+        let codec = protobuf::Row::new(derived.batch).unwrap();
+        let rows = codec.decode_batch(&message.encode_to_vec(), values.len() as u64, 20).unwrap();
+        let payload = codec.encode(&rows[0].2).unwrap();
+        let stored = DynamicMessage::decode(codec.descriptor.clone(), payload.as_slice()).unwrap();
+        let field = descriptor.get_field(1).unwrap();
+        for (index, value) in values.iter().enumerate() {
+            let (row, _) = sample(&stored, descriptor.clone(), index as u64).unwrap();
+            assert_eq!(row.has_field(&field), value.is_some());
+            if let Some(value) = value {
+                assert_eq!(row.get_field(&field).as_f64(), Some(*value));
+            }
         }
     }
 

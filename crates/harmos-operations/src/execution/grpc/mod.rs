@@ -23,6 +23,7 @@ mod validator;
 
 pub use input::{DecodeField, DecodeInput, DecodeScalar, DecodeValue};
 pub use prost;
+pub use transcode::Dynamic;
 pub use validator::{PayloadError, Validator};
 
 /* === Imports === */
@@ -34,7 +35,7 @@ use std::marker::PhantomData;
 
 // Local Imports
 use harmos_domain::__private::decoding_add;
-use harmos_domain::schema::Described;
+use harmos_domain::schema::{Described, declaration::Definition};
 use harmos_domain::{Message, MessageError};
 
 /* === Constants === */
@@ -53,7 +54,7 @@ pub struct Prepared<T> {
 
 struct Encoding {
     postcard: Vec<u8>,
-    definition: harmos_domain::schema::declaration::Definition,
+    definition: Definition,
     length: usize,
 }
 
@@ -130,9 +131,7 @@ impl<T: Message> Prepared<T> {
 /* === Public Functions === */
 
 /// Project an Already Encoded Canonical Value Through Its Authored Shape.
-pub fn encode_postcard(
-    definition: &harmos_domain::schema::declaration::Definition, postcard: &[u8], bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+pub fn encode_postcard(definition: &Definition, postcard: &[u8], bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     transcode::encode_admitted(definition, postcard, bytes, 0, &mut |_| Ok(()))
 }
 

@@ -19,6 +19,28 @@ in `harmos-operations`, below `harmos-runtime`; batch slicing and stream storage
 policy remain runtime responsibilities. Moving two traversals into one file does
 not complete this consolidation.
 
+The shared codec is `execution/grpc/transcode.rs`: one generic field traversal
+reads authored `Definition` values and descriptor-backed `Dynamic` views over
+the existing graph schema. The latter retains protobuf scalar formats, map key
+ordering and last-value semantics, optional presence and oneof merge boundaries.
+Schema projection also belongs to this codec; runtime retains only row binding,
+column validation, batch slicing and storage admission. Ordinary subscriptions
+send the codec's wire buffer directly, without constructing or cloning a dynamic
+message for each delivered row. Existing grpc features and dependencies suffice.
+The descriptor view retains the prior nesting refusal at `MAX_DEPTH` and refuses
+absent stored map values; neither structural check becomes caller policy.
+Owner documentation in `docs/project/architecture.md:1338` should identify this
+shared codec and runtime batch slicing; README claims remain accurate.
+The retired runtime encoder/reader had no dedicated unit tests; retain stream
+behaviour tests and add descriptor contract tests at the shared codec owner.
+
+A further overlap requires an owner decision: `execution/grpc/validator.rs`
+compiles and walks wire shapes for `harmos-runtime/src/grpc/dynamic.rs`, while
+`execution/grpc/transcode.rs::check` validates the same wire kinds for native and
+dynamic decoding. Prefer retiring the standalone validator traversal after the
+shared codec exposes allocation-free validation preserving its admission and
+construction budgets. This consolidation does not delete either validator path.
+
 Rust `harmos_protocol::columns::derive` is the chosen owner of observer column
 descriptors, including optional-field presence. Python must consume those
 descriptors before its independent derivation is deleted. Arbitrary Python row
