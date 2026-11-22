@@ -62,8 +62,8 @@ class Lifecycle(IsolatedAsyncioTestCase):
             channel = grpc.aio.insecure_channel(announce.address)
             self.addAsyncCleanup(channel.close)
             self.assertEqual((await InstanceStub(channel).Get(InstanceGetRequest(revision=1))).id, "plain")
-            serving.cancel()
-            await asyncio.gather(serving, return_exceptions=True)
+            await InstanceStub(channel).Stop(InstanceStopRequest())
+            await serving
         self.assertEqual((stdout.getvalue(), stderr.getvalue()), ("", ""))
         self.assertTrue(launches.announces.empty())
 

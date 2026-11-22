@@ -14,6 +14,7 @@
 # Standard Library Imports
 import asyncio
 import sys
+from pathlib import Path
 
 # Third Party Imports
 from harmos import CLASSIFICATION_PERMANENT, VISIBILITY_PUBLIC, SettingDeclaration, SettingValue, model
@@ -69,6 +70,8 @@ class Author:
                 raise ValueError("Finalize Plugin: Retain the Resolved Settings")
         self.finalized += 1
         print(f"finalize:{self.active}:{self.finalized}", flush=True)
+        if self.mode == "managed":
+            Path(sys.argv[2]).write_text(str(self.finalized), encoding="utf-8")
         if self.active:
             raise ValueError("Finalize Plugin: Settle Active Operations First")
         if self.mode == "finalize_failure":
@@ -106,6 +109,10 @@ async def _main() -> None:
             Catalog(author, requires=requires, settings=[SettingDeclaration(name="count", title="Count", default=SettingValue(integer=3))])
         ),
     )
+    if author.mode == "managed":
+        author.release.set()
+        await plugin.run()
+        return
     endpoint = await plugin.start("127.0.0.1:0")
     print(f"listening:{endpoint.address}", flush=True)
     try:

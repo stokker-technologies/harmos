@@ -229,3 +229,10 @@
 - [x] 24.2 Add deterministic real SDK server regression coverage for host cancellation, transport cancellation and normal settlement with an outstanding subscription read; assert SDK cancellation and demand retirement. Own sdk/python/tests/integration/test_subscriptions.py.
 - [ ] 24.3 Prove subscription demand release through the native runtime. The reference host has no subscription teardown journey; its fixture extension is outside this worker's ownership.
 - [x] 24.4 Prove the Windows SDK subset: all 35 SDK tests (five subscription tests), SDK Ruff/ty, dev and release wheel builds, release wheel packaging, format, repository checks and the diff name scan pass. The SDK has no separate unit leaf. Native runtime subscription proof remains under 24.3; native Linux proof remains with the owner.
+
+## 25. Managed Python Stop and Host Failure Causes
+
+- [x] 25.1 End Python's managed run loop after the Stop reply completes; keep finalization with the host and explicit remote listeners alive. Rust, C# and C++ already terminate managed serving on Stop.
+- [ ] 25.2 Prove managed Python removal through the real runtime manager, including one finalization and native process exit within the existing placement grace.
+- [ ] 25.3 Preserve host child failure classification and the innermost actionable message through Python FailureError and initialization failure.
+- [ ] 25.4 Complete focused Windows SDK/runtime tests, compile proof, formatting, packaging and repository checks; report unsupported selectors and native Linux proof separately.

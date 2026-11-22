@@ -286,7 +286,8 @@ class Plugin:
 
     async def start(self, address: str) -> "Endpoint":
         """Bind the Author's Address; the Host Invokes Lifecycle Operations Before Stop."""
-        service = _Service(self, self.declarations())
+        stopped = asyncio.Event()
+        service = _Service(self, self.declarations(), stopped)
         maximum = message_bytes(self.transfer)
         server = grpc.aio.server(options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
         server.add_generic_rpc_handlers(
@@ -323,7 +324,7 @@ class Plugin:
             raise ValueError(f"Cannot Bind: {address}")
         await server.start()
         host = address.rsplit(":", 1)[0]
-        return Endpoint(server, f"{host}:{port}")
+        return Endpoint(server, f"{host}:{port}", stopped)
 
     async def run(self, address: str = "127.0.0.1:0") -> None:
         """Serve Until Stop; With Launch Credentials, Announce the Bound Address to the Host Once."""
@@ -332,18 +333,20 @@ class Plugin:
         try:
             if launch is not None:
                 await _announce(*launch, endpoint.address)
-            await endpoint.server.wait_for_termination()
+            await endpoint._stopped.wait()
         finally:
             await endpoint.stop()
 
 
 class Endpoint:
-    def __init__(self, server: Server, address: str) -> None:
+    def __init__(self, server: Server, address: str, stopped: asyncio.Event) -> None:
         self.server = server
         self.address = address
+        self._stopped = stopped
 
     async def stop(self) -> None:
         await self.server.stop(None)
+        self._stopped.set()
 
 
 class _FaultError(Exception):
@@ -397,7 +400,8 @@ class _SamplesScope:
 
 
 class _Service:
-    def __init__(self, plugin: Plugin, declarations: Declarations) -> None:
+    def __init__(self, plugin: Plugin, declarations: Declarations, stopped: asyncio.Event) -> None:
+        self.stopped = stopped
         self.description = InstanceGetResponse(
             id=plugin.id,
             version=plugin.version,
@@ -424,6 +428,7 @@ class _Service:
         return self.description
 
     async def stop(self, request: InstanceStopRequest, context: ServicerContext) -> InstanceStopResponse:
+        context.add_done_callback(lambda _: self.stopped.set())
         return InstanceStopResponse()
 
     async def invoke(self, request_iterator: AsyncIterator[InstanceInvokeRequest], context: ServicerContext) -> None:
