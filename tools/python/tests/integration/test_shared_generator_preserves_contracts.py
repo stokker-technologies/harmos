@@ -34,7 +34,8 @@ from harmos_tools.build import csharp_protocol, python_protocol
 from harmos_tools.build.resources import cpp, csharp, descriptor, python, rust, sdk
 from harmos_tools.build.resources.configuration import Configuration
 from harmos_tools.process import spawn_flags
-from harmos_tools.source.protocol import caller_options, check_public_surfaces
+from harmos_tools.build.resources.descriptor import caller_options
+from harmos_tools.source.protocol import check_public_surfaces
 
 # Type Checking Imports
 
@@ -584,7 +585,9 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                 stale.write_text("obsolete")
                 commands.clear()
                 configuration = Configuration(namespace="example", python_package=python_package)
-                with patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol):
+                process_patch = patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol)
+                process_patch.start()
+                try:
                     python_protocol.generate(
                         output,
                         root=root,
@@ -593,6 +596,8 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                         configuration=configuration,
                         module_prefixes={"shared": "shared._wire"},
                     )
+                finally:
+                    process_patch.stop()
                 self.assertEqual(len(commands), 1)
                 self.assertIn(f"-I{proto_root}", commands[0])
                 self.assertEqual(commands[0][-1], file.name)

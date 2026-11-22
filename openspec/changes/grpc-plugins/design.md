@@ -1,5 +1,31 @@
 # gRPC Plugins Design
 
+## Shared Owners
+
+The resource descriptor catalog owns caller-option parsing for both generation
+and source auditing. A protocol file importing the caller-option definition
+requires an annotation on every service method. Annotated plugin methods project
+onto the context face; no service-name or callback-file catalog accompanies the
+annotations. Host methods continue to require caller declarations.
+
+The C++ SDK discovers all `.proto` files recursively below `proto/harmos`, sorted
+relative to `proto`, matching Rust protocol codegen. Conformance and client
+fixtures remain outside that library namespace.
+
+The codec consolidation must preserve both authored native declaration order,
+variant semantics and admitted encoding workspace, and descriptor-driven map,
+oneof, zigzag and fixed-width protobuf handling. The shared implementation belongs
+in `harmos-operations`, below `harmos-runtime`; batch slicing and stream storage
+policy remain runtime responsibilities. Moving two traversals into one file does
+not complete this consolidation.
+
+Rust `harmos_protocol::columns::derive` is the chosen owner of observer column
+descriptors, including optional-field presence. Python must consume those
+descriptors before its independent derivation is deleted. Arbitrary Python row
+types cannot be covered by a table generated only from library messages. The
+current samples selection carries no column descriptor; extending that contract
+requires permission beyond this worker's annotation-only protocol ownership.
+
 ## Nightly Repair Decisions
 
 The Schematic example uses the existing managed registry placement, including its

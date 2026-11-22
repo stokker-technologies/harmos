@@ -1,46 +1,8 @@
-# Explicit SDK Protocol Inventory; Conformance and Client Fixtures Are Test Support.
-set(HARMOS_PROTOCOLS
-    harmos/host/v1/access/certificates.proto
-    harmos/host/v1/access/listener.proto
-    harmos/host/v1/access/pairings.proto
-    harmos/host/v1/invocations.proto
-    harmos/host/v1/operations.proto
-    harmos/host/v1/plugins.proto
-    harmos/host/v1/plugins/settings.proto
-    harmos/host/v1/plugins/state.proto
-    harmos/host/v1/schema.proto
-    harmos/host/v1/schemas.proto
-    harmos/host/v1/status.proto
-    harmos/host/v1/status/diagnostics.proto
-    harmos/host/v1/status/logs.proto
-    harmos/host/v1/status/trace_events.proto
-    harmos/host/v1/streams.proto
-    harmos/host/v1/time.proto
-    harmos/model/v1/callers.proto
-    harmos/model/v1/description.proto
-    harmos/model/v1/failure.proto
-    harmos/model/v1/file.proto
-    harmos/model/v1/invocation.proto
-    harmos/model/v1/operation.proto
-    harmos/model/v1/page.proto
-    harmos/model/v1/policy.proto
-    harmos/model/v1/position.proto
-    harmos/model/v1/receipt.proto
-    harmos/model/v1/setting.proto
-    harmos/model/v1/stream.proto
-    harmos/model/v1/transfer.proto
-    harmos/plugin/v1/guest.proto
-    harmos/plugin/v1/instance.proto
-    harmos/plugin/v1/invocation.proto
-    harmos/plugin/v1/launches.proto
-    harmos/plugin/v1/time.proto
-    harmos/plugin/v1/operations.proto
-    harmos/plugin/v1/invocations.proto
-    harmos/plugin/v1/plugins/settings.proto
-    harmos/plugin/v1/plugins/state.proto
-    harmos/plugin/v1/operation.proto
-    harmos/plugin/v1/stream.proto
-    harmos/plugin/v1/subscriptions.proto)
+# Match Rust Codegen: Discover Every Protocol Below proto/harmos.
+get_filename_component(harmos_proto_root "${CMAKE_CURRENT_LIST_DIR}/../../../proto" ABSOLUTE)
+file(GLOB_RECURSE HARMOS_PROTOCOLS CONFIGURE_DEPENDS
+    RELATIVE "${harmos_proto_root}" "${harmos_proto_root}/harmos/*.proto")
+list(SORT HARMOS_PROTOCOLS)
 
 function(harmos_protocol target root output)
     cmake_parse_arguments(PROTOCOL "SYNC_SERVER" "" "IMPORT_DIRS" ${ARGN})
