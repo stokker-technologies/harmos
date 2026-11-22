@@ -10,3 +10,14 @@ Storage Batch SHALL expose each plugin-owned publication's original ManagedPubli
 #### Scenario: Host-Owned Typed Rows
 - **WHEN** a batch contains host-owned typed rows alongside plugin-owned publications
 - **THEN** select and select_shared return the host rows unchanged while publications exposes the plugin rows with their retained identity
+
+### Requirement: One Plugin Window Registration
+Guest and gRPC plugins SHALL register validated windows and writer leases through one implementation. Every plugin writer SHALL retain the owner, activation generation and schema admitted for it, regardless of transport. Guest-only staged visibility, commit and rollback SHALL remain intact. The superseded connection registration implementation SHALL be removed without a compatibility path or additional per-row allocation.
+
+#### Scenario: gRPC Publication Across Reconnect
+- **WHEN** a gRPC plugin publishes and reconnects before a storage consumer reads the retained batch
+- **THEN** each delivered publication reports its admitting activation's owner, generation and schema, including rows admitted before reconnect
+
+#### Scenario: Guest Staging Remains Atomic
+- **WHEN** a guest activation stages windows and rows before its generation commits or aborts
+- **THEN** the shared registration preserves staged visibility, original generation identity and rollback of an aborted activation

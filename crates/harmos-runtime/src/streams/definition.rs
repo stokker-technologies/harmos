@@ -62,6 +62,7 @@ pub(crate) struct Delivery {
 #[derive(Debug)]
 pub(crate) struct Wired {
     pub(crate) definition: Definition,
+    pub(super) generation: Option<u64>,
     pub(crate) window: Arc<Window>,
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
@@ -163,6 +164,7 @@ impl Table {
                 .visible_with(self.visibility.clone()),
         );
         let wired = Arc::new(Wired {
+            generation: None,
             validation: None,
             definition,
             window,
