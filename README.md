@@ -56,7 +56,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 Plugin setting declarations carry their type in the default value's discriminator and
-support inclusive bounds, allowed choices and required values. Saving invalid settings
+support inclusive bounds, allowed choices and required values. The host owns declaration validation and validates settings at admission. Saving invalid settings
 returns an actionable InvalidArgument error naming the setting. Observer sampling demand
 is acknowledged separately from the sample carrier: start and stop hooks acquire and
 release resources on the first and last demand, and run again for the next sampling period.

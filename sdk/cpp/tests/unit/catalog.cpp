@@ -242,7 +242,7 @@ TEST_CASE("A Declaration Preserves Typed Sections and Their Dependencies") {
   }
 }
 
-TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
+TEST_CASE("Settings Preserve Typed Defaults") {
   harmos::SettingDeclaration flag;
   flag.set_name("enabled");
   flag.mutable_default_()->set_flag(false);
@@ -269,15 +269,6 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
   REQUIRE(settings.values(1).default_().duration().seconds() == 2);
   REQUIRE(settings.values(1).minimum().duration().seconds() == 1);
   REQUIRE(settings.values(1).maximum().duration().seconds() == 3);
-  REQUIRE_THROWS_AS(plugin.add([&](harmos::plugin::Registrar &ctx) {
-    ctx.add(flag);
-  }),
-                    invalid_argument);
-  interval.clear_default_();
-  REQUIRE_THROWS_AS(harmos::plugin::Plugin("invalid", "1.0.0").add([&](harmos::plugin::Registrar &ctx) {
-    ctx.add(interval);
-  }),
-                    invalid_argument);
   SimpleDescriptorDatabase database;
   for (const auto &file : declarations.types().file())
     REQUIRE(database.Add(file));

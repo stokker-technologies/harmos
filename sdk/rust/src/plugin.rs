@@ -46,7 +46,6 @@ use crate::{Error, Message, Result, message::merge_types, stream::StreamDefiniti
 use harmos_protocol::model::Protobuf;
 use harmos_protocol::model::Requirement;
 use harmos_protocol::model::Section;
-use harmos_protocol::model::SettingsDeclarations;
 use harmos_protocol::model::StorageTransferSettings;
 use harmos_protocol::model::Visibility;
 use harmos_protocol::model::{Declarations, LaneDeclaration, lane_declaration};
@@ -298,20 +297,6 @@ impl Plugin {
             if !sections.insert(&section.r#type) {
                 return Err(Error::Invalid(format!("Duplicate Section: {}", section.r#type)));
             }
-            if section.r#type == SettingsDeclarations::name() {
-                let declarations = <SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
-                    .map_err(|error| Error::Invalid(format!("Declare Settings: {error}")))?;
-                let mut names = HashSet::new();
-                for declaration in declarations.values {
-                    if declaration.name.is_empty() || !names.insert(declaration.name.clone()) {
-                        return Err(Error::Invalid(format!("Declare Setting {}: Duplicate or Empty Name", declaration.name)));
-                    }
-                    declaration
-                        .default
-                        .and_then(|value| value.value)
-                        .ok_or_else(|| Error::Invalid(format!("Declare Setting {}: Typed Default Required", declaration.name)))?;
-                }
-            }
             declarations.sections.push(section.clone());
             merge_types(&mut types, definitions.clone())?;
         }
@@ -360,7 +345,7 @@ impl Plugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Context, SettingDeclaration, SettingValue, setting_value};
+    use crate::{Context, SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
     use prost_types::Duration;
 
     async fn empty(_: &Context, _: ()) -> Result<()> {
@@ -398,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_settings_preserve_presence_and_reject_invalid_declarations() {
+    fn typed_settings_preserve_presence() {
         let declarations = SettingsDeclarations {
             values: vec![
                 SettingDeclaration {
@@ -442,47 +427,6 @@ mod tests {
             .unwrap();
         let decoded = <SettingsDeclarations as prost::Message>::decode(reported.sections[0].payload.as_slice()).unwrap();
         assert_eq!(decoded, declarations);
-        let mut duplicate = declarations.clone();
-        duplicate.values.push(duplicate.values[0].clone());
-        assert!(
-            Plugin::new("settings", "1.0.0")
-                .register(|ctx| {
-                    ctx.register(duplicate)?;
-                    Ok(())
-                })
-                .expect("Register Plugin Declarations")
-                .declarations()
-                .is_err()
-        );
-        let mut missing = declarations;
-        missing.values[0].default = None;
-        assert!(
-            Plugin::new("settings", "1.0.0")
-                .register(|ctx| {
-                    ctx.register(missing)?;
-                    Ok(())
-                })
-                .expect("Register Plugin Declarations")
-                .declarations()
-                .is_err()
-        );
-        let unset = SettingsDeclarations {
-            values: vec![SettingDeclaration {
-                name: "unset".into(),
-                default: Some(SettingValue { value: None }),
-                ..Default::default()
-            }],
-        };
-        assert!(
-            Plugin::new("settings", "1.0.0")
-                .register(|ctx| {
-                    ctx.register(unset)?;
-                    Ok(())
-                })
-                .expect("Register Plugin Declarations")
-                .declarations()
-                .is_err()
-        );
     }
 
     #[test]

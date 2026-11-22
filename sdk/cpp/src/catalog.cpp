@@ -210,12 +210,6 @@ Plugin &Plugin::on_stop(std::function<void()> cleanup) {
 }
 
 Registrar &Registrar::add(model::v1::SettingDeclaration declaration) {
-  if (declaration.name().empty() || !declaration.has_default_() ||
-      declaration.default_().value_case() == model::v1::SettingValue::VALUE_NOT_SET)
-    throw invalid_argument("Declare Setting " + declaration.name() + ": Name and Typed Default Are Required");
-  for (const auto &existing : plugin_.settings_.values())
-    if (existing.name() == declaration.name())
-      throw invalid_argument("Declare Setting " + declaration.name() + ": Duplicate Name");
   *plugin_.settings_.add_values() = std::move(declaration);
   return *this;
 }

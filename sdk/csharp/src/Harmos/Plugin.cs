@@ -138,14 +138,8 @@ public sealed class Registrar
   public Registrar Register(string name, SettingValue defaultValue, string title = "", string description = "",
       SettingValue? minimum = null, SettingValue? maximum = null, IEnumerable<SettingValue>? choices = null, bool required = false)
   {
-    ArgumentException.ThrowIfNullOrWhiteSpace(name);
-    ArgumentNullException.ThrowIfNull(defaultValue);
-    if (defaultValue.ValueCase == SettingValue.ValueOneofCase.None)
-      throw new ArgumentException($"Declare Setting {name}: Select a Typed Default", nameof(defaultValue));
     var section = declarations.Sections.SingleOrDefault(item => item.Type == SettingsDeclarations.Descriptor.FullName);
     var settings = section is null ? new SettingsDeclarations() : SettingsDeclarations.Parser.ParseFrom(section.Payload);
-    if (settings.Values.Any(item => item.Name == name))
-      throw new ArgumentException($"Declare Setting {name}: Duplicate Name", nameof(name));
     var declaration = new SettingDeclaration
     {
       Name = name,

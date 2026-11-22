@@ -238,18 +238,6 @@ class Plugin:
                     raise ValueError("Positive Observer Interval Required")
             declarations.streams.add().CopyFrom(definition.declaration())
             _merge(files, definition.row)
-        names = [setting.name for setting in self.settings]
-        if any(not name for name in names) or len(set(names)) != len(names):
-            raise ValueError("Declare Settings: Duplicate or Empty Name")
-        for setting in self.settings:
-            if not setting.HasField("default") or setting.default.WhichOneof("value") is None:
-                raise ValueError(f"Declare Setting {setting.name}: Typed Default Required")
-            if setting.default.WhichOneof("value") == "duration":
-                duration = setting.default.duration
-                if abs(duration.seconds) > 315_576_000_000 or abs(duration.nanos) >= 1_000_000_000:
-                    raise ValueError(f"Declare Setting {setting.name}: Invalid Duration")
-                if duration.seconds * duration.nanos < 0:
-                    raise ValueError(f"Declare Setting {setting.name}: Invalid Duration Sign")
         sections = list(self.sections)
         if self.settings:
             sections.append(SettingsDeclarations(values=self.settings))

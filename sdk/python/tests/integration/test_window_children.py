@@ -334,16 +334,6 @@ class WindowChildren(IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await active._call(ECHO, Value())
 
-        # Reject Incomplete or Duplicate Settings at Declarations Construction.
-        for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):
-            self.assertRaises(
-                ValueError,
-                lambda declarations=declarations: Plugin(
-                    id="conformance",
-                    version="1.0.0",
-                    register=lambda ctx, declarations=declarations: ctx.register(Catalog(reader, settings=declarations)),
-                ).declarations(),
-            )
 
 
 # === Public Functions === #
