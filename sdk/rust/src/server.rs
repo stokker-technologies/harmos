@@ -21,6 +21,7 @@ mod tests;
 // Standard Library Imports
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
+    error,
     future::{self, Future},
     net,
     pin::{Pin, pin},
@@ -340,7 +341,11 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                 if matches!(&error, Error::Failure(_)) {
                     return error;
                 }
-                context.failure_mapper.as_ref().and_then(|mapper| mapper(&error)).unwrap_or(error)
+                let source: &(dyn error::Error + 'static) = match &error {
+                    Error::Other(source) => source.as_ref(),
+                    _ => &error,
+                };
+                context.failure_mapper.as_ref().and_then(|mapper| mapper(source)).unwrap_or(error)
             });
             let _ = complete.send(result);
         });

@@ -119,6 +119,8 @@ Operation failures expose kind, code, message, action, operation and retry evide
 Python raises `OperationError`, C# throws `OperationException`, and C++20 throws
 `harmos::OperationError`. Plugins can register one failure mapper; an unmapped
 handler error becomes Permanent and retains the exception text and handler identity.
+Rust handlers preserve arbitrary application errors with `Error::other(error)`;
+the plugin's mapper receives the original error for downcasting.
 
 
 #### Examples

@@ -487,8 +487,8 @@ fn main() -> Result<()> {
         Plugin::new("fixture", "1.0.0")
             .failure_mapper(|error| {
                 error
-                    .downcast_ref::<harmos::Error>()
-                    .filter(|error| matches!(error, harmos::Error::Io(_)))
+                    .downcast_ref::<io::Error>()
+                    .filter(|error| error.to_string() == "Source Unavailable")
                     .map(|_| harmos::Error::failure(Classification::Refused, "source_missing", "Source Unavailable", "Select a Source"))
             })
             .register(|ctx| {
@@ -499,8 +499,8 @@ fn main() -> Result<()> {
                             b"refused" => Classification::Refused,
                             b"invalid" => Classification::Invalid,
                             b"cancelled" => Classification::Cancelled,
-                            b"mapped" => return Err(io::Error::other("Source Unavailable").into()),
-                            b"unmapped" => return Err(harmos::Error::Invalid("Unmapped Failure".into())),
+                            b"mapped" => return Err(harmos::Error::other(io::Error::other("Source Unavailable"))),
+                            b"unmapped" => return Err(harmos::Error::other(io::Error::other("Unmapped Failure"))),
                             _ => Classification::Permanent,
                         };
                         Err(harmos::Error::failure(classification, "fixture_failure", "Apply Failed", "Choose Another Input"))

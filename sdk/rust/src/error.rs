@@ -51,6 +51,9 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] io::Error),
 
+    #[error(transparent)]
+    Other(Box<dyn error::Error + Send + Sync>),
+
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     Server(#[from] tonic::transport::Error),
@@ -70,6 +73,11 @@ impl From<Failure> for Error {
 }
 
 impl Error {
+    /// Preserve an Application Error for the Plugin's Failure Mapper.
+    pub fn other(error: impl error::Error + Send + Sync + 'static) -> Self {
+        Self::Other(Box::new(error))
+    }
+
     pub fn kind(&self) -> &str {
         match self {
             Self::Failure(failure) => match failure.classification() {
