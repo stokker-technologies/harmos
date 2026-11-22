@@ -19,7 +19,7 @@
 use std::{
     collections::BTreeSet,
     future::Future,
-    io,
+    io::{self, Write},
     net::{self, Shutdown},
     pin::Pin,
     sync::{
@@ -31,6 +31,7 @@ use std::{
 
 // Third Party Imports
 use hyper_util::rt::TokioIo;
+use rcgen::generate_simple_self_signed;
 use tokio::{
     net::TcpStream,
     sync::{Semaphore, mpsc},
@@ -39,7 +40,7 @@ use tonic::{
     Request, Streaming,
     client::Grpc,
     codegen::http::uri::PathAndQuery,
-    transport::{Channel, Endpoint},
+    transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity, ServerTlsConfig},
 };
 use tonic_reflection::pb::v1::{
     ServerReflectionRequest, server_reflection_client::ServerReflectionClient, server_reflection_request::MessageRequest,
@@ -49,7 +50,8 @@ use tower::service_fn;
 // Local Imports
 use crate::support::Bank;
 use harmos_runtime::facade::storage::{CompoundOutcome, DeleteScopeRequest, MutateResponse, MutationId};
-use harmos_runtime::grpc::{Attached, Codec, ConnectionEnd, Settings, Transcoded};
+use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware};
+use harmos_runtime::grpc::{Attached, Codec, ConnectionEnd, ConnectionSession, ServerCertificate, Settings, Transcoded};
 use harmos_runtime::operations::{
     self, ConnectionId, FailureKind, FunctionContext, Lane, OperationFactory, OperationPolicy, OperationSpec, Response, RetryPolicy,
     WireDeclaration,
@@ -128,7 +130,11 @@ struct Fixture {
     calls: mpsc::UnboundedReceiver<Option<ConnectionId>>,
     notifications: mpsc::UnboundedReceiver<ConnectionId>,
     observer: Arc<Observer>,
+    sessions: mpsc::UnboundedReceiver<ConnectionSession>,
+    tls: Option<ClientTlsConfig>,
 }
+
+struct Sessions(mpsc::UnboundedSender<ConnectionSession>);
 
 struct StorageObserver {
     call: Call,
@@ -140,9 +146,27 @@ struct QueuedResident(Arc<AtomicUsize>);
 
 /* === Enums === */
 
+enum Transport {
+    Plaintext,
+    Tls,
+    RotatingTls,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Middleware for Sessions {
+    fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a> {
+        Box::pin(async move {
+            let session = call.connection().expect("RPC has a connection session");
+            assert_eq!(call.context().connection_id(), Some(session.id()));
+            assert_eq!(call.context().get::<ConnectionSession>().unwrap().id(), session.id());
+            self.0.send(session.clone()).unwrap();
+            Ok(())
+        })
+    }
+}
 
 impl Drop for Stopped {
     fn drop(&mut self) {
@@ -200,6 +224,10 @@ impl ConnectionEnd for StorageObserver {
 
 impl Fixture {
     async fn new(fail: bool) -> Self {
+        Self::with_transport(fail, Transport::Plaintext).await
+    }
+
+    async fn with_transport(fail: bool, transport: Transport) -> Self {
         let (calls, received_calls) = mpsc::unbounded_channel();
         let (notifications, received_notifications) = mpsc::unbounded_channel();
         let events = Arc::new(Events {
@@ -226,26 +254,68 @@ impl Fixture {
         .await;
         runtime.grpc().register_connection_end(observer.clone()).unwrap();
         assert!(runtime.grpc().register_connection_end(observer.clone()).is_err());
-        let attachment = runtime.grpc().attach(Settings::default()).await.unwrap();
+        let (sessions, received_sessions) = mpsc::unbounded_channel();
+        runtime.grpc().register_middleware(Arc::new(Sessions(sessions))).unwrap();
+        let (attachment, tls) = match transport {
+            Transport::Plaintext => (runtime.grpc().attach(Settings::default()).await.unwrap(), None),
+            Transport::Tls | Transport::RotatingTls => {
+                let certificate = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+                let pem = certificate.cert.pem();
+                let key = certificate.signing_key.serialize_pem();
+                let tls = ClientTlsConfig::new().domain_name("localhost").ca_certificate(Certificate::from_pem(&pem));
+                let attachment = match transport {
+                    Transport::Tls => {
+                        let settings = Settings {
+                            tls: Some(ServerTlsConfig::new().identity(Identity::from_pem(pem, key))),
+                            ..Settings::default()
+                        };
+                        runtime.grpc().attach(settings).await.unwrap()
+                    }
+                    Transport::RotatingTls => {
+                        let settings = Settings::default();
+                        let handshake_timeout = settings.request_timeout;
+                        let certificate = ServerCertificate::from_pem(pem.as_bytes(), key.as_bytes()).unwrap();
+                        runtime.grpc().attach_with_certificate(settings, certificate, handshake_timeout).await.unwrap()
+                    }
+                    Transport::Plaintext => unreachable!(),
+                };
+                (attachment, Some(tls))
+            }
+        };
         Self {
             runtime,
             attachment,
             calls: received_calls,
             notifications: received_notifications,
             observer,
+            sessions: received_sessions,
+            tls,
+        }
+    }
+
+    fn endpoint(&self) -> Endpoint {
+        let scheme = if self.tls.is_some() { "https" } else { "http" };
+        let endpoint = Endpoint::from_shared(format!("{scheme}://{}", self.attachment.local_addr())).unwrap();
+        match &self.tls {
+            Some(tls) => endpoint.tls_config(tls.clone()).unwrap(),
+            None => endpoint,
         }
     }
 
     async fn connect(&self) -> Channel {
-        Endpoint::from_shared(format!("http://{}", self.attachment.local_addr())).unwrap().connect().await.unwrap()
+        self.endpoint().connect().await.unwrap()
     }
 
-    async fn controlled(&self) -> (Channel, net::TcpStream) {
-        let socket = TcpStream::connect(self.attachment.local_addr()).await.unwrap().into_std().unwrap();
+    async fn controlled(&self, reset: bool) -> (Channel, net::TcpStream) {
+        let socket = TcpStream::connect(self.attachment.local_addr()).await.unwrap();
+        if reset {
+            socket.set_zero_linger().unwrap();
+        }
+        let socket = socket.into_std().unwrap();
         let control = socket.try_clone().unwrap();
         let socket = Arc::new(Mutex::new(Some(socket)));
-        let channel = Endpoint::from_shared(format!("http://{}", self.attachment.local_addr()))
-            .unwrap()
+        let channel = self
+            .endpoint()
             .connect_with_connector(service_fn(move |_| {
                 let socket = socket.lock().unwrap().take();
                 async move {
@@ -301,6 +371,7 @@ impl Fixture {
 /* === Private Functions === */
 
 async fn unary_probe(_request: UnaryProbe, context: FunctionContext<UnaryProbe>) -> Result<Response<u32>> {
+    assert_eq!(context.call().get::<ConnectionSession>().map(ConnectionSession::id), context.call().connection_id());
     context.resource::<Events>().unwrap().calls.send(context.call().connection_id()).unwrap();
     Ok(1.into())
 }
@@ -324,6 +395,118 @@ async fn probe(request: Probe, context: FunctionContext<Probe>) -> Result<Respon
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn middleware_sessions_follow_connections_across_plaintext_and_tls() {
+    for transport in [Transport::Plaintext, Transport::Tls, Transport::RotatingTls] {
+        // Share Identity Across RPCs
+        let mut fixture = Fixture::with_transport(false, transport).await;
+        let first = fixture.connect().await;
+        let one = fixture.unary(first.clone()).await;
+        let session = fixture.sessions.recv().await.unwrap();
+        assert_eq!(session.id(), one);
+        assert_eq!(fixture.unary(first.clone()).await, one);
+        assert_eq!(fixture.sessions.recv().await.unwrap().id(), one);
+
+        // Isolate a Second Connection
+        let second = fixture.connect().await;
+        let two = fixture.unary(second.clone()).await;
+        let other = fixture.sessions.recv().await.unwrap();
+        assert_eq!(other.id(), two);
+        assert_ne!(one, two);
+        assert!(futures_util::poll!(Box::pin(session.ended())).is_pending());
+
+        // Close One Transport While Retaining Its Session
+        drop(first);
+        session.ended().await;
+        assert_eq!(fixture.notifications.recv().await.unwrap(), one);
+        assert!(futures_util::poll!(Box::pin(other.ended())).is_pending());
+        assert_eq!(fixture.unary(second.clone()).await, two);
+        assert_eq!(fixture.sessions.recv().await.unwrap().id(), two);
+        assert!(fixture.notifications.try_recv().is_err());
+
+        // Preserve the End Latch and Drain Every Observer
+        session.ended().await;
+        fixture.runtime.stop().await.unwrap();
+        other.ended().await;
+        assert_eq!(fixture.notifications.try_recv().unwrap(), two);
+        assert!(fixture.notifications.try_recv().is_err());
+        drop(second);
+    }
+}
+
+#[tokio::test]
+async fn shutdown_ends_all_sessions_across_plaintext_and_tls() {
+    for transport in [Transport::Plaintext, Transport::Tls, Transport::RotatingTls] {
+        // Open Independent Sessions
+        let mut fixture = Fixture::with_transport(false, transport).await;
+        let first = fixture.connect().await;
+        fixture.unary(first.clone()).await;
+        let one = fixture.sessions.recv().await.unwrap();
+        let second = fixture.connect().await;
+        fixture.unary(second.clone()).await;
+        let two = fixture.sessions.recv().await.unwrap();
+
+        // Stop With Both Connections Still Open
+        fixture.runtime.stop().await.unwrap();
+        one.ended().await;
+        two.ended().await;
+        let reported = BTreeSet::from([fixture.notifications.try_recv().unwrap(), fixture.notifications.try_recv().unwrap()]);
+        assert_eq!(reported, BTreeSet::from([one.id(), two.id()]));
+        assert!(fixture.notifications.try_recv().is_err());
+        drop((first, second));
+    }
+}
+
+#[tokio::test]
+async fn tls_failure_after_handshake_ends_only_its_session() {
+    for transport in [Transport::Tls, Transport::RotatingTls] {
+        // Complete Handshakes and RPCs
+        let mut fixture = Fixture::with_transport(false, transport).await;
+        let (channel, mut control) = fixture.controlled(false).await;
+        fixture.unary(channel.clone()).await;
+        let failed = fixture.sessions.recv().await.unwrap();
+        let sibling = fixture.connect().await;
+        fixture.unary(sibling.clone()).await;
+        let live = fixture.sessions.recv().await.unwrap();
+
+        // Inject an Invalid TLS Record Below the Established TLS Stream
+        control.write_all(&[0xff, 0x03, 0x03, 0, 1, 0]).unwrap();
+        failed.ended().await;
+        assert_eq!(fixture.notifications.recv().await.unwrap(), failed.id());
+        assert!(futures_util::poll!(Box::pin(live.ended())).is_pending());
+        assert_eq!(fixture.unary(sibling.clone()).await, live.id());
+        fixture.runtime.stop().await.unwrap();
+        assert_eq!(fixture.notifications.try_recv().unwrap(), live.id());
+        assert!(fixture.notifications.try_recv().is_err());
+        drop((channel, control, sibling));
+    }
+}
+
+#[tokio::test]
+async fn socket_reset_ends_only_its_session_across_plaintext_and_tls() {
+    for transport in [Transport::Plaintext, Transport::Tls, Transport::RotatingTls] {
+        // Configure an Abortive Close Before Opening the Connection
+        let mut fixture = Fixture::with_transport(false, transport).await;
+        let (channel, control) = fixture.controlled(true).await;
+        fixture.unary(channel.clone()).await;
+        let reset = fixture.sessions.recv().await.unwrap();
+        let sibling = fixture.connect().await;
+        fixture.unary(sibling.clone()).await;
+        let live = fixture.sessions.recv().await.unwrap();
+
+        // Reset One Socket Without Ending Its Sibling
+        drop((channel, control));
+        reset.ended().await;
+        assert_eq!(fixture.notifications.recv().await.unwrap(), reset.id());
+        assert!(futures_util::poll!(Box::pin(live.ended())).is_pending());
+        assert_eq!(fixture.unary(sibling.clone()).await, live.id());
+        fixture.runtime.stop().await.unwrap();
+        assert_eq!(fixture.notifications.try_recv().unwrap(), live.id());
+        assert!(fixture.notifications.try_recv().is_err());
+        drop(sibling);
+    }
+}
 
 #[tokio::test]
 async fn shutdown_cancels_queued_work_before_connection_observers_settle() {
@@ -510,7 +693,7 @@ async fn slow_observer_does_not_block_another_connection_or_escape_shutdown() {
 #[tokio::test]
 async fn socket_half_close_settles_a_stream_before_notification() {
     let mut fixture = Fixture::new(false).await;
-    let (channel, control) = fixture.controlled().await;
+    let (channel, control) = fixture.controlled(false).await;
     let (id, output) = fixture.call(channel.clone(), true).await;
     control.shutdown(Shutdown::Write).unwrap();
     assert_eq!(fixture.notifications.recv().await.unwrap(), id);

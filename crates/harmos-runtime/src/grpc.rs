@@ -35,7 +35,7 @@ mod tls;
 /* === Re-Exports === */
 
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
-pub use connection::ConnectionEnd;
+pub use connection::{ConnectionEnd, ConnectionSession};
 pub use controlled::ControlEnvelope;
 pub use decoding::{DecodeSettings, Decoder};
 pub use descriptors::descriptor;

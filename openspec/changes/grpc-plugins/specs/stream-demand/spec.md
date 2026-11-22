@@ -1,5 +1,21 @@
 ## ADDED Requirements
 
+### Requirement: Connection-Scoped Middleware Session
+Every plaintext or TLS connection SHALL expose one cloneable ConnectionSession
+through middleware, request extensions and call contexts before middleware entry.
+Its process-unique identity SHALL never be reused. Its end notification SHALL be
+latched independently of RPC lifetime. Retained handles SHALL NOT retain connection
+resources. The existing settled ConnectionEnd observer SHALL remain the cleanup owner.
+
+#### Scenario: Repeated Calls and Independent Connections
+- **WHEN** two RPCs share a connection and another RPC uses a second connection
+- **THEN** middleware and handlers see one identity for the first pair and a distinct identity for the second connection
+
+#### Scenario: Connection Ends
+- **WHEN** a connection closes gracefully, resets, fails TLS or ends during shutdown
+- **THEN** its end notification is latched once, other live connections remain open, and settled cleanup releases all connection resources
+- **AND** ConnectionEnd runs once after calls settle and shutdown awaits it
+
 ### Requirement: Typed Stream Demand in the Calling Scope
 
 Harmos SHALL expose typed live subscriptions on Rust, Python, C# and C++ plugin

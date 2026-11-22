@@ -108,6 +108,7 @@ impl Service<http::Request<Body>> for Inbound {
             .or_else(|| request.extensions().get::<TlsConnectInfo<Info>>().map(|info| info.get_ref().clone()));
         if let Some(info) = &connection {
             request.extensions_mut().insert(info.tcp.clone());
+            request.extensions_mut().insert(info.scope.session());
         }
         let scope = connection.as_ref().map(|info| info.scope.clone());
         let mut stopping = self.stopping.clone();
@@ -166,7 +167,6 @@ impl Service<http::Request<Body>> for Inbound {
                 }
                 let mut context = session.context();
                 if let Some(info) = connection {
-                    context.insert(info.scope.id).expect("transport owns connection identity");
                     context.insert(info.scope).expect("transport owns connection settlement");
                 }
                 if streaming.is_none() {

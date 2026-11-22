@@ -36,6 +36,12 @@ use crate::{Error, Result};
 
 /* === Structs === */
 
+#[derive(Clone, Debug)]
+pub struct ConnectionSession {
+    id: ConnectionId,
+    closed: watch::Receiver<bool>,
+}
+
 #[derive(Clone)]
 pub(super) struct Info {
     pub(super) tcp: TcpConnectInfo,
@@ -69,6 +75,17 @@ pub trait ConnectionEnd: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
+impl ConnectionSession {
+    pub fn id(&self) -> ConnectionId {
+        self.id
+    }
+
+    // A Latched Transport End, Independent of Retained Handles and RPC Settlement.
+    pub async fn ended(&self) {
+        let _ = self.closed.clone().wait_for(|closed| *closed).await;
+    }
+}
 
 impl Default for Connections {
     fn default() -> Self {
@@ -112,12 +129,25 @@ impl Connections {
 }
 
 impl Scope {
+    pub(super) fn session(&self) -> ConnectionSession {
+        ConnectionSession {
+            id: self.id,
+            closed: self.closed.subscribe(),
+        }
+    }
+
     pub(super) fn close(&self) {
-        self.closed.send_replace(true);
+        self.closed.send_if_modified(|closed| {
+            if *closed {
+                return false;
+            }
+            *closed = true;
+            true
+        });
     }
 
     pub(super) async fn ended(&self) {
-        let _ = self.closed.subscribe().wait_for(|closed| *closed).await;
+        self.session().ended().await;
     }
 
     pub(super) fn call(&self) -> Call {
@@ -160,3 +190,29 @@ impl Drop for Call {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::Connections;
+
+    #[tokio::test]
+    async fn retained_session_does_not_retain_connection_state() {
+        // Retain Only the Public Handle After Closure
+        let connections = Connections::default();
+        let scope = connections.open(None).unwrap();
+        let retained = scope.session();
+        let released = Arc::downgrade(&scope);
+        assert!(futures_util::poll!(Box::pin(retained.ended())).is_pending());
+        scope.close();
+        scope.close();
+        drop(scope);
+
+        // Drain Internal Tasks Without Dropping the Public Handle
+        connections.drain().await;
+        assert!(released.upgrade().is_none());
+        retained.ended().await;
+        retained.clone().ended().await;
+    }
+}

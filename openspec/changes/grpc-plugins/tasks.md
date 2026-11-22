@@ -201,3 +201,10 @@
   - [x] 21.1.2 Prove native transcoding and descriptor formats, runtime publications/subscriptions/gaps/optional presence, workspace test-target and unoptimized stream benchmark compilation, format, repository policy and strict OpenSpec validation on Windows. Native Linux and measured throughput remain outside this worker's proof.
 - [x] 21.2 Make generation and caller auditing consume one annotation-driven catalog; delete the callback service-name and file-suffix lists.
 - [x] 21.3 Replace the C++ protocol hand list with sorted recursive discovery matching Rust codegen and prove the SDK build and focused tests on the available native toolchain.
+
+## 22. Connection Sessions
+
+- [x] 22.1 Expose the existing connection scope as a cloneable ConnectionSession with its process-unique identity and latched transport-end future; supply it to middleware and handler request extensions and call contexts before middleware entry. Own runtime grpc/connection.rs, middleware.rs, inbound.rs and the grpc.rs re-export; reuse the existing plaintext/TLS socket owner and settled ConnectionEnd observer.
+- [x] 22.2 Prove repeated RPC identity, separate connections, graceful close, reset, TLS failure, all-open shutdown, notification isolation and release of connection state with retained public handles, for plaintext and both TLS listener entry points. Own runtime grpc connection unit tests and tests/grpc/connection.rs.
+- [x] 22.3 Run focused tests, guarded workspace test-target compilation, format, repository checks and strict OpenSpec validation on Windows; report native Linux proof as outstanding. This worker's explicit no-lint scope overrides the earlier Nightly repair lint direction in design.md:52; the absent --changed selector uses the maintained guarded workspace equivalent.
+- [ ] 22.4 Owner Documentation: `docs/guides/access-status.md:21` must introduce ConnectionSession in middleware, request extensions and call contexts, distinguishing physical closure from settled ConnectionEnd cleanup. README claims remain accurate.
