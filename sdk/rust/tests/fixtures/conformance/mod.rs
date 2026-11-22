@@ -237,6 +237,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "count".into(),
@@ -247,6 +249,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "gain".into(),
@@ -257,6 +261,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "label".into(),
@@ -267,6 +273,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "interval".into(),
@@ -277,6 +285,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
             ],
         })?;

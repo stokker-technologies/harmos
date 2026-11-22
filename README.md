@@ -55,6 +55,10 @@ Your application defines each change; Harmos manages its accepted history.
 - **gRPC Interfaces** [`grpc`]: Declare product wrappers over native operations and generate product client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
+Plugin setting declarations carry their type in the default value's discriminator and
+support inclusive bounds, allowed choices and required values. Saving invalid settings
+returns an actionable InvalidArgument error naming the setting.
+
 ## Interfaces
 
 ### CLI

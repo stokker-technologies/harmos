@@ -134,7 +134,7 @@ public sealed class Registrar
 
   /// <summary>Declare a library-stored setting with an explicit typed default.</summary>
   public Registrar Register(string name, SettingValue defaultValue, string title = "", string description = "",
-      SettingValue? minimum = null, SettingValue? maximum = null)
+      SettingValue? minimum = null, SettingValue? maximum = null, IEnumerable<SettingValue>? choices = null, bool required = false)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(name);
     ArgumentNullException.ThrowIfNull(defaultValue);
@@ -144,15 +144,19 @@ public sealed class Registrar
     var settings = section is null ? new SettingsDeclarations() : SettingsDeclarations.Parser.ParseFrom(section.Payload);
     if (settings.Values.Any(item => item.Name == name))
       throw new ArgumentException($"Declare Setting {name}: Duplicate Name", nameof(name));
-    settings.Values.Add(new SettingDeclaration
+    var declaration = new SettingDeclaration
     {
       Name = name,
       Title = title,
       Description = description,
       Default = defaultValue.Clone(),
       Minimum = minimum?.Clone(),
-      Maximum = maximum?.Clone()
-    });
+      Maximum = maximum?.Clone(),
+      Required = required
+    };
+    if (choices is not null)
+      declaration.Choices.AddRange(choices.Select(value => value.Clone()));
+    settings.Values.Add(declaration);
     if (section is null)
       return Register(settings);
     section.Payload = settings.ToByteString();

@@ -203,6 +203,8 @@ pub fn settings_declarations() -> SettingsDeclarations {
                 default: Some(value),
                 minimum: None,
                 maximum: None,
+                choices: Vec::new(),
+                required: false,
             })
             .collect(),
     }

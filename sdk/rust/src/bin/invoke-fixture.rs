@@ -455,6 +455,8 @@ fn main() -> Result<()> {
                         }),
                         minimum: None,
                         maximum: None,
+                        choices: Vec::new(),
+                        required: false,
                     }],
                 })?;
                 ctx.register(stream)?;
@@ -553,6 +555,8 @@ fn main() -> Result<()> {
                         }),
                         minimum: None,
                         maximum: None,
+                        choices: Vec::new(),
+                        required: false,
                     }],
                 }))?;
                 ctx.register(Operation::new("fixture.value", setting_value).visibility(Visibility::Protected))?;
@@ -668,6 +672,8 @@ fn duration_setting(name: &str, title: &str, seconds: i64, nanos: i32) -> Settin
             }),
             minimum: None,
             maximum: None,
+            choices: Vec::new(),
+            required: false,
         }],
     }
 }

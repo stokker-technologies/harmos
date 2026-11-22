@@ -27,26 +27,28 @@ namespace Harmos;
             "Ch1oYXJtb3MvbW9kZWwvdjEvc2V0dGluZy5wcm90bxIPaGFybW9zLm1vZGVs",
             "LnYxGh5nb29nbGUvcHJvdG9idWYvZHVyYXRpb24ucHJvdG8iUwoUU2V0dGlu",
             "Z3NEZWNsYXJhdGlvbnMSOwoGdmFsdWVzGAEgAygLMiMuaGFybW9zLm1vZGVs",
-            "LnYxLlNldHRpbmdEZWNsYXJhdGlvblIGdmFsdWVzIosCChJTZXR0aW5nRGVj",
+            "LnYxLlNldHRpbmdEZWNsYXJhdGlvblIGdmFsdWVzIuACChJTZXR0aW5nRGVj",
             "bGFyYXRpb24SEgoEbmFtZRgBIAEoCVIEbmFtZRIUCgV0aXRsZRgCIAEoCVIF",
             "dGl0bGUSIAoLZGVzY3JpcHRpb24YAyABKAlSC2Rlc2NyaXB0aW9uEjcKB2Rl",
             "ZmF1bHQYBCABKAsyHS5oYXJtb3MubW9kZWwudjEuU2V0dGluZ1ZhbHVlUgdk",
             "ZWZhdWx0EjcKB21pbmltdW0YBSABKAsyHS5oYXJtb3MubW9kZWwudjEuU2V0",
             "dGluZ1ZhbHVlUgdtaW5pbXVtEjcKB21heGltdW0YBiABKAsyHS5oYXJtb3Mu",
-            "bW9kZWwudjEuU2V0dGluZ1ZhbHVlUgdtYXhpbXVtIrIBCgxTZXR0aW5nVmFs",
-            "dWUSFAoEZmxhZxgBIAEoCEgAUgRmbGFnEhoKB2ludGVnZXIYAiABKANIAFIH",
-            "aW50ZWdlchIYCgZudW1iZXIYAyABKAFIAFIGbnVtYmVyEhQKBHRleHQYBCAB",
-            "KAlIAFIEdGV4dBI3CghkdXJhdGlvbhgFIAEoCzIZLmdvb2dsZS5wcm90b2J1",
-            "Zi5EdXJhdGlvbkgAUghkdXJhdGlvbkIHCgV2YWx1ZSKtAQoNU2V0dGluZ1Zh",
-            "bHVlcxJCCgZ2YWx1ZXMYASADKAsyKi5oYXJtb3MubW9kZWwudjEuU2V0dGlu",
-            "Z1ZhbHVlcy5WYWx1ZXNFbnRyeVIGdmFsdWVzGlgKC1ZhbHVlc0VudHJ5EhAK",
-            "A2tleRgBIAEoCVIDa2V5EjMKBXZhbHVlGAIgASgLMh0uaGFybW9zLm1vZGVs",
-            "LnYxLlNldHRpbmdWYWx1ZVIFdmFsdWU6AjgBYgZwcm90bzM="));
+            "bW9kZWwudjEuU2V0dGluZ1ZhbHVlUgdtYXhpbXVtEjcKB2Nob2ljZXMYByAD",
+            "KAsyHS5oYXJtb3MubW9kZWwudjEuU2V0dGluZ1ZhbHVlUgdjaG9pY2VzEhoK",
+            "CHJlcXVpcmVkGAggASgIUghyZXF1aXJlZCKyAQoMU2V0dGluZ1ZhbHVlEhQK",
+            "BGZsYWcYASABKAhIAFIEZmxhZxIaCgdpbnRlZ2VyGAIgASgDSABSB2ludGVn",
+            "ZXISGAoGbnVtYmVyGAMgASgBSABSBm51bWJlchIUCgR0ZXh0GAQgASgJSABS",
+            "BHRleHQSNwoIZHVyYXRpb24YBSABKAsyGS5nb29nbGUucHJvdG9idWYuRHVy",
+            "YXRpb25IAFIIZHVyYXRpb25CBwoFdmFsdWUirQEKDVNldHRpbmdWYWx1ZXMS",
+            "QgoGdmFsdWVzGAEgAygLMiouaGFybW9zLm1vZGVsLnYxLlNldHRpbmdWYWx1",
+            "ZXMuVmFsdWVzRW50cnlSBnZhbHVlcxpYCgtWYWx1ZXNFbnRyeRIQCgNrZXkY",
+            "ASABKAlSA2tleRIzCgV2YWx1ZRgCIAEoCzIdLmhhcm1vcy5tb2RlbC52MS5T",
+            "ZXR0aW5nVmFsdWVSBXZhbHVlOgI4AWIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingsDeclarations), global::Harmos.SettingsDeclarations.Parser, new[]{ "Values" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingDeclaration), global::Harmos.SettingDeclaration.Parser, new[]{ "Name", "Title", "Description", "Default", "Minimum", "Maximum" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingDeclaration), global::Harmos.SettingDeclaration.Parser, new[]{ "Name", "Title", "Description", "Default", "Minimum", "Maximum", "Choices", "Required" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingValue), global::Harmos.SettingValue.Parser, new[]{ "Flag", "Integer", "Number", "Text", "Duration" }, new[]{ "Value" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.SettingValues), global::Harmos.SettingValues.Parser, new[]{ "Values" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, })
           }));
@@ -283,6 +285,8 @@ namespace Harmos;
       default_ = other.default_ != null ? other.default_.Clone() : null;
       minimum_ = other.minimum_ != null ? other.minimum_.Clone() : null;
       maximum_ = other.maximum_ != null ? other.maximum_.Clone() : null;
+      choices_ = other.choices_.Clone();
+      required_ = other.required_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -364,6 +368,29 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "choices" field.</summary>
+    public const int ChoicesFieldNumber = 7;
+    private static readonly pb::FieldCodec<global::Harmos.SettingValue> _repeated_choices_codec
+        = pb::FieldCodec.ForMessage(58, global::Harmos.SettingValue.Parser);
+    private readonly pbc::RepeatedField<global::Harmos.SettingValue> choices_ = new pbc::RepeatedField<global::Harmos.SettingValue>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<global::Harmos.SettingValue> Choices {
+      get { return choices_; }
+    }
+
+    /// <summary>Field number for the "required" field.</summary>
+    public const int RequiredFieldNumber = 8;
+    private bool required_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Required {
+      get { return required_; }
+      set {
+        required_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -385,6 +412,8 @@ namespace Harmos;
       if (!object.Equals(Default, other.Default)) return false;
       if (!object.Equals(Minimum, other.Minimum)) return false;
       if (!object.Equals(Maximum, other.Maximum)) return false;
+      if(!choices_.Equals(other.choices_)) return false;
+      if (Required != other.Required) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -398,6 +427,8 @@ namespace Harmos;
       if (default_ != null) hash ^= Default.GetHashCode();
       if (minimum_ != null) hash ^= Minimum.GetHashCode();
       if (maximum_ != null) hash ^= Maximum.GetHashCode();
+      hash ^= choices_.GetHashCode();
+      if (Required != false) hash ^= Required.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -440,6 +471,11 @@ namespace Harmos;
         output.WriteRawTag(50);
         output.WriteMessage(Maximum);
       }
+      choices_.WriteTo(output, _repeated_choices_codec);
+      if (Required != false) {
+        output.WriteRawTag(64);
+        output.WriteBool(Required);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -474,6 +510,11 @@ namespace Harmos;
         output.WriteRawTag(50);
         output.WriteMessage(Maximum);
       }
+      choices_.WriteTo(ref output, _repeated_choices_codec);
+      if (Required != false) {
+        output.WriteRawTag(64);
+        output.WriteBool(Required);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -501,6 +542,10 @@ namespace Harmos;
       }
       if (maximum_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Maximum);
+      }
+      size += choices_.CalculateSize(_repeated_choices_codec);
+      if (Required != false) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -540,6 +585,10 @@ namespace Harmos;
           Maximum = new global::Harmos.SettingValue();
         }
         Maximum.MergeFrom(other.Maximum);
+      }
+      choices_.Add(other.choices_);
+      if (other.Required != false) {
+        Required = other.Required;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -593,6 +642,14 @@ namespace Harmos;
             input.ReadMessage(Maximum);
             break;
           }
+          case 58: {
+            choices_.AddEntriesFrom(input, _repeated_choices_codec);
+            break;
+          }
+          case 64: {
+            Required = input.ReadBool();
+            break;
+          }
         }
       }
     #endif
@@ -643,6 +700,14 @@ namespace Harmos;
               Maximum = new global::Harmos.SettingValue();
             }
             input.ReadMessage(Maximum);
+            break;
+          }
+          case 58: {
+            choices_.AddEntriesFrom(ref input, _repeated_choices_codec);
+            break;
+          }
+          case 64: {
+            Required = input.ReadBool();
             break;
           }
         }

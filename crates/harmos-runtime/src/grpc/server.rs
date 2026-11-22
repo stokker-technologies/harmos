@@ -468,6 +468,14 @@ fn caller_refusal(mut error: &Error) -> Option<&str> {
 
 pub(super) fn status(error: Error) -> Status {
     if let Some(failure) = error.operation_failure()
+        && failure.code() == FailureKind::Invalid
+    {
+        let status = Status::invalid_argument(failure.cause());
+        let mut status = with_failure(status, &error);
+        status.set_source(Arc::new(error));
+        return status;
+    }
+    if let Some(failure) = error.operation_failure()
         && failure.refusal_code() == Some(WRONG_CALLER)
         && failure.code() == FailureKind::Unauthorized
     {

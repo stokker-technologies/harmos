@@ -22,6 +22,7 @@
 // Local Imports
 use super::super::{Access, POLICY, failure};
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use crate::{Failure, operations::FailureKind};
 use harmos_protocol::host;
 
 /* === Constants === */
@@ -54,7 +55,12 @@ impl ProtobufOperation for Set {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let access = context.resource::<Access>().map_err(|_| ServingError::Catalog)?;
-        access.0.settings_set(request).await.map_err(failure)
+        access.0.settings_set(request).await.map_err(|error| {
+            if error.0.code.starts_with("setting_") || error.0.code == "value_required" {
+                return ServingError::Handler(Failure::new(FailureKind::Invalid, error.to_string()));
+            }
+            failure(error)
+        })
     }
 }
 

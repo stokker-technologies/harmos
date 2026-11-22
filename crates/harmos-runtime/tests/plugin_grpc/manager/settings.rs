@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::collections::BTreeMap;
 
 // Third Party Imports
 use prost::Message;
@@ -60,6 +61,8 @@ fn catalog() -> model::Declarations {
                 default: Some(model::SettingValue { value: Some(Value::Flag(false)) }),
                 minimum: None,
                 maximum: None,
+                choices: Vec::new(),
+                required: true,
             },
             model::SettingDeclaration {
                 name: "limit".into(),
@@ -68,6 +71,8 @@ fn catalog() -> model::Declarations {
                 default: Some(model::SettingValue { value: Some(Value::Integer(7)) }),
                 minimum: Some(model::SettingValue { value: Some(Value::Integer(0)) }),
                 maximum: Some(model::SettingValue { value: Some(Value::Integer(25)) }),
+                choices: [7, 11, 13, 23].into_iter().map(|value| model::SettingValue { value: Some(Value::Integer(value)) }).collect(),
+                required: true,
             },
         ],
     };
@@ -124,7 +129,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     assert_ne!(applied.revision, initial.revision);
     let mut reordered = request.clone();
     let values = reordered.value.as_mut().unwrap();
-    let entries = values.values.drain().collect::<std::collections::BTreeMap<_, _>>();
+    let entries = values.values.drain().collect::<BTreeMap<_, _>>();
     values.values.extend(entries.into_iter().rev());
     assert_eq!(settings.set(reordered).await.unwrap().into_inner(), applied);
     let mut conflicting = request.clone();
@@ -143,6 +148,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
         ("limit", None),
         ("limit", Some(model::SettingValue { value: Some(Value::Integer(-1)) })),
         ("limit", Some(model::SettingValue { value: Some(Value::Integer(26)) })),
+        ("limit", Some(model::SettingValue { value: Some(Value::Integer(12)) })),
         ("unknown", Some(model::SettingValue { value: Some(Value::Integer(1)) })),
     ] {
         let mut invalid = request.clone();
@@ -154,7 +160,17 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
         } else {
             values.remove(name);
         }
-        assert!(settings.set(invalid).await.is_err());
+        let error = settings.set(invalid).await.unwrap_err();
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+        assert!(error.message().contains(name), "{error}");
+        assert!(
+            error.message().contains("supply")
+                || error.message().contains("choose")
+                || error.message().contains("include")
+                || error.message().contains("remove")
+                || error.message().contains("use"),
+            "{error}"
+        );
     }
     let second = settings.list(plugins::SettingsListRequest { name: Some("second".into()), at: None }).await.unwrap().into_inner();
     assert_eq!(second.value, Some(defaults.clone()));

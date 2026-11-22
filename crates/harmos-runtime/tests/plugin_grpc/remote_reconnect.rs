@@ -45,6 +45,8 @@ fn settings_catalog(declared: bool) -> model::Declarations {
             }),
             minimum: None,
             maximum: None,
+            choices: Vec::new(),
+            required: false,
         }]
     } else {
         Vec::new()

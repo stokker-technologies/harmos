@@ -333,7 +333,7 @@ pub struct SettingDeclaration {
     pub title: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub description: ::prost::alloc::string::String,
-    /// Required typed default; the value discriminator must be selected.
+    /// Required typed default; its discriminator declares text, flag, integer, number or duration.
     #[prost(message, optional, tag = "4")]
     pub default: ::core::option::Option<SettingValue>,
     /// Inclusive lower bound, using the default's numeric or duration variant.
@@ -342,6 +342,12 @@ pub struct SettingDeclaration {
     /// Inclusive upper bound, using the default's numeric or duration variant.
     #[prost(message, optional, tag = "6")]
     pub maximum: ::core::option::Option<SettingValue>,
+    /// Allowed values, using the default's variant. Empty means unrestricted.
+    #[prost(message, repeated, tag = "7")]
+    pub choices: ::prost::alloc::vec::Vec<SettingValue>,
+    /// Saving a complete value must explicitly include this setting.
+    #[prost(bool, tag = "8")]
+    pub required: bool,
 }
 /// Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.
 #[allow(clippy::all)]

@@ -16,7 +16,11 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+    mem,
+};
 
 // Third Party Imports
 use prost::Message;
@@ -111,9 +115,14 @@ impl Actor {
         if current.revision != request.expected_revision {
             return Err(Error::new("revision_conflict", "Set Plugin Settings", "list settings again and retry at the returned revision"));
         }
-        let value =
-            request.value.as_ref().ok_or_else(|| Error::new("value_required", "Set Plugin Settings", "supply the whole declared value"))?;
-        validate_values(&current.declarations, value)?;
+        let mut value =
+            request.value.clone().ok_or_else(|| Error::new("value_required", "Set Plugin Settings", "supply the whole declared value"))?;
+        for declaration in &current.declarations {
+            if !value.values.contains_key(&declaration.name) && !declaration.required {
+                value.values.insert(declaration.name.clone(), declaration.default.clone().expect("validated default"));
+            }
+        }
+        validate_values(&current.declarations, &value)?;
         let retained = self.registry.creates.len()
             + self.registry.entries.values().map(|entry| entry.settings_receipts.len() + entry.replacements.len()).sum::<usize>();
         if retained >= self.settings.create_receipts.get() {
@@ -257,14 +266,20 @@ fn normalized(request: &plugins::SettingsSetRequest) -> Vec<u8> {
 }
 
 fn validate_values(declarations: &[SettingDeclaration], value: &SettingValues) -> Result<(), Error> {
-    if declarations.len() != value.values.len() {
-        return Err(Error::new("setting_names", "Set Plugin Settings", "supply exactly the declared setting names"));
-    }
     for declaration in declarations {
         let value = value.values.get(&declaration.name).ok_or_else(|| {
-            Error::new("setting_missing", format!("Set Plugin Setting {}", declaration.name), "supply the complete declared value")
+            Error::new(
+                "setting_missing",
+                format!("Set Plugin Setting {}", declaration.name),
+                "include this required setting with a typed value",
+            )
         })?;
         validate_setting(declaration, value)?;
+    }
+    for name in value.values.keys() {
+        if !declarations.iter().any(|declaration| declaration.name == *name) {
+            return Err(Error::new("setting_names", format!("Set Plugin Setting {name}"), "remove this undeclared setting"));
+        }
     }
     Ok(())
 }
@@ -277,8 +292,17 @@ fn validate_setting(declaration: &SettingDeclaration, value: &SettingValue) -> R
         .as_ref()
         .and_then(|value| value.value.as_ref())
         .ok_or_else(|| Error::new("setting_default", &action, "supply a typed default"))?;
-    if std::mem::discriminant(value.value.as_ref().expect("validated value")) != std::mem::discriminant(expected) {
+    if mem::discriminant(value.value.as_ref().expect("validated value")) != mem::discriminant(expected) {
         return Err(Error::new("setting_type", &action, "use the declared default's value variant"));
+    }
+    for choice in &declaration.choices {
+        validate_value(choice, &action)?;
+        if mem::discriminant(choice.value.as_ref().expect("validated choice")) != mem::discriminant(expected) {
+            return Err(Error::new("setting_choices", &action, "declare choices with the default's value variant"));
+        }
+    }
+    if !declaration.choices.is_empty() && !declaration.choices.contains(value) {
+        return Err(Error::new("setting_choice", &action, &format!("choose one of {:?}", declaration.choices)));
     }
     for bound in [&declaration.minimum, &declaration.maximum].into_iter().flatten() {
         validate_value(bound, &action)?;
@@ -287,13 +311,13 @@ fn validate_setting(declaration: &SettingDeclaration, value: &SettingValue) -> R
         }
     }
     if let (Some(minimum), Some(maximum)) = (&declaration.minimum, &declaration.maximum)
-        && compare(minimum.value.as_ref().unwrap(), maximum.value.as_ref().unwrap()) == Some(std::cmp::Ordering::Greater)
+        && compare(minimum.value.as_ref().unwrap(), maximum.value.as_ref().unwrap()) == Some(Ordering::Greater)
     {
         return Err(Error::new("setting_bounds", &action, "set minimum less than or equal to maximum"));
     }
     let value = value.value.as_ref().expect("validated value");
     if let Some(minimum) = &declaration.minimum
-        && compare(value, minimum.value.as_ref().unwrap()) == Some(std::cmp::Ordering::Less)
+        && compare(value, minimum.value.as_ref().unwrap()) == Some(Ordering::Less)
     {
         return Err(Error::new(
             "setting_minimum",
@@ -302,7 +326,7 @@ fn validate_setting(declaration: &SettingDeclaration, value: &SettingValue) -> R
         ));
     }
     if let Some(maximum) = &declaration.maximum
-        && compare(value, maximum.value.as_ref().unwrap()) == Some(std::cmp::Ordering::Greater)
+        && compare(value, maximum.value.as_ref().unwrap()) == Some(Ordering::Greater)
     {
         return Err(Error::new(
             "setting_maximum",
@@ -313,7 +337,7 @@ fn validate_setting(declaration: &SettingDeclaration, value: &SettingValue) -> R
     Ok(())
 }
 
-fn compare(value: &Value, bound: &Value) -> Option<std::cmp::Ordering> {
+fn compare(value: &Value, bound: &Value) -> Option<Ordering> {
     match (value, bound) {
         (Value::Integer(value), Value::Integer(bound)) => Some(value.cmp(bound)),
         (Value::Number(value), Value::Number(bound)) => value.partial_cmp(bound),
@@ -345,6 +369,23 @@ mod tests {
     use super::*;
     use harmos_protocol::model::Section;
 
+    #[test]
+    fn choices_and_missing_required_values_name_the_setting_and_fix() {
+        let mut declaration = declaration(Value::Integer(7), Value::Integer(0), Value::Integer(10));
+        declaration.required = true;
+        declaration.choices = [7, 9].map(|value| SettingValue { value: Some(Value::Integer(value)) }).into();
+        validate_setting(&declaration, &SettingValue { value: Some(Value::Integer(9)) }).unwrap();
+        let error = validate_setting(&declaration, &SettingValue { value: Some(Value::Integer(8)) }).unwrap_err();
+        assert_eq!(error.0.code, "setting_choice");
+        assert!(error.0.message.contains("limit"));
+        assert!(error.0.action.contains("choose one of"));
+        assert!(error.0.action.contains('7') && error.0.action.contains('9'));
+        let error = validate_values(&[declaration], &SettingValues::default()).unwrap_err();
+        assert_eq!(error.0.code, "setting_missing");
+        assert!(error.0.message.contains("limit"));
+        assert!(error.0.action.contains("include this required setting"));
+    }
+
     fn declaration(default: Value, minimum: Value, maximum: Value) -> SettingDeclaration {
         SettingDeclaration {
             name: "limit".into(),
@@ -371,7 +412,7 @@ mod tests {
             validate_setting(&declaration, declaration.minimum.as_ref().unwrap()).unwrap();
             validate_setting(&declaration, declaration.maximum.as_ref().unwrap()).unwrap();
             let mut reversed = declaration.clone();
-            std::mem::swap(&mut reversed.minimum, &mut reversed.maximum);
+            mem::swap(&mut reversed.minimum, &mut reversed.maximum);
             assert!(validate_setting(&reversed, reversed.default.as_ref().unwrap()).is_err());
         }
     }
