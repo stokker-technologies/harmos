@@ -11,9 +11,10 @@
 # === Imports === #
 
 # Standard Library Imports
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 # Third Party Imports
-from unittest import IsolatedAsyncioTestCase
 
 import grpc
 from google.protobuf.duration_pb2 import Duration
@@ -23,11 +24,12 @@ from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
 from harmos import CLASSIFICATION_REFUSED, SettingDeclaration, SettingValue, model
+from harmos._invocation import Context, ProtocolError
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
+from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse, Request
 from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Window
 
 # Local Imports
@@ -48,6 +50,29 @@ from tests.support.author import Author
 
 
 class HostClockAndState(IsolatedAsyncioTestCase):
+    async def test_clock_convenience_delegates_to_generated_host_resource(self) -> None:
+        context = Context(Request(), "conformance", {})
+        at = Timestamp(seconds=12345, nanos=67890)
+        with patch.object(Context, "_call", new_callable=AsyncMock, return_value=TimeGetResponse(now=at)) as call:
+            self.assertEqual(await context.now(), at)
+            self.assertEqual(await context.host.time.get(), at)
+            self.assertEqual(call.call_count, 2)
+            self.assertEqual(call.call_args_list[0], call.call_args_list[1])
+            call.return_value = TimeGetResponse(now=Timestamp(nanos=-1))
+            failure = None
+            try:
+                await context.now()
+            except ProtocolError as error:
+                failure = error
+            self.assertIsInstance(failure, ProtocolError)
+
+        duration = Duration(seconds=3600)
+        with patch.object(Context, "_call", new_callable=AsyncMock, return_value=TimeSleepResponse()) as call:
+            self.assertIsNone(await context.sleep(duration))
+            self.assertEqual(await context.host.time.sleep(duration), TimeSleepResponse())
+            self.assertEqual(call.call_count, 2)
+            self.assertEqual(call.call_args_list[0], call.call_args_list[1])
+
     def test_catalogs_accumulate_without_entering_handlers(self) -> None:
         author = Author()
 

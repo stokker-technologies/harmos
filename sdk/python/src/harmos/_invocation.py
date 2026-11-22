@@ -28,9 +28,9 @@ from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
     CLASSIFICATION_REFUSED,
 )
-from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
 from harmos._wire.model.v1.position_pb2 import ReadCut
+from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 from harmos._wire.plugin.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 
@@ -44,15 +44,10 @@ from ._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest
 if TYPE_CHECKING:
     from ._authoring import _FaultError
 
-from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 
 # === Public Exports === #
 
 # === Constants === #
-
-SLEEP = Operation("harmos.plugin.v1.Time/Sleep", TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
-GET_TIME = Operation("harmos.plugin.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
 
 
 # === Types === #
@@ -375,14 +370,12 @@ class Context:
         return await self.host.plugins.settings.list(at=at)
 
     async def sleep(self, duration: Duration) -> None:
-        await self._call(SLEEP, TimeSleepRequest(duration=duration))
+        await self.host.time.sleep(duration)
 
     async def now(self) -> Timestamp:
-        reply = await self._call(GET_TIME, TimeGetRequest())
-        if not reply.HasField("now"):
-            raise ProtocolError("Read Host Time: Missing Value")
-        validate_timestamp(reply.now)
-        return reply.now
+        now = await self.host.time.get()
+        validate_timestamp(now)
+        return now
 
     async def cancelled(self) -> str:
         await self._cancelled.wait()
