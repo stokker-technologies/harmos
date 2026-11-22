@@ -54,7 +54,7 @@ pub use streaming::{NativeOutput, native_stream};
 /* === Imports === */
 
 // Standard Library Imports
-use std::{any::TypeId, future::Future, marker::PhantomData, sync::Arc};
+use std::{any::TypeId, error::Error, future::Future, marker::PhantomData, sync::Arc};
 
 // Third Party Imports
 
@@ -67,7 +67,6 @@ use crate::execution::operations::{
 };
 use crate::operations::{ContractError, FailureKind};
 use crate::{Fingerprint, Identifier, MemorySize, MessageError};
-use std::error::Error;
 
 /* === Constants === */
 
@@ -215,6 +214,7 @@ impl OperationFactory {
 }
 impl<O: NativeOperation> NativeInstance for Instance<O> {
     fn admit(&mut self) {
+        #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
         if let Some(duration) = O::admitted_wait(&self.request)
             && let Ok(clock) = self.resources.resource::<crate::clock::ClockAccess>()
         {

@@ -354,8 +354,7 @@ def main() -> None:
     target = options.target or paths.target()
     language = "rust" if options.language == "native" else options.language
     products = definitions(directory, options.profile, target)
-    canonical = policy.config(directory).get("languages", {}).get("python", {}).get("build_target") == "any"
-    if target == "any" and not any(item["language"] == language for item in products) and not (language == "python" and canonical):
+    if target == "any" and not any(item["language"] == language for item in products) and language != "python":
         staging_directory = temporary.Directory()
         staging = staging_directory.path
         try:
@@ -426,6 +425,8 @@ def main() -> None:
     else:
         kind = {"python": "python", "typescript": "web", "native": "bin"}[options.language]
         source = paths.output(directory, "build", options.profile, options.target) / kind
+    if options.language == "python" and not any(source.glob("*.whl")):
+        raise policy.ToolError("missing Python wheel; Run mise run build -- --package harmos-sdk before packaging")
     paths.replace(directory, source, destination / options.language)
 
 

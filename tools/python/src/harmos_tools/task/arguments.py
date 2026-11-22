@@ -109,6 +109,7 @@ def parse(arguments: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
     bench.add_argument("--storage", action="store_true")
     bench.add_argument("--filter")
     package = commands.add_parser("package")
+    package.add_argument("selection", nargs="?", choices=("python",))
     package.add_argument("--language", choices=("rust", "csharp"))
     package.add_argument("--profile", choices=("dev", "release"), default="dev")
     for name in ("prepare", "tag", "rehearse", "publish", "verify"):

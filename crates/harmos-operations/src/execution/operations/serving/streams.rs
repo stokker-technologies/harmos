@@ -229,6 +229,7 @@ impl WireStreams {
         }
     }
 
+    #[cfg(feature = "grpc")]
     pub(crate) fn complete(&self) {
         self.state.send_modify(|state| {
             if state.phase != Phase::Closed {
