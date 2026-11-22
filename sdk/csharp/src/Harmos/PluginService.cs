@@ -245,6 +245,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
               description.Id, requires, windowStopped, frames.Writer)
           {
             Sequence = window.Sequence,
+            CapturingExecutions = input.Current.Window.CapturingExecutions.ToArray(),
             At = window.Start.Clone(),
             LastCall = lastCall
           };

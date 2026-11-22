@@ -1,25 +1,28 @@
 from harmos._wire.model.v1 import failure_pb2 as _failure_pb2
 from harmos._wire.model.v1 import policy_pb2 as _policy_pb2
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Mapping as _Mapping
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
 from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Request(_message.Message):
-    __slots__ = ("operation", "payload", "invocation", "attempt", "scope")
+    __slots__ = ("operation", "payload", "invocation", "attempt", "scope", "capturing_executions")
     OPERATION_FIELD_NUMBER: _ClassVar[int]
     PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     INVOCATION_FIELD_NUMBER: _ClassVar[int]
     ATTEMPT_FIELD_NUMBER: _ClassVar[int]
     SCOPE_FIELD_NUMBER: _ClassVar[int]
+    CAPTURING_EXECUTIONS_FIELD_NUMBER: _ClassVar[int]
     operation: str
     payload: bytes
     invocation: str
     attempt: int
     scope: str
-    def __init__(self, operation: _Optional[str] = ..., payload: _Optional[bytes] = ..., invocation: _Optional[str] = ..., attempt: _Optional[int] = ..., scope: _Optional[str] = ...) -> None: ...
+    capturing_executions: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, operation: _Optional[str] = ..., payload: _Optional[bytes] = ..., invocation: _Optional[str] = ..., attempt: _Optional[int] = ..., scope: _Optional[str] = ..., capturing_executions: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Cancel(_message.Message):
     __slots__ = ("reason",)

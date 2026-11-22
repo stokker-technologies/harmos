@@ -494,6 +494,7 @@ async fn samples(
                         window_context.call_changes = context.call_changes.clone();
                         window_context.samples = context.samples.clone();
                         window_context.sequence = window.sequence;
+                        window_context.capturing_executions = window.capturing_executions.clone();
                         window_context.failure_mapper = context.failure_mapper.clone();
                         window_context.output = Some(ChildOutput::Samples {
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),

@@ -123,6 +123,7 @@ pub struct Untyped {
 #[derive(Clone)]
 pub struct Context {
     pub invocation: String,
+    pub capturing_executions: Vec<String>,
     pub attempt: u32,
     pub(crate) scope: String,
     pub(crate) wind_down: Arc<AtomicBool>,
@@ -186,6 +187,7 @@ impl Context {
     pub(crate) fn new(request: Request, plugin: String, requires: Arc<HashMap<String, Vec<u8>>>) -> Self {
         Self {
             invocation: request.invocation,
+            capturing_executions: request.capturing_executions,
             attempt: request.attempt,
             scope: request.scope,
             wind_down: Arc::new(AtomicBool::new(false)),

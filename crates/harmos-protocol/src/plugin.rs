@@ -18,6 +18,9 @@ pub struct Request {
     /// Opaque to Harmos. The product names what the invocation belongs to.
     #[prost(string, tag = "5")]
     pub scope: ::prost::alloc::string::String,
+    /// Capturing Executions Inherited From an Observer Window, Empty for Other Calls.
+    #[prost(string, repeated, tag = "6")]
+    pub capturing_executions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Asks an active attempt to cancel cooperatively; the handler may still return a typed final result.
 #[allow(clippy::all)]
@@ -379,7 +382,7 @@ impl GuestChildAction {
 }
 /// Grants one interval window: `count` consecutive samples, the first at `start`, each one `period` later.
 #[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Window {
     /// Host time of the window's first sample.
     #[prost(message, optional, tag = "1")]
@@ -393,6 +396,9 @@ pub struct Window {
     /// One-based sequence of the window's first sample within the Samples call.
     #[prost(uint64, tag = "4")]
     pub sequence: u64,
+    /// Host-Supplied Opaque Execution IDs Capturing This Window.
+    #[prost(string, repeated, tag = "5")]
+    pub capturing_executions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Answers part of the unanswered window with consecutive samples as columns.
 #[allow(clippy::all)]

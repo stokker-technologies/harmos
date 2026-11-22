@@ -224,6 +224,7 @@ pub async fn invoke(
             invocation: "execution-story".into(),
             attempt: 1,
             scope: "scope".into(),
+            capturing_executions: Vec::new(),
             payload: Vec::new(),
         })),
     })

@@ -462,3 +462,26 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     );
     host.close().await;
 }
+
+#[tokio::test]
+async fn observer_children_inherit_every_capturing_execution_and_empty_snapshots() {
+    let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let host = super::invoke_support::HostFixture::with_clock(Some(clock)).await;
+    let resolutions = AtomicUsize::new(0);
+    host.runtime.streams.capture_resolver(move |stream, scope| {
+        assert_eq!(stream, "fixture.captures");
+        assert_eq!(scope, None);
+        if resolutions.fetch_add(1, Ordering::SeqCst) == 0 { vec!["execution-b".into(), "execution-a".into()] } else { Vec::new() }
+    });
+    let sdk = host.sdk("captures").await;
+    let attached =
+        host.runtime.attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let watching = host.watch("fixture.captures");
+    controller.advance_until(Duration::from_secs(5), || host.signals.captures.lock().unwrap().len() >= 2).await.unwrap();
+    let captures = host.signals.captures.lock().unwrap().clone();
+    assert_eq!(captures[0], ["execution-a", "execution-b"]);
+    assert!(captures[1].is_empty());
+    drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}

@@ -681,6 +681,7 @@ async def _read_publish(
                 raise ProtocolError("Read Samples: Previous Window Is Unanswered")
             window = _window(frame.window)
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires, _SamplesOutput(output))
+            execution.capturing_executions = tuple(frame.window.capturing_executions)
             execution.sequence = window.sequence
             execution._wind_down = scope.wind_down
             execution._next = scope.next

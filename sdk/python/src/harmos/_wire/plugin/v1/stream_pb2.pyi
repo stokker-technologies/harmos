@@ -11,16 +11,18 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Window(_message.Message):
-    __slots__ = ("start", "period", "count", "sequence")
+    __slots__ = ("start", "period", "count", "sequence", "capturing_executions")
     START_FIELD_NUMBER: _ClassVar[int]
     PERIOD_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    CAPTURING_EXECUTIONS_FIELD_NUMBER: _ClassVar[int]
     start: _timestamp_pb2.Timestamp
     period: _duration_pb2.Duration
     count: int
     sequence: int
-    def __init__(self, start: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., period: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., count: _Optional[int] = ..., sequence: _Optional[int] = ...) -> None: ...
+    capturing_executions: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, start: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., period: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., count: _Optional[int] = ..., sequence: _Optional[int] = ..., capturing_executions: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class SampleBatch(_message.Message):
     __slots__ = ("offset", "count", "columns", "last")

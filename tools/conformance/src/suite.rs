@@ -185,6 +185,7 @@ fn request(operation: &str, payload: Vec<u8>) -> InstanceInvokeRequest {
             invocation: format!("fixture-{invocation}"),
             attempt: 1,
             scope: "fixture".into(),
+            capturing_executions: Vec::new(),
         })),
     }
 }
@@ -251,6 +252,7 @@ fn window(sequence: u64, count: u64, seconds: i64) -> InstanceSamplesRequest {
             period: Some(PERIOD),
             count,
             sequence,
+            capturing_executions: Vec::new(),
         })),
     }
 }
@@ -1063,6 +1065,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 period: Some(PERIOD),
                 count: 1,
                 sequence: 1,
+                capturing_executions: Vec::new(),
             };
             let mut invalid = Vec::new();
             for start in [

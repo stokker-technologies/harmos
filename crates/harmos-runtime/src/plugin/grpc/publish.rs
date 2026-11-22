@@ -93,6 +93,7 @@ pub(super) struct PreparedPublications {
     demands: Vec<PreparedDemand>,
 }
 struct PreparedDemand {
+    captures: streams::Captures,
     id: String,
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
@@ -118,6 +119,7 @@ struct Gate {
 }
 
 struct Demand {
+    captures: streams::Captures,
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
     row: Option<Row>,
@@ -221,6 +223,7 @@ impl Publications {
             let input =
                 activation.connection.client().samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
             demands.push(PreparedDemand {
+                captures: streams.captures.clone(),
                 id,
                 output,
                 input,
@@ -352,6 +355,7 @@ impl Publications {
             });
             publications.jobs.spawn(async move {
                 let demand = Demand {
+                    captures: prepared.captures,
                     output: prepared.output,
                     input: prepared.input,
                     row: prepared.row,
@@ -709,6 +713,7 @@ async fn change_demand(
 
 async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
+        captures,
         output,
         input,
         row,
@@ -937,6 +942,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     period: Some(wire_period),
                     count,
                     sequence: sequence + 1,
+                    capturing_executions: captures.executions(&active, operations.call_context().get::<Scope>().map(Scope::as_str)),
                 };
                 let request = super::samples::Request {
                     input: input.clone(),
@@ -947,6 +953,9 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     window: grant,
                     collection: members.keys().cloned().collect(),
                 };
+                let mut context = operations.call_context().clone();
+                context.insert(streams::CapturingExecutions(request.window.capturing_executions.clone())).map_err(invalid)?;
+                let operations = operations.with_context(context);
                 let answer = activity.wait(operations.call_native::<super::samples::Window>(request));
                 let parts = if members.is_empty() {
                     Some(answer.await.map_err(sample_error)?)

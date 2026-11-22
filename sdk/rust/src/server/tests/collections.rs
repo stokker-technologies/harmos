@@ -98,6 +98,7 @@ fn grant(count: u64) -> InstanceSamplesRequest {
             period: Some(Duration { seconds: 1, nanos: 0 }),
             count,
             sequence: 1,
+            capturing_executions: Vec::new(),
         })),
     }
 }

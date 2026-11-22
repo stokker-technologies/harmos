@@ -42,6 +42,7 @@ public sealed class Context
   {
     OperationId = request.Operation;
     Invocation = request.Invocation;
+    CapturingExecutions = request.CapturingExecutions.ToArray();
     Attempt = request.Attempt;
     scope = request.Scope;
     Plugin = plugin;
@@ -51,6 +52,7 @@ public sealed class Context
     root = this;
   }
 
+  public IReadOnlyList<string> CapturingExecutions { get; internal set; } = [];
 
   public HostRoot Host => new(this);
   public HostPluginsStateResource State => Host.Plugins.State;
@@ -352,6 +354,7 @@ public sealed class Context
     {
       pending = pending,
       root = root,
+      CapturingExecutions = CapturingExecutions,
       Sequence = sequence,
       At = at
     };

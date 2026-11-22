@@ -210,6 +210,7 @@ public:
   HostRoot host();
   HostPluginsStateResource state();
   std::string invocation;
+  std::vector<std::string> capturing_executions;
   const std::string &scope() const;
   std::uint32_t attempt = 0;
   std::uint64_t sequence = 0;

@@ -208,6 +208,12 @@ async fn invoke(binding: &Binding, payload: Vec<u8>, context: &ExecutionContext,
             invocation: host.borrow().id().to_string(),
             attempt: host.borrow().attempt() as u32 + 1,
             scope: host.borrow().context().get::<Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
+            capturing_executions: host
+                .borrow()
+                .context()
+                .get::<crate::streams::CapturingExecutions>()
+                .map(|captures| captures.0.clone())
+                .unwrap_or_default(),
         };
         output
             .send(InstanceInvokeRequest {

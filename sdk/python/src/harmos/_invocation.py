@@ -210,6 +210,7 @@ class Context:
         output: "_Output | None" = None,
     ) -> None:
         self.invocation = request.invocation
+        self.capturing_executions = tuple(request.capturing_executions)
         self.attempt = request.attempt
         self._scope = request.scope
         self._wind_down = Event()

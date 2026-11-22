@@ -31,6 +31,8 @@ message Window {
   uint64 count = 3;
   // One-based sequence of the window's first sample within the Samples call.
   uint64 sequence = 4;
+  // Host-Supplied Opaque Execution IDs Capturing This Window.
+  repeated string capturing_executions = 5;
 }
 // Answers part of the unanswered window with consecutive samples as columns.
 message SampleBatch {

@@ -177,6 +177,7 @@ std::variant<detail::SubscriptionRow, Gap> detail::subscription_item(const strin
 
 Context::Context(shared_ptr<detail::Invocation> state) : state_(std::move(state)) {
   invocation = state_->request.invocation();
+  capturing_executions.assign(state_->request.capturing_executions().begin(), state_->request.capturing_executions().end());
   scope_ = state_->request.scope();
   attempt = state_->request.attempt();
 }

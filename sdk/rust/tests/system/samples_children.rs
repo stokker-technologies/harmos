@@ -105,6 +105,7 @@ async fn samples_children_preserve_correlation_failures_watch_and_window_lifetim
                 period: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
                 count: 1,
                 sequence,
+                capturing_executions: Vec::new(),
             })),
         })
         .await

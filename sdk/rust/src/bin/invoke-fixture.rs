@@ -537,6 +537,23 @@ fn main() -> Result<()> {
                 Ok(())
             })
             .expect("Register Plugin Declarations")
+    } else if mode == "captures" {
+        let stream = Stream::<Value>::new("fixture.captures");
+        let observer = Observer::new(&stream, async |context: &Context| {
+            let mut value = b"captures:".to_vec();
+            value.extend(serde_json::to_vec(&context.capturing_executions).unwrap());
+            let response = context.operation(HostInput { value }).await?;
+            Ok(Value { value: response.value })
+        })
+        .every(prost_types::Duration { seconds: 1, nanos: 0 });
+        Plugin::new("fixture", "1.0.0")
+            .register(|ctx| {
+                ctx.register(Dependency::<HostInput>::new())?;
+                ctx.register(stream)?;
+                ctx.register(observer)?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
     } else if mode == "private" {
         Plugin::new("fixture", "1.0.0")
             .register(|ctx| {

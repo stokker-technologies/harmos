@@ -26,27 +26,28 @@ namespace Harmos.Internal.Plugin;
           string.Concat(
             "Ch1oYXJtb3MvcGx1Z2luL3YxL3N0cmVhbS5wcm90bxIQaGFybW9zLnBsdWdp",
             "bi52MRoeZ29vZ2xlL3Byb3RvYnVmL2R1cmF0aW9uLnByb3RvGh9nb29nbGUv",
-            "cHJvdG9idWYvdGltZXN0YW1wLnByb3RvIp8BCgZXaW5kb3cSMAoFc3RhcnQY",
+            "cHJvdG9idWYvdGltZXN0YW1wLnByb3RvItIBCgZXaW5kb3cSMAoFc3RhcnQY",
             "ASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgVzdGFydBIxCgZw",
             "ZXJpb2QYAiABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb25SBnBlcmlv",
             "ZBIUCgVjb3VudBgDIAEoBFIFY291bnQSGgoIc2VxdWVuY2UYBCABKARSCHNl",
-            "cXVlbmNlImkKC1NhbXBsZUJhdGNoEhYKBm9mZnNldBgBIAEoBFIGb2Zmc2V0",
-            "EhQKBWNvdW50GAIgASgEUgVjb3VudBIYCgdjb2x1bW5zGAMgASgMUgdjb2x1",
-            "bW5zEhIKBGxhc3QYBCABKAhSBGxhc3QiLAoQQ29sbGVjdGlvbkRlbWFuZBIY",
-            "CgdzdHJlYW1zGAEgAygJUgdzdHJlYW1zIhoKGENvbGxlY3Rpb25EZW1hbmRS",
-            "ZXNwb25zZSJ5Cg9Db2xsZWN0aW9uQmF0Y2gSFgoGb2Zmc2V0GAEgASgEUgZv",
-            "ZmZzZXQSOgoHc3RyZWFtcxgCIAMoCzIgLmhhcm1vcy5wbHVnaW4udjEuQ29s",
-            "bGVjdGlvblJvd3NSB3N0cmVhbXMSEgoEbGFzdBgDIAEoCFIEbGFzdCI8Cg5D",
-            "b2xsZWN0aW9uUm93cxIWCgZzdHJlYW0YASABKAlSBnN0cmVhbRISCgRyb3dz",
-            "GAIgAygMUgRyb3dzIkAKEFNhbXBsZXNTZWxlY3Rpb24SFgoGc3RyZWFtGAEg",
-            "ASgJUgZzdHJlYW0SFAoFc2NvcGUYAiABKAlSBXNjb3BlImIKBlNhbXBsZRIq",
-            "CgJhdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBSAmF0EhAK",
-            "A3JvdxgCIAEoDFIDcm93EhoKCHNlcXVlbmNlGAMgASgEUghzZXF1ZW5jZWIG",
-            "cHJvdG8z"));
+            "cXVlbmNlEjEKFGNhcHR1cmluZ19leGVjdXRpb25zGAUgAygJUhNjYXB0dXJp",
+            "bmdFeGVjdXRpb25zImkKC1NhbXBsZUJhdGNoEhYKBm9mZnNldBgBIAEoBFIG",
+            "b2Zmc2V0EhQKBWNvdW50GAIgASgEUgVjb3VudBIYCgdjb2x1bW5zGAMgASgM",
+            "Ugdjb2x1bW5zEhIKBGxhc3QYBCABKAhSBGxhc3QiLAoQQ29sbGVjdGlvbkRl",
+            "bWFuZBIYCgdzdHJlYW1zGAEgAygJUgdzdHJlYW1zIhoKGENvbGxlY3Rpb25E",
+            "ZW1hbmRSZXNwb25zZSJ5Cg9Db2xsZWN0aW9uQmF0Y2gSFgoGb2Zmc2V0GAEg",
+            "ASgEUgZvZmZzZXQSOgoHc3RyZWFtcxgCIAMoCzIgLmhhcm1vcy5wbHVnaW4u",
+            "djEuQ29sbGVjdGlvblJvd3NSB3N0cmVhbXMSEgoEbGFzdBgDIAEoCFIEbGFz",
+            "dCI8Cg5Db2xsZWN0aW9uUm93cxIWCgZzdHJlYW0YASABKAlSBnN0cmVhbRIS",
+            "CgRyb3dzGAIgAygMUgRyb3dzIkAKEFNhbXBsZXNTZWxlY3Rpb24SFgoGc3Ry",
+            "ZWFtGAEgASgJUgZzdHJlYW0SFAoFc2NvcGUYAiABKAlSBXNjb3BlImIKBlNh",
+            "bXBsZRIqCgJhdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBS",
+            "AmF0EhAKA3JvdxgCIAEoDFIDcm93EhoKCHNlcXVlbmNlGAMgASgEUghzZXF1",
+            "ZW5jZWIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Window), global::Harmos.Internal.Plugin.Window.Parser, new[]{ "Start", "Period", "Count", "Sequence" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Window), global::Harmos.Internal.Plugin.Window.Parser, new[]{ "Start", "Period", "Count", "Sequence", "CapturingExecutions" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.SampleBatch), global::Harmos.Internal.Plugin.SampleBatch.Parser, new[]{ "Offset", "Count", "Columns", "Last" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.CollectionDemand), global::Harmos.Internal.Plugin.CollectionDemand.Parser, new[]{ "Streams" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.CollectionDemandResponse), global::Harmos.Internal.Plugin.CollectionDemandResponse.Parser, null, null, null, null, null),
@@ -99,6 +100,7 @@ namespace Harmos.Internal.Plugin;
       period_ = other.period_ != null ? other.period_.Clone() : null;
       count_ = other.count_;
       sequence_ = other.sequence_;
+      capturingExecutions_ = other.capturingExecutions_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -156,6 +158,17 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "capturing_executions" field.</summary>
+    public const int CapturingExecutionsFieldNumber = 5;
+    private static readonly pb::FieldCodec<string> _repeated_capturingExecutions_codec
+        = pb::FieldCodec.ForString(42);
+    private readonly pbc::RepeatedField<string> capturingExecutions_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> CapturingExecutions {
+      get { return capturingExecutions_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -175,6 +188,7 @@ namespace Harmos.Internal.Plugin;
       if (!object.Equals(Period, other.Period)) return false;
       if (Count != other.Count) return false;
       if (Sequence != other.Sequence) return false;
+      if(!capturingExecutions_.Equals(other.capturingExecutions_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -186,6 +200,7 @@ namespace Harmos.Internal.Plugin;
       if (period_ != null) hash ^= Period.GetHashCode();
       if (Count != 0UL) hash ^= Count.GetHashCode();
       if (Sequence != 0UL) hash ^= Sequence.GetHashCode();
+      hash ^= capturingExecutions_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -220,6 +235,7 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(32);
         output.WriteUInt64(Sequence);
       }
+      capturingExecutions_.WriteTo(output, _repeated_capturingExecutions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -246,6 +262,7 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(32);
         output.WriteUInt64(Sequence);
       }
+      capturingExecutions_.WriteTo(ref output, _repeated_capturingExecutions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -268,6 +285,7 @@ namespace Harmos.Internal.Plugin;
       if (Sequence != 0UL) {
         size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Sequence);
       }
+      size += capturingExecutions_.CalculateSize(_repeated_capturingExecutions_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -298,6 +316,7 @@ namespace Harmos.Internal.Plugin;
       if (other.Sequence != 0UL) {
         Sequence = other.Sequence;
       }
+      capturingExecutions_.Add(other.capturingExecutions_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -339,6 +358,10 @@ namespace Harmos.Internal.Plugin;
             Sequence = input.ReadUInt64();
             break;
           }
+          case 42: {
+            capturingExecutions_.AddEntriesFrom(input, _repeated_capturingExecutions_codec);
+            break;
+          }
         }
       }
     #endif
@@ -378,6 +401,10 @@ namespace Harmos.Internal.Plugin;
           }
           case 32: {
             Sequence = input.ReadUInt64();
+            break;
+          }
+          case 42: {
+            capturingExecutions_.AddEntriesFrom(ref input, _repeated_capturingExecutions_codec);
             break;
           }
         }

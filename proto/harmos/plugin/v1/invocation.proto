@@ -33,6 +33,8 @@ message Request {
   uint32 attempt = 4;
   // Opaque to Harmos. The product names what the invocation belongs to.
   string scope = 5;
+  // Capturing Executions Inherited From an Observer Window, Empty for Other Calls.
+  repeated string capturing_executions = 6;
 }
 // Asks an active attempt to cancel cooperatively; the handler may still return a typed final result.
 message Cancel {

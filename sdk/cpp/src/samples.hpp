@@ -212,6 +212,7 @@ public:
     auto window_state = std::make_shared<Invocation>();
     window_state->transport = state_;
     window_state->request = state_->request;
+    *window_state->request.mutable_capturing_executions() = grant.capturing_executions();
     window_state->requirements = state_->requirements;
     window_state->plugin = state_->plugin;
     const Window window{grant.start(), grant.period(), grant.count(), grant.sequence()};

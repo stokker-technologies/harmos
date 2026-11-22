@@ -63,6 +63,11 @@ release resources on the first and last demand, and run again for the next sampl
 Rust and C++ expose `on_start` / `on_stop`, Python uses observer decorator arguments of
 the same names, and C# uses `onStart` / `onStop` registration arguments.
 
+Hosts supply current capture identities with `runtime.streams.capture_resolver`, which
+receives a stream ID and optional opaque scope and returns execution IDs. Each observer
+window snapshots the sorted unique IDs; its child calls inherit the same snapshot.
+Observer contexts expose `capturing_executions` in Rust, Python and C++, and
+`CapturingExecutions` in C#. An absent capture resolver yields an empty list.
 
 ## Interfaces
 
