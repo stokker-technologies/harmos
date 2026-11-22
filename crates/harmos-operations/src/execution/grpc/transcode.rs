@@ -24,7 +24,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::mem::size_of;
 
 // Third Party Imports
@@ -33,6 +33,7 @@ use prost_reflect::{MapKey, MessageDescriptor};
 
 // Local Imports
 use super::input::{DecodeField, DecodeInput, DecodeScalar, DecodeValue};
+use crate::operations::message_schema;
 use harmos_domain::__private::{PostcardReader, PostcardValue, decoding_add, decoding_multiply};
 use harmos_domain::MessageError;
 use harmos_domain::schema::Cardinality;
@@ -217,56 +218,7 @@ impl<'a> Dynamic<'a> {
     }
 
     pub fn schema(descriptor: &MessageDescriptor) -> Result<Schema, MessageError> {
-        let mut messages = vec![descriptor.clone()];
-        let mut indices = BTreeMap::from([(descriptor.full_name().to_owned(), 0)]);
-        let mut definitions = Vec::new();
-        while definitions.len() < messages.len() {
-            let message = messages[definitions.len()].clone();
-            let mut fields = Vec::new();
-            for field in message.fields() {
-                let kind = match field.kind() {
-                    prost_reflect::Kind::Bool => Kind::Bool,
-                    prost_reflect::Kind::Uint32 | prost_reflect::Kind::Fixed32 => Kind::U32,
-                    prost_reflect::Kind::Uint64 | prost_reflect::Kind::Fixed64 => Kind::U64,
-                    prost_reflect::Kind::Int32
-                    | prost_reflect::Kind::Sint32
-                    | prost_reflect::Kind::Sfixed32
-                    | prost_reflect::Kind::Enum(_) => Kind::I32,
-                    prost_reflect::Kind::Int64 | prost_reflect::Kind::Sint64 | prost_reflect::Kind::Sfixed64 => Kind::I64,
-                    prost_reflect::Kind::Float => Kind::F32,
-                    prost_reflect::Kind::Double => Kind::F64,
-                    prost_reflect::Kind::String => Kind::String,
-                    prost_reflect::Kind::Bytes => Kind::Bytes,
-                    prost_reflect::Kind::Message(message) => {
-                        let next = messages.len();
-                        let definition = *indices.entry(message.full_name().to_owned()).or_insert_with(|| {
-                            messages.push(message);
-                            next
-                        });
-                        Kind::Message { definition }
-                    }
-                };
-                let cardinality = if field.is_list() || field.is_map() {
-                    Cardinality::Repeated
-                } else if field.supports_presence() {
-                    Cardinality::Optional
-                } else {
-                    Cardinality::Required
-                };
-                fields.push(Field {
-                    name: field.name().to_owned().into(),
-                    tag: field.number(),
-                    kind,
-                    cardinality,
-                });
-            }
-            definitions.push(fields);
-        }
-        let schema = Schema {
-            root: 0,
-            definitions,
-            representations: BTreeMap::new(),
-        };
+        let schema = message_schema(vec![descriptor.clone()], Vec::new());
         schema.prepare(&Default::default()).map_err(|error| MessageError::new(error.to_string()))?;
         Ok(schema)
     }

@@ -23,8 +23,10 @@ The shared codec is `execution/grpc/transcode.rs`: one generic field traversal
 reads authored `Definition` values and descriptor-backed `Dynamic` views over
 the existing graph schema. The latter retains protobuf scalar formats, map key
 ordering and last-value semantics, optional presence and oneof merge boundaries.
-Schema projection also belongs to this codec; runtime retains only row binding,
-column validation, batch slicing and storage admission. Ordinary subscriptions
+Descriptor field projection belongs to `operations/protobuf.rs::message_schema`,
+which is available without the `grpc` feature and is shared by operation contracts
+and the codec. Runtime retains only row binding, column validation, batch slicing
+and storage admission. Ordinary subscriptions
 send the codec's wire buffer directly, without constructing or cloning a dynamic
 message for each delivered row. Existing grpc features and dependencies suffice.
 The descriptor view retains the prior nesting refusal at `MAX_DEPTH` and refuses
@@ -41,10 +43,13 @@ decoding. Delete `execution/grpc/validator.rs`, its compiled tables, public expo
 and redundant tests. Preserve schema preparation budgets, every wire occurrence,
 UTF-8, packed scalars, unknown-field framing and message/group nesting checks.
 
-Schema projection still overlaps: `operations/protobuf.rs::ProtobufExt::schema`
-builds operation contract graphs, while `execution/grpc/transcode.rs::Dynamic::schema`
-builds stream codec graphs from the same descriptor field kinds. Prefer the shared
-codec projection; changing the operation direction catalog needs an owner decision.
+The owner chose one descriptor field projection without a feature dependency
+tangle. `operations/protobuf.rs::ProtobufExt::schema` retains the operation direction
+catalog and calls `message_schema`; `execution/grpc/transcode.rs::Dynamic::schema`
+calls the same projection for a single message root and retains stream schema
+preparation. The shared projection preserves descriptor identity, recursive and
+shared message references, tag ordering, field kinds and cardinality. Delete the
+codec's independent descriptor traversal and retain its codec behaviour tests.
 Owner documentation in `docs/project/architecture.md:1100` should also identify
 the shared allocation-free validator used by dynamic gRPC operations.
 
