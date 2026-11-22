@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::{Application, state::At, state::Entry, state::Position, state::Recorded};
+use crate::{Application, state::At, state::Entry, state::Position, state::Recorded, streams};
 
 /* === Constants === */
 
@@ -36,9 +36,9 @@ use crate::{Application, state::At, state::Entry, state::Position, state::Record
 pub struct Cursor(pub u64);
 
 pub struct Batch<A: Application> {
-    pub(crate) rows: Vec<(Cursor, crate::streams::Definition, Position, Arc<dyn Any + Send + Sync>)>,
+    pub(crate) rows: Vec<(Cursor, streams::Definition, Position, Arc<dyn Any + Send + Sync>)>,
     pub(crate) reaches: Cursor,
-    pub(crate) incomplete: Vec<crate::streams::Definition>,
+    pub(crate) incomplete: Vec<streams::Definition>,
     pub(crate) application: PhantomData<fn() -> A>,
 }
 
@@ -73,7 +73,7 @@ pub(crate) trait Attached<A: Application>: Send {
 pub trait StreamConsumer<A: Application>: Send + 'static {
     fn resume(&self) -> Cursor;
 
-    fn selections(&self) -> Vec<crate::streams::Definition> {
+    fn selections(&self) -> Vec<streams::Definition> {
         Vec::new()
     }
 
@@ -87,7 +87,7 @@ pub trait StreamConsumer<A: Application>: Send + 'static {
 pub(crate) trait Recording<A: Application>: Send {
     fn resume(&self) -> Cursor;
 
-    fn selections(&self) -> Vec<crate::streams::Definition>;
+    fn selections(&self) -> Vec<streams::Definition>;
 
     fn drain(&mut self, batch: Batch<A>) -> Pin<Box<dyn Future<Output = Cursor> + Send + '_>>;
 
@@ -123,19 +123,19 @@ impl<A: Application> Batch<A> {
         self.reaches
     }
 
-    pub fn incomplete(&self) -> &[crate::streams::Definition] {
+    pub fn incomplete(&self) -> &[streams::Definition] {
         &self.incomplete
     }
 
-    pub fn publications(&self) -> impl Iterator<Item = (&crate::streams::Definition, Cursor, At<&crate::streams::PublicationRow>)> + '_ {
+    pub fn publications(&self) -> impl Iterator<Item = (&streams::Definition, Cursor, At<&streams::ManagedPublication>)> + '_ {
         self.rows.iter().filter_map(|(cursor, definition, position, row)| {
-            definition.owner()?;
-            let payload = crate::streams::row_value::<crate::streams::PublicationRow>(row.as_ref())?;
-            Some((definition, *cursor, At { value: payload, position: *position }))
+            let publication = row.downcast_ref::<streams::ManagedPublication>()?;
+            Some((definition, *cursor, At { value: publication, position: *position }))
         })
     }
 
-    pub fn select<S: crate::streams::StreamRow>(&self) -> impl Iterator<Item = At<&S>> + '_ {
+    // Typed Selections Are Host-Only; Plugin Rows Retain Their Encoded Schema.
+    pub fn select<S: streams::StreamRow>(&self) -> impl Iterator<Item = At<&S>> + '_ {
         self.rows.iter().filter_map(|(_, definition, position, row)| {
             if definition.id() != S::ID || definition.owner().is_some() {
                 return None;
@@ -145,7 +145,7 @@ impl<A: Application> Batch<A> {
         })
     }
 
-    pub fn select_shared<S: crate::streams::StreamRow>(&self) -> impl Iterator<Item = At<Arc<S>>> + '_ {
+    pub fn select_shared<S: streams::StreamRow>(&self) -> impl Iterator<Item = At<Arc<S>>> + '_ {
         self.rows.iter().filter_map(|(_, definition, position, row)| {
             if definition.id() != S::ID || definition.owner().is_some() {
                 return None;
@@ -160,7 +160,7 @@ impl<A: Application, C: StreamConsumer<A>> Recording<A> for C {
         StreamConsumer::resume(self)
     }
 
-    fn selections(&self) -> Vec<crate::streams::Definition> {
+    fn selections(&self) -> Vec<streams::Definition> {
         StreamConsumer::selections(self)
     }
 

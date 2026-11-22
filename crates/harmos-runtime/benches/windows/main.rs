@@ -101,7 +101,7 @@ impl StreamConsumer<support::Bank> for Count {
     }
 
     async fn drain(&mut self, batch: Batch<support::Bank>) -> Cursor {
-        let samples = batch.publications().map(|(_, _, row)| count(&row.value.payload)).sum::<u64>();
+        let samples = batch.publications().map(|(_, _, row)| count(row.value.payload())).sum::<u64>();
         self.1 = batch.reaches();
         if samples > 0 {
             self.0.samples.fetch_add(samples, Ordering::SeqCst);
