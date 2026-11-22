@@ -585,7 +585,9 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                 stale.write_text("obsolete")
                 commands.clear()
                 configuration = Configuration(namespace="example", python_package=python_package)
-                with patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol):
+                process_patch = patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol)
+                process_patch.start()
+                try:
                     python_protocol.generate(
                         output,
                         root=root,
@@ -594,6 +596,8 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                         configuration=configuration,
                         module_prefixes={"shared": "shared._wire"},
                     )
+                finally:
+                    process_patch.stop()
                 self.assertEqual(len(commands), 1)
                 self.assertIn(f"-I{proto_root}", commands[0])
                 self.assertEqual(commands[0][-1], file.name)

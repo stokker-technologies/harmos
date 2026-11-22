@@ -57,8 +57,7 @@ class ProtocolCallers(unittest.TestCase):
                     with self.subTest(method=identity):
                         options = method.options.SerializeToString()
                         method.ClearField("options")
-                        with self.assertRaises(ValueError):
-                            caller_options(descriptors)
+                        self.assertRaises(ValueError, caller_options, descriptors)
                         method.options.ParseFromString(options)
 
     def test_callback_faces_follow_annotations_after_service_renaming(self) -> None:
@@ -115,8 +114,7 @@ class ProtocolCallers(unittest.TestCase):
             public.write_text('#include "detail/types.hpp"\n', encoding="utf-8")
             check_public_surfaces(root)
             public.write_text("using Value = ::harmos::model::v1::Value;\n", encoding="utf-8")
-            with self.assertRaises(ValueError):
-                check_public_surfaces(root)
+            self.assertRaises(ValueError, check_public_surfaces, root)
         finally:
             scratch_directory.cleanup()
 
@@ -134,16 +132,17 @@ class ProtocolCallers(unittest.TestCase):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
-                with self.assertRaises(ValueError):
-                    check_public_surfaces(
-                        root,
-                        namespace="example",
-                        csharp_namespace="ExampleSDK",
-                        python_package=Path("python/example"),
-                        cpp_include=Path("include"),
-                        csharp_source=Path("managed"),
-                        rust_source=Path("native"),
-                    )
+                self.assertRaises(
+                    ValueError,
+                    check_public_surfaces,
+                    root,
+                    namespace="example",
+                    csharp_namespace="ExampleSDK",
+                    python_package=Path("python/example"),
+                    cpp_include=Path("include"),
+                    csharp_source=Path("managed"),
+                    rust_source=Path("native"),
+                )
                 path.unlink()
                 check_public_surfaces(
                     root,
