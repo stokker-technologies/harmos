@@ -15,16 +15,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin;
-use harmos_protocol::plugin::ChildResponse;
-use harmos_protocol::plugin::InstanceInvokeRequest;
-use harmos_protocol::plugin::InstanceInvokeResponse;
-use harmos_protocol::plugin::InstanceSamplesRequest;
-use harmos_protocol::plugin::Request;
-use harmos_protocol::plugin::child_response;
-use harmos_protocol::plugin::instance_samples_request;
-use harmos_protocol::plugin::response;
-
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -39,10 +29,13 @@ use futures_util::{
     stream::{self, FuturesUnordered},
 };
 use harmos_operations::execution::{ExecutionContext, ServingError, operations::WireStreams};
-use harmos_protocol::plugin::instance_invoke_request;
-use harmos_protocol::plugin::instance_invoke_response;
-
-use harmos_protocol::model;
+use harmos_protocol::{
+    model, plugin,
+    plugin::{
+        ChildResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest, Request, child_response,
+        instance_invoke_request, instance_invoke_response, instance_samples_request, response,
+    },
+};
 use tokio::{
     sync::{mpsc, watch},
     time::Instant,
@@ -376,7 +369,7 @@ pub(super) async fn watch_child(
     }
 }
 
-pub(crate) fn failure(error: &Error, operation: &str, plugin: &str) -> model::Failure {
+pub(crate) fn failure(mut error: &Error, operation: &str, plugin: &str) -> model::Failure {
     if let Some(failure) = error.operation_failure() {
         let mut failure = model::Failure::from(&failure);
         if failure.plugin.is_empty() {
@@ -384,21 +377,41 @@ pub(crate) fn failure(error: &Error, operation: &str, plugin: &str) -> model::Fa
         }
         return failure;
     }
-    if let Error::OperationFailed { source, .. } = error {
+    let mut source: &(dyn error::Error + 'static) = error;
+    loop {
+        if let Some(inner) = source.downcast_ref::<Error>() {
+            error = inner;
+            if let Error::OperationFailed { source: inner, .. } | Error::TaskFailed { source: inner, .. } = inner {
+                source = inner.as_ref();
+                continue;
+            }
+        }
         if let Some(CallError::Remote(failure)) = source.downcast_ref::<CallError>() {
             return model::Failure::from(failure.as_ref());
         }
-        if let Some(error) = source.downcast_ref::<CallError>() {
+        let transport = source.downcast_ref::<CallError>().map(|error| (error.classification(), error.to_string())).or_else(|| {
+            source
+                .downcast_ref::<tonic::Status>()
+                .map(|status| (CallError::Transport(status.clone()).classification(), status.message().to_owned()))
+        });
+        if let Some((classification, message)) = transport {
             return model::Failure {
-                classification: error.classification() as i32,
+                classification: classification as i32,
                 code: "transport".into(),
-                message: error.to_string(),
+                message,
                 action: "Retry the Operation".into(),
                 operation: operation.into(),
                 plugin: plugin.into(),
                 ..Default::default()
             };
         }
+        // Native Carriers May Hide the Concrete Error Behind an Arc.
+        if let Some(ServingError::Native(inner)) = source.downcast_ref::<ServingError>() {
+            source = inner.as_ref();
+            continue;
+        }
+        let Some(inner) = source.source() else { break };
+        source = inner;
     }
     if let Some(failure) = error.failure() {
         return model::Failure::from(failure);
@@ -415,7 +428,7 @@ pub(crate) fn failure(error: &Error, operation: &str, plugin: &str) -> model::Fa
     model::Failure {
         classification: classification as i32,
         code: "refused".into(),
-        message: error.to_string(),
+        message: source.to_string(),
         action: "Check the Operation Contract".into(),
         operation: operation.into(),
         plugin: plugin.into(),
@@ -424,3 +437,38 @@ pub(crate) fn failure(error: &Error, operation: &str, plugin: &str) -> model::Fa
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_causes() {
+        for (status, classification) in [
+            (tonic::Status::not_found("fixture_missing: restore the entry"), model::Classification::Refused),
+            (tonic::Status::unavailable("fixture_unavailable: reconnect"), model::Classification::Transient),
+            (tonic::Status::deadline_exceeded("fixture_deadline: inspect the handler"), model::Classification::TimedOut),
+            (tonic::Status::cancelled("fixture_cancelled: restart the call"), model::Classification::Cancelled),
+        ] {
+            let marker = status.message().split(':').next().unwrap().to_owned();
+            let inner: Error = Error::OperationFailed {
+                operation: "inner".into(),
+                source: Arc::new(status),
+            };
+            let error = Error::OperationFailed {
+                operation: "outer".into(),
+                source: Arc::new(ServingError::Native(Arc::new(inner))),
+            };
+            let failure = failure(&error, "inner", "host");
+            assert_eq!(failure.classification(), classification);
+            assert!(failure.message.contains(&marker));
+            assert_eq!(failure.operation, "inner");
+        }
+        let denied: Error = Error::PermissionDenied;
+        let error = Error::OperationFailed {
+            operation: "outer".into(),
+            source: Arc::new(denied),
+        };
+        assert_eq!(failure(&error, "inner", "host").classification(), model::Classification::Refused);
+    }
+}

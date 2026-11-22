@@ -24,10 +24,11 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpc.aio import EOF
 
-from harmos import VISIBILITY_PUBLIC
+from harmos import CLASSIFICATION_REFUSED, VISIBILITY_PUBLIC, model
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceStopRequest
+from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos.plugin import Catalog, Context, Endpoint, HostOperation, Plugin, Registrar, operation
 
 # Local Imports
@@ -48,6 +49,30 @@ from tests.support import bootstrap, calls
 
 
 class Lifecycle(IsolatedAsyncioTestCase):
+    async def test_initialize_preserves_host_failure(self) -> None:
+        author = Author("host_failure")
+        author.release.set()
+        endpoint = await Plugin(
+            id="lifecycle", version="1.0.0", register=lambda ctx: ctx.register(Catalog(author, requires=[HostOperation.TIME_GET]))
+        ).start("127.0.0.1:0")
+        self.addAsyncCleanup(endpoint.stop)
+        channel = grpc.aio.insecure_channel(endpoint.address)
+        self.addAsyncCleanup(channel.close)
+        call = await calls.invoke(InstanceStub(channel), "lifecycle.initialize", Empty())
+        child = (await call.read()).child
+        failure = model.Failure(
+            classification=CLASSIFICATION_REFUSED,
+            code="fixture_missing",
+            message="fixture_missing: Restore the Missing Entry",
+            operation=child.operation,
+        )
+        await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, failure=failure)))
+        returned = (await call.read()).response.failure
+        self.assertEqual(returned.classification, CLASSIFICATION_REFUSED)
+        self.assertIn("fixture_missing", returned.message)
+        self.assertEqual(returned.operation, child.operation)
+        self.assertIs(await call.read(), EOF)
+
     async def test_managed_run_announces_once_and_writes_nothing(self) -> None:
         launches = await bootstrap.start()
         self.addAsyncCleanup(launches.stop)
@@ -62,8 +87,8 @@ class Lifecycle(IsolatedAsyncioTestCase):
             channel = grpc.aio.insecure_channel(announce.address)
             self.addAsyncCleanup(channel.close)
             self.assertEqual((await InstanceStub(channel).Get(InstanceGetRequest(revision=1))).id, "plain")
-            serving.cancel()
-            await asyncio.gather(serving, return_exceptions=True)
+            await InstanceStub(channel).Stop(InstanceStopRequest())
+            await serving
         self.assertEqual((stdout.getvalue(), stderr.getvalue()), ("", ""))
         self.assertTrue(launches.announces.empty())
 
