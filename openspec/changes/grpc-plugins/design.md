@@ -2,7 +2,6 @@
 
 ## Interval Lag Recovery
 
-The locked owner decision supersedes the earlier window-overload fail-fast rule.
 `PlacementSettings::interval_lag` skips overdue samples instead of ending a demand.
 `IntervalLag::new(windows, consecutive_windows)` owns both positive bounds; defaults
 are ten window lengths of tolerated lag and three consecutive lagging wakes before
@@ -20,10 +19,31 @@ names the stream, measured lag, configured bound, consecutive count and correcti
 action; attachment or scope settlement reports it through the existing error path.
 Benchmarks count missed ticks and invalidate throughput with gaps.
 
+The publication owns intentional gap extents: the `missed` sample tick count and
+half-open clock `time` dates from the first skipped tick until one period past the
+last. The span may include intervening timely empty collector windows; the count
+includes only skipped ticks. One pending extent per stream stays bounded and
+survives empty collection ticks;
+the first admitted row takes them once per selected member. `missed()` continues
+to count these ticks for live delivery and sequence accounting. Source-reported
+missing rows retain their loss classification. There is no second gap registry.
+`Batch::gaps()` projects `(stream definition, gap)` from retained publications;
+intentional gaps never make a stream incomplete. `Batch::incomplete()` retains
+eviction and source-loss semantics, including alongside a gap on the same stream.
+Gap metadata shares its publication's bounded retention: eviction of that row is
+loss, with no promise to reconstruct evicted gap metadata from storage.
+
+```rust,ignore
+for (stream, gap) in batch.gaps() {
+    record_gap(stream.id(), gap.missed, gap.time.clone());
+}
+for stream in batch.incomplete() {
+    record_loss(stream.id());
+}
+```
+
 Owner documentation: `docs/project/architecture.md:1356` must describe recovery,
-gap extents and persistence instead of immediate lag failure. README remains accurate.
-The old fail-fast regression is SUPERSEDED and is removed with that behavior;
-replacement tests prove recovery, persistence reset, failure and collection delivery.
+gap extents, loss classification and persistence. README remains accurate.
 
 ## Shared Owners
 

@@ -216,7 +216,8 @@ impl Window {
                 .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| cursor.checked_add(advance))
                 .map_err(|_| super::StreamPublicationError::Sequence)?;
             let cursor = previous + advance;
-            if missed > 0 {
+            let intentional = row.downcast_ref::<super::ManagedPublication>().is_some_and(|publication| !publication.gaps().is_empty());
+            if missed > 0 && !intentional {
                 ring.missed = cursor - 1;
             }
             evicted = if ring.rows.len() == ring.capacity {

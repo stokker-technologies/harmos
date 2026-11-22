@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 // Local Imports
 use super::definition::{Contract, Windows};
-use super::{Demand, Holding, Item, Query, StreamManager, Wired, window};
+use super::{Demand, Gap, Holding, Item, Missed, Query, StreamManager, Wired, window};
 use crate::{Application, clock::Clock, state::Position, streams::Definition};
 use harmos_operations::StreamDeclaration;
 use harmos_operations::inventory::publications;
@@ -184,27 +184,28 @@ impl StreamWriter {
     }
 
     pub fn publish_row(&self, row: PublicationRow, missed: u64) -> Result<(), StreamPublicationError> {
-        self.admit(row, None, missed, None).map(|_| ())
+        self.admit(row, None, Missed::Rows(missed), None).map(|_| ())
     }
 
     pub fn admit_row(
         &self, row: PublicationRow, wire_sequence: u64, missed: u64,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
-        self.admit(row, Some(wire_sequence), missed, None)
+        self.admit(row, Some(wire_sequence), Missed::Rows(missed), None)
     }
 
     /// Wait for Ingest Room and Admit a Row Holding Every Clock Until All Feeds Have Drained It.
     pub(crate) async fn admit_clocked_row(
-        &self, row: PublicationRow, missed: u64, clocks: &[&Clock],
+        &self, row: PublicationRow, gap: Option<Gap>, clocks: &[&Clock],
     ) -> Result<u64, StreamPublicationError> {
         // Serialize Shared Scoped Writers While Ingest Makes Room.
         let _admission = self.admission.lock().await;
         let mut progress = self.stream.ingest.watch();
         let mut row = Some(row);
+        let missed = gap.map_or(Missed::Rows(0), Missed::Gap);
         loop {
             progress.borrow_and_update();
             let activities = clocks.iter().map(|clock| clock.activity("stream storage delivery")).collect();
-            match self.admit_at(&mut row, None, missed, Some(activities)) {
+            match self.admit_at(&mut row, None, missed.clone(), Some(activities)) {
                 Ok((_, cursor)) => return Ok(cursor),
                 Err(StreamPublicationError::Backlog) => {}
                 Err(error) => return Err(error),
@@ -266,7 +267,7 @@ impl StreamWriter {
                 }
                 let missed = if offset == 0 { missed } else { 0 };
                 let mut row = Some(row);
-                let (publication, dropped) = match self.admit_locked(&mut row, sequence, missed, ready) {
+                let (publication, dropped) = match self.admit_locked(&mut row, sequence, Missed::Rows(missed), ready) {
                     Ok(admitted) => admitted,
                     Err(error) => return Ok((receipts, ready, Some(error))),
                 };
@@ -297,14 +298,14 @@ impl StreamWriter {
     }
 
     fn admit(
-        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
+        &self, row: PublicationRow, sequence: Option<u64>, missed: Missed, activity: Option<Vec<crate::clock::Activity>>,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
         let mut row = Some(row);
         self.admit_at(&mut row, sequence, missed, activity).map(|(publication, _)| publication)
     }
 
     fn admit_at(
-        &self, row: &mut Option<PublicationRow>, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
+        &self, row: &mut Option<PublicationRow>, sequence: Option<u64>, missed: Missed, activity: Option<Vec<crate::clock::Activity>>,
     ) -> Result<(super::ManagedPublication, u64), StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
@@ -338,16 +339,17 @@ impl StreamWriter {
 
     // Visibility and original scope phase precede writer and row-state locks.
     fn admit_locked(
-        &self, row: &mut Option<PublicationRow>, sequence: Option<u64>, missed: u64, live: bool,
+        &self, row: &mut Option<PublicationRow>, sequence: Option<u64>, missed: Missed, live: bool,
     ) -> Result<(super::ManagedPublication, Option<super::window::Row>), StreamPublicationError> {
         let active = self.active.lock().expect("stream lease poisoned");
         if !*active || self.stream.closed.load(Ordering::Acquire) {
             return Err(StreamPublicationError::Revoked);
         }
+        let count = missed.count();
         let next = self
             .sequence
             .load(Ordering::Relaxed)
-            .checked_add(missed)
+            .checked_add(count)
             .and_then(|sequence| sequence.checked_add(1))
             .ok_or(StreamPublicationError::Sequence)?;
         if sequence.is_some_and(|sequence| sequence != next) {
@@ -355,7 +357,7 @@ impl StreamWriter {
         }
         let payload = &row.as_ref().expect("unadmitted row").payload;
         self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(payload)?;
-        if live && !self.stream.wired.window.can_advance(missed.checked_add(1).ok_or(StreamPublicationError::Sequence)?) {
+        if live && !self.stream.wired.window.can_advance(count.checked_add(1).ok_or(StreamPublicationError::Sequence)?) {
             return Err(StreamPublicationError::Sequence);
         }
         let taken = self.stream.ingest.taken();
@@ -371,11 +373,8 @@ impl StreamWriter {
             missed,
             live.then_some((self.stream.wired.window.as_ref(), taken)),
         )?;
-        let evicted = if live {
-            self.stream.wired.window.append_locked(*self.applied.borrow(), Arc::new(publication.clone()), missed)?
-        } else {
-            None
-        };
+        let evicted =
+            if live { self.stream.wired.window.append_locked(*self.applied.borrow(), Arc::new(publication.clone()), count)? } else { None };
         self.sequence.store(next, Ordering::Relaxed);
         Ok((publication, evicted))
     }
@@ -534,11 +533,128 @@ pub(super) fn validate_existing(
 mod tests {
     use super::super::definition::Revisions;
     use super::*;
+    use crate::storage::Cursor;
+    use crate::streams::{StreamEntry, StreamRow, Table};
+    use crate::{Lifecycle, Setup, Startup};
     use harmos_domain::schema::{
         Cardinality,
         graph::{Field, Kind, Schema},
     };
     use std::collections::HashMap;
+    use std::convert::Infallible;
+    use std::time::{Duration, SystemTime};
+
+    struct Model;
+
+    #[derive(crate::Row, Clone, serde::Serialize, serde::Deserialize)]
+    #[harmos_path(crate)]
+    struct Sample {
+        value: u64,
+    }
+
+    impl StreamRow for Sample {
+        const ENTRY: StreamEntry<Self> = StreamEntry::new("fixture.samples", 1);
+    }
+
+    impl Lifecycle for Model {
+        type Config = ();
+        type Error = Infallible;
+        type Context = Startup<Self>;
+
+        async fn prepare(_: (), _: &mut Setup<Self>) -> Result<Self, Infallible> {
+            Ok(Self)
+        }
+    }
+
+    impl Application for Model {
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = ();
+    }
+
+    fn streams() -> StreamManager<Model> {
+        let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+        let definition = Sample::definition().publication("fixture");
+        let table = Table::resuming([definition], Position::ORIGIN, Cursor::ORIGIN, clock).unwrap();
+        StreamManager::wired(table, watch::channel(Position::ORIGIN).1, Arc::new(Default::default()))
+    }
+
+    fn append(streams: &StreamManager<Model>, missed: Missed) {
+        let wired = streams.windows.current(Sample::ID).unwrap();
+        let count = missed.count();
+        let publication = streams
+            .windows
+            .publications
+            .retain(
+                &wired.definition,
+                None,
+                PublicationRow {
+                    payload: vec![0],
+                    published_unix_micros: None,
+                    context: None,
+                },
+                1,
+                missed,
+                None,
+            )
+            .unwrap();
+        wired.window.append_locked(Position::ORIGIN, Arc::new(publication), count).unwrap();
+    }
+
+    fn gap() -> Gap {
+        Gap {
+            missed: 3,
+            time: SystemTime::UNIX_EPOCH + Duration::from_secs(2)..SystemTime::UNIX_EPOCH + Duration::from_secs(5),
+        }
+    }
+
+    #[test]
+    fn batch_gaps() {
+        let streams = streams();
+        append(&streams, Missed::Gap(gap()));
+        let batch = streams.batch(Cursor::ORIGIN);
+        assert!(batch.incomplete().is_empty());
+        let gaps = batch.gaps().collect::<Vec<_>>();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].0.id(), Sample::ID);
+        assert_eq!(gaps[0].1, &gap());
+        assert_eq!(batch.publications().next().unwrap().2.value.missed(), 3);
+        assert!(streams.batch(batch.reaches()).gaps().next().is_none());
+    }
+
+    #[test]
+    fn batch_eviction() {
+        let streams = streams();
+        append(&streams, Missed::Rows(0));
+        let acknowledged = streams.frontier();
+        append(&streams, Missed::Rows(0));
+        let batch = streams.batch(Cursor::ORIGIN);
+        assert_eq!(batch.incomplete().iter().map(Definition::id).collect::<Vec<_>>(), [Sample::ID]);
+        assert!(batch.gaps().next().is_none());
+        assert!(streams.batch(acknowledged).incomplete().is_empty());
+    }
+
+    #[test]
+    fn batch_gap_eviction() {
+        let streams = streams();
+        append(&streams, Missed::Rows(0));
+        append(&streams, Missed::Gap(gap()));
+        let batch = streams.batch(Cursor::ORIGIN);
+        assert_eq!(batch.incomplete().iter().map(Definition::id).collect::<Vec<_>>(), [Sample::ID]);
+        let gaps = batch.gaps().collect::<Vec<_>>();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].0.id(), Sample::ID);
+        assert_eq!(gaps[0].1, &gap());
+    }
+
+    #[test]
+    fn batch_source_loss() {
+        let streams = streams();
+        append(&streams, Missed::Rows(3));
+        let batch = streams.batch(Cursor::ORIGIN);
+        assert_eq!(batch.incomplete().iter().map(Definition::id).collect::<Vec<_>>(), [Sample::ID]);
+        assert!(batch.gaps().next().is_none());
+    }
 
     #[test]
     fn admission_rejects_native_other_owner_and_revision_collision() {

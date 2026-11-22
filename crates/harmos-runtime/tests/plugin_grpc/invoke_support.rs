@@ -65,6 +65,8 @@ pub struct Reply {
 pub struct Signals {
     pub entered: Notify,
     pub publications: Mutex<Option<Vec<(streams::Definition, streams::ManagedPublication)>>>,
+    pub gaps: Mutex<Vec<(streams::Definition, streams::Gap)>>,
+    pub incomplete: Mutex<Vec<streams::Definition>>,
     pub storage_hold: AtomicBool,
     pub storage_entered: Notify,
     pub storage_release: Notify,
@@ -92,6 +94,8 @@ impl storage::StreamConsumer<support::App> for Store {
             self.2.storage_entered.notify_one();
             self.2.storage_release.notified().await;
         }
+        self.2.gaps.lock().unwrap().extend(batch.gaps().map(|(definition, gap)| (definition.clone(), gap.clone())));
+        self.2.incomplete.lock().unwrap().extend_from_slice(batch.incomplete());
         let publications =
             batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.row().clone())).collect::<Vec<_>>();
         if let Some(publications) = self.2.publications.lock().unwrap().as_mut() {

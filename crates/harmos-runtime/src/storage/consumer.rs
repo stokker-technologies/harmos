@@ -127,6 +127,10 @@ impl<A: Application> Batch<A> {
         &self.incomplete
     }
 
+    pub fn gaps(&self) -> impl Iterator<Item = (&streams::Definition, &streams::Gap)> + '_ {
+        self.publications().flat_map(|(definition, _, row)| row.value.gaps().iter().map(move |gap| (definition, gap)))
+    }
+
     pub fn publications(&self) -> impl Iterator<Item = (&streams::Definition, Cursor, At<&streams::ManagedPublication>)> + '_ {
         self.rows.iter().filter_map(|(cursor, definition, position, row)| {
             let publication = row.downcast_ref::<streams::ManagedPublication>()?;
