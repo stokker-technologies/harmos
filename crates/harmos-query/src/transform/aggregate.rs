@@ -155,7 +155,7 @@ impl Groups {
         // Fold One Row At A Time Without A Page-Sized Scalar Copy.
         for row in 0..input.num_rows() {
             check()?;
-            let keys = self.plan.groups.iter().map(|group| group.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
+            let keys = self.plan.groups.iter().map(|group| group.field.value(input, row)).collect::<Result<Vec<_>>>()?;
             let values = self.plan.measures.iter().map(|measure| measure.field.value(input, row)).collect::<Result<Vec<_>>>()?;
             let index = match self.find(&keys)? {
                 Ok(index) => index,
@@ -282,13 +282,6 @@ fn compare_keys(left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering>
         }
     }
     Ok(left.len().cmp(&right.len()))
-}
-
-fn normalized(value: ScalarValue) -> ScalarValue {
-    match value {
-        ScalarValue::Float(number) if !number.is_finite() => ScalarValue::Null,
-        value => value,
-    }
 }
 
 /* === Tests === */

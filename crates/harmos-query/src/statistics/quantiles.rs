@@ -76,8 +76,9 @@ impl Quantiles {
     }
 
     pub fn push(&mut self, value: f64) -> Result<()> {
+        // A Nonfinite Sample Is a Missing Measurement.
         if !value.is_finite() {
-            return Err(invalid("supply finite values to the numeric spool"));
+            return Ok(());
         }
         let count = self.count.checked_add(1).ok_or_else(|| invalid("reduce the numeric spool input to avoid count overflow"))?;
         let bits = ordered(value);

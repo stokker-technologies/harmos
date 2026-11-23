@@ -67,12 +67,12 @@ pub(super) fn numeric(
         let number = match field.value(input, row)? {
             ScalarValue::Signed(value) => Some(value as f64),
             ScalarValue::Unsigned(value) => Some(value as f64),
-            ScalarValue::Float(value) if value.is_finite() => Some(value),
+            ScalarValue::Float(value) => Some(value),
             ScalarValue::Exact(value) => {
                 let magnitude = value.numerator as f64 / value.denominator.get() as f64;
                 Some(if value.negative { -magnitude } else { magnitude })
             }
-            ScalarValue::Null | ScalarValue::Missing | ScalarValue::Float(_) => None,
+            ScalarValue::Null | ScalarValue::Missing => None,
             _ => return Err(invalid("select a numeric field for scale or offset")),
         };
         let value = number.map(&evaluate);
@@ -130,11 +130,7 @@ pub(super) fn contains(input: &RecordBatch, plan: &Contains, check: &mut impl Fn
             if children.is_null(child) {
                 continue;
             }
-            let value = scalar(children.as_ref(), child)?;
-            if matches!(value, ScalarValue::Float(number) if !number.is_finite()) {
-                continue;
-            }
-            if value.compare(&plan.value)? == Ordering::Equal {
+            if scalar(children.as_ref(), child)?.compare(&plan.value)? == Ordering::Equal {
                 found = true;
                 break;
             }

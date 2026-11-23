@@ -241,10 +241,6 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
 
 /* === Private Functions === */
 
-fn normalized(value: ScalarValue) -> ScalarValue {
-    if matches!(&value, ScalarValue::Float(value) if !value.is_finite()) { ScalarValue::Null } else { value }
-}
-
 fn aggregate(input: Spool, plan: &Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
     let schema = Arc::new(plan.output_schema(&input.schema)?);
     let mut keys = |batch: &RecordBatch, row| group_keys(plan, batch, row);
@@ -285,7 +281,7 @@ fn aggregate(input: Spool, plan: &Aggregate, check: &mut impl FnMut() -> Result<
 }
 
 fn group_keys(plan: &Aggregate, batch: &RecordBatch, row: usize) -> Result<Vec<ScalarValue>> {
-    plan.groups.iter().map(|group| group.field.value(batch, row).map(normalized)).collect()
+    plan.groups.iter().map(|group| group.field.value(batch, row)).collect()
 }
 
 fn compare_keys(left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering> {

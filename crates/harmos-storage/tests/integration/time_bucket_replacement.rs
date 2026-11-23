@@ -355,17 +355,18 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     bounded.max_samples = nz(1);
     assert!(table.transform(&Transform::TimeBuckets(bounded), &mut || Ok(())).is_err());
 
-    // Refuse Non-Finite Input Without Advancing The Readable Frontier.
-    let invalid = record(&history, &schema, 15, "invalid", 1, 0, f64::NAN);
-    let invalid_cut = StorageCursor { history: history.clone(), sequence: 15 };
+    // Skip Non-Finite Input Like a Missing Value While Advancing The Readable Frontier.
+    let lost = record(&history, &schema, 15, "lost", 1, 0, f64::NAN);
+    let lost_cut = StorageCursor { history: history.clone(), sequence: 15 };
     for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.append_records(StorageBatch::new(vec![invalid.clone()])).await.unwrap();
-        let snapshot = backend.create_snapshot(&invalid_cut).await.unwrap();
-        assert!(advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.is_err());
-        assert_eq!(
-            backend.get_projection_status(&definition.name, 1, None).await.unwrap().map(|status| status.frontier),
-            Some(final_cut.clone())
-        );
+        backend.append_records(StorageBatch::new(vec![lost.clone()])).await.unwrap();
+        let snapshot = backend.create_snapshot(&lost_cut).await.unwrap();
+        advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
+        let frontier = ProjectionRead {
+            frontier: lost_cut.clone(),
+            ..read.clone()
+        };
+        assert_eq!(read_all(backend, frontier).await.0, buckets);
         backend.delete_snapshot(&snapshot).await.unwrap();
     }
     primary.delete_snapshot(&snapshot).await.unwrap();

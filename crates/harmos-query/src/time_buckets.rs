@@ -153,13 +153,8 @@ impl Accumulator {
             if row % 256 == 0 {
                 check()?;
             }
-            if identities.is_null(row)
-                || positions.is_null(row)
-                || values.is_null(row)
-                || !values.value(row).is_finite()
-                || positions.value(row) == 0
-            {
-                return Err(columnar::invalid("time buckets require finite values and non-null identities and positions"));
+            if identities.is_null(row) || positions.is_null(row) || values.is_null(row) || positions.value(row) == 0 {
+                return Err(columnar::invalid("time buckets require non-null values, identities and positions"));
             }
             let time_ns = time(&times, row)?;
             let ordinal = (i128::from(time_ns) - i128::from(self.plan.origin_ns)).div_euclid(i128::from(self.plan.width_ns.get()));
@@ -214,6 +209,8 @@ impl Accumulator {
         check()?;
         self.samples.sort_unstable_by(|left, right| left.identity.cmp(&right.identity).then(right.position.cmp(&left.position)));
         self.samples.dedup_by(|left, right| left.identity == right.identity);
+        // A Nonfinite Latest Value Is a Missing Measurement.
+        self.samples.retain(|sample| sample.value.is_finite());
         check()?;
         self.samples
             .sort_unstable_by(|left, right| (&left.key, left.time_ns, left.position).cmp(&(&right.key, right.time_ns, right.position)));
