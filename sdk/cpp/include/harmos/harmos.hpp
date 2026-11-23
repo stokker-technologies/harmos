@@ -131,22 +131,31 @@ public:
   explicit WatchHandle(std::shared_ptr<Watch> state) : state_(std::move(state)) {}
   WatchHandle(const WatchHandle &) = delete;
   WatchHandle &operator=(const WatchHandle &) = delete;
-  WatchHandle(WatchHandle &&other) : state_(other.state_.exchange(nullptr)) {}
+  WatchHandle(WatchHandle &&other) : state_(other.take()) {}
   ~WatchHandle() {
     close();
   }
   std::optional<std::string> next() {
-    auto state = state_.load();
+    auto state = load();
     return state ? state->next() : std::nullopt;
   }
   void close() {
-    auto state = state_.exchange(nullptr);
-    if (state)
+    if (auto state = take())
       state->cancel();
   }
 
 private:
-  std::atomic<std::shared_ptr<Watch>> state_;
+  // A Mutex Rather Than std::atomic<std::shared_ptr>, Which GCC 11's Standard Library Lacks.
+  std::shared_ptr<Watch> load() {
+    std::lock_guard lock(mutex_);
+    return state_;
+  }
+  std::shared_ptr<Watch> take() {
+    std::lock_guard lock(mutex_);
+    return std::exchange(state_, nullptr);
+  }
+  std::mutex mutex_;
+  std::shared_ptr<Watch> state_;
 };
 struct SubscriptionRow {
   std::string payload;
