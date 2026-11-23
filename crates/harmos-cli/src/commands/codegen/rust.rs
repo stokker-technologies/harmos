@@ -23,7 +23,7 @@ use clap::ValueEnum;
 
 // Local Imports
 use crate::commands::codegen::{Generation, Inputs, Output, identifier_character, replace_word};
-use crate::descriptor::{Face, Field, Method, camel, is_version, snake, title};
+use crate::descriptor::{Face, Field, Method, camel, is_version, snake};
 use crate::error::{Error, Result};
 
 /* === Constants === */
@@ -355,7 +355,7 @@ fn client(methods: &[Method], application: bool) -> Result<(Vec<String>, Vec<Str
                 lines.push(format!("            {group}: match ({variants}) {{"));
                 for (index, member) in members.iter().enumerate() {
                     let pattern = patterns(members.len(), index) + ",";
-                    lines.push(format!("                ({pattern}) => Some({variant}::{}(value)),", title(&member.name)));
+                    lines.push(format!("                ({pattern}) => Some({variant}::{}(value)),", camel(&member.name)));
                 }
                 let empty = vec!["None"; members.len()].join(", ") + ",";
                 lines.push(format!("                ({empty}) => None,"));
