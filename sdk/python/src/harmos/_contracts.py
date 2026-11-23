@@ -11,10 +11,10 @@
 # === Imports === #
 
 # Standard Library Imports
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 # Third Party Imports
 from google.protobuf.descriptor import Descriptor, EnumDescriptor
@@ -32,6 +32,8 @@ from harmos._wire.model.v1.stream_pb2 import StreamDeclaration
 from ._columns import check_columns, columns_type
 
 # Type Checking Imports
+if TYPE_CHECKING:
+    from ._invocation import Context
 
 # === Public Exports === #
 
@@ -112,6 +114,8 @@ class Stream:
     description: str = ""
     window_setting: str = ""
     columns: type[Message] | None = None
+    on_start: Callable[["Context"], Awaitable[None]] | None = None
+    on_stop: Callable[["Context"], Awaitable[None]] | None = None
 
     def declaration(self) -> StreamDeclaration:
         return StreamDeclaration(
@@ -165,10 +169,12 @@ def observer[F: Callable](
     interval_setting: str = "",
     window_setting: str = "",
     description: str = "",
+    on_start: Callable[["Context"], Awaitable[None]] | None = None,
+    on_stop: Callable[["Context"], Awaitable[None]] | None = None,
 ) -> Callable[[F], F]:
     """Declare a One-Sample Observer, Called Once per Sample of Each Granted Window."""
     columns_type(row, id)
-    definition = Stream(id, row, interval, interval_setting, description, window_setting)
+    definition = Stream(id, row, interval, interval_setting, description, window_setting, on_start=on_start, on_stop=on_stop)
 
     def decorate(handler: F) -> F:
         handler.__dict__["__harmos_observer__"] = definition
@@ -186,11 +192,13 @@ def window_observer[F: Callable](
     interval_setting: str = "",
     window_setting: str = "",
     description: str = "",
+    on_start: Callable[["Context"], Awaitable[None]] | None = None,
+    on_stop: Callable[["Context"], Awaitable[None]] | None = None,
 ) -> Callable[[F], F]:
     """Declare an Observer That Answers a Whole Granted Window With Its Columns."""
     columns_type(row, id)
     check_columns(row, columns, id)
-    definition = Stream(id, row, interval, interval_setting, description, window_setting, columns)
+    definition = Stream(id, row, interval, interval_setting, description, window_setting, columns, on_start, on_stop)
 
     def decorate(handler: F) -> F:
         handler.__dict__["__harmos_observer__"] = definition

@@ -97,8 +97,7 @@ impl FilterExecution for Filter {
                 let mut all = true;
                 for term in &clause.terms {
                     let value = term.field.value(input, row)?;
-                    let absent = matches!(value, ScalarValue::Null | ScalarValue::Missing)
-                        || matches!(value, ScalarValue::Float(number) if !number.is_finite());
+                    let absent = matches!(value, ScalarValue::Null | ScalarValue::Missing);
                     let answer = match &term.condition {
                         Condition::IsNull => absent,
                         _ if absent => false,

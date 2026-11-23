@@ -16,14 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{io, result};
+use std::{error, io, result, sync::Arc};
 
 // Third Party Imports
 use tonic::Status;
 
 // Local Imports
-use crate::Classification;
 use crate::model::Failure;
+use crate::{Classification, OperationRetry};
 use harmos_protocol::plugin::response;
 
 /* === Constants === */
@@ -31,6 +31,8 @@ use harmos_protocol::plugin::response;
 /* === Macros === */
 
 /* === Type Aliases === */
+
+pub(crate) type FailureMapper = Arc<dyn Fn(&(dyn error::Error + 'static)) -> Option<Error> + Send + Sync>;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -48,6 +50,9 @@ pub enum Error {
 
     #[error(transparent)]
     Io(#[from] io::Error),
+
+    #[error(transparent)]
+    Other(Box<dyn error::Error + Send + Sync>),
 
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
@@ -68,6 +73,69 @@ impl From<Failure> for Error {
 }
 
 impl Error {
+    pub(crate) fn mapped(self, mapper: Option<&FailureMapper>) -> Self {
+        if matches!(&self, Self::Failure(_)) {
+            return self;
+        }
+        let source: &(dyn error::Error + 'static) = match &self {
+            Self::Other(source) => source.as_ref(),
+            _ => &self,
+        };
+        mapper.and_then(|mapper| mapper(source)).unwrap_or(self)
+    }
+
+    /// Preserve an Application Error for the Plugin's Failure Mapper.
+    pub fn other(error: impl error::Error + Send + Sync + 'static) -> Self {
+        Self::Other(Box::new(error))
+    }
+
+    pub fn kind(&self) -> &str {
+        match self {
+            Self::Failure(failure) => match failure.classification() {
+                Classification::Transient => "transient",
+                Classification::Refused => "refused",
+                Classification::Invalid => "invalid",
+                Classification::Cancelled | Classification::TimedOut => "cancelled",
+                _ => "permanent",
+            },
+            Self::Invalid(_) => "invalid",
+            _ => "permanent",
+        }
+    }
+
+    pub fn code(&self) -> &str {
+        match self {
+            Self::Failure(failure) => &failure.code,
+            Self::Invalid(_) => "invalid",
+            _ => "sdk_error",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn action(&self) -> &str {
+        match self {
+            Self::Failure(failure) => &failure.action,
+            _ => "Inspect Plugin Diagnostics",
+        }
+    }
+
+    pub fn operation(&self) -> &str {
+        match self {
+            Self::Failure(failure) => &failure.operation,
+            _ => "",
+        }
+    }
+
+    pub fn retry(&self) -> OperationRetry {
+        match self {
+            Self::Failure(failure) => failure.retry.clone().unwrap_or_default(),
+            _ => OperationRetry::default(),
+        }
+    }
+
     pub fn failure(classification: Classification, code: impl Into<String>, message: impl Into<String>, action: impl Into<String>) -> Self {
         Failure {
             classification: classification as i32,
@@ -80,8 +148,11 @@ impl Error {
     }
 
     pub(crate) fn response(self, operation: &str, plugin: &str) -> result::Result<response::Result, Status> {
+        Ok(response::Result::Failure(self.into_failure(operation, plugin)))
+    }
+
+    pub(crate) fn into_failure(self, operation: &str, plugin: &str) -> Failure {
         match self {
-            Self::Transport(status) => Err(status),
             Self::Failure(mut failure) => {
                 if failure.operation.is_empty() {
                     failure.operation = operation.into();
@@ -89,9 +160,9 @@ impl Error {
                 if failure.plugin.is_empty() {
                     failure.plugin = plugin.into();
                 }
-                Ok(response::Result::Failure(*failure))
+                *failure
             }
-            error => Ok(response::Result::Failure(Failure {
+            error => Failure {
                 classification: Classification::Permanent as i32,
                 code: "sdk_error".into(),
                 message: error.to_string(),
@@ -99,7 +170,7 @@ impl Error {
                 operation: operation.into(),
                 plugin: plugin.into(),
                 ..Default::default()
-            })),
+            },
         }
     }
 }

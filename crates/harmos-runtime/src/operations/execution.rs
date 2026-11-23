@@ -34,6 +34,7 @@ use crate::supervision::instance::{Instance, Outcome, Phase};
 use crate::supervision::{executor, interruptible};
 use crate::{Error, Refusal, Result, state::Position};
 use harmos_operations::clock::WindDown;
+use harmos_protocol::model::OperationRetry;
 
 /* === Constants === */
 
@@ -422,6 +423,19 @@ async fn attempts<O: Send + 'static>(
             return Err(error);
         }
         let delay = prepared.policy.retries.retry_after(attempt, failure, prepared.replay, prepared.id.value());
+        let max_attempts = match prepared.policy.retries {
+            crate::RetryPolicy::Never => 1,
+            crate::RetryPolicy::OnTransient { total_attempts, .. } => total_attempts,
+        };
+        let error = error.with_retry(
+            &prepared.operation,
+            OperationRetry {
+                retryable: delay.is_some(),
+                attempts: attempt as u64 + 1,
+                max_attempts: max_attempts as u64,
+                next_after_s: delay.map_or(0.0, |delay| delay.as_secs_f64()),
+            },
+        );
         let Some(delay) = delay else {
             crate::clock::waiting(children.drain()).await;
             return Err(error);

@@ -128,7 +128,7 @@ mod tests {
             Arc::new(HashMap::from([("harmos.plugin.v1.Subscriptions/Subscribe".into(), fingerprint)])),
         );
         let (output, mut input) = mpsc::channel(1);
-        context.output = Some(ChildOutput::Invoke(output));
+        context.queue.output = Some(ChildOutput::Invoke(output));
         let peer = context.clone();
         let source = Timestamp { seconds: 7, nanos: 123456789 };
         let received = Timestamp { seconds: 11, nanos: 987654321 };
@@ -158,7 +158,7 @@ mod tests {
                     }
                     harmos_protocol::plugin::instance_invoke_response::Frame::ChildDemand(demand) => {
                         let response = responses.get_mut(&demand.call).unwrap().pop_front().unwrap();
-                        let sender = peer.calls.lock().unwrap().watches[&demand.call].sender.clone();
+                        let sender = peer.queue.calls.lock().unwrap().watches[&demand.call].sender.clone();
                         sender.send(Ok(Some(response.encode_to_vec()))).await.unwrap();
                     }
                     harmos_protocol::plugin::instance_invoke_response::Frame::ChildCancel(_) => {}
@@ -179,10 +179,10 @@ mod tests {
         first.close();
         first.close();
         assert!(first.next().await.unwrap().is_none());
-        assert!(!context.calls.lock().unwrap().watches.contains_key(&first_call));
-        assert!(context.calls.lock().unwrap().watches.contains_key(&second_call));
+        assert!(!context.queue.calls.lock().unwrap().watches.contains_key(&first_call));
+        assert!(context.queue.calls.lock().unwrap().watches.contains_key(&second_call));
         assert!(matches!(second.next().await.unwrap(), Some(SubscriptionItem::Row(_))));
-        context.cancel_calls(false, "Fixture Scope Ended", false).await.unwrap();
+        context.cancel_calls("Fixture Scope Ended").await.unwrap();
         assert!(second.next().await.is_err());
         driver.abort();
         assert!(driver.await.unwrap_err().is_cancelled());

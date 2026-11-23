@@ -159,7 +159,7 @@ impl HostInvocationsResource {
     }
     pub async fn get_with(&self, instance: u64, options: HostInvocationsGetOptions) -> Result<InstanceState> {
         let request = InvocationsGetRequest { instance };
-        let response: InvocationsGetResponse = self.context.call_with(request, options.policy).await?;
+        let response: InvocationsGetResponse = self.context.operation_with(request, options.policy).await?;
         response.invocation.ok_or_else(|| Error::Invalid("Read InvocationsGet: Missing Payload".into()))
     }
     pub async fn cancel(&self, instance: u64, reason: String) -> Result<InstanceState> {
@@ -167,7 +167,7 @@ impl HostInvocationsResource {
     }
     pub async fn cancel_with(&self, instance: u64, reason: String, options: HostInvocationsCancelOptions) -> Result<InstanceState> {
         let request = InvocationsCancelRequest { instance, reason };
-        let response: InvocationsCancelResponse = self.context.call_with(request, options.policy).await?;
+        let response: InvocationsCancelResponse = self.context.operation_with(request, options.policy).await?;
         response.invocation.ok_or_else(|| Error::Invalid("Read InvocationsCancel: Missing Payload".into()))
     }
     pub async fn watch(&self, instance: u64, max_item_bytes: NonZeroUsize) -> Result<HostInvocationsWatch> {
@@ -196,7 +196,7 @@ impl HostOperationsResource {
     }
     pub async fn list_with(&self, options: HostOperationsListOptions) -> Result<Vec<DiscoveredOperation>> {
         let request = OperationsListRequest {};
-        let response: OperationsListResponse = self.context.call_with(request, options.policy).await?;
+        let response: OperationsListResponse = self.context.operation_with(request, options.policy).await?;
         Ok(response.operations)
     }
     pub async fn get(&self, id: String) -> Result<DiscoveredOperation> {
@@ -204,7 +204,7 @@ impl HostOperationsResource {
     }
     pub async fn get_with(&self, id: String, options: HostOperationsGetOptions) -> Result<DiscoveredOperation> {
         let request = OperationsGetRequest { id };
-        let response: OperationsGetResponse = self.context.call_with(request, options.policy).await?;
+        let response: OperationsGetResponse = self.context.operation_with(request, options.policy).await?;
         response.operation.ok_or_else(|| Error::Invalid("Read OperationsGet: Missing Payload".into()))
     }
 }
@@ -234,7 +234,7 @@ impl HostPluginsSettingsResource {
     }
     pub async fn list_with(&self, options: HostPluginsSettingsListOptions) -> Result<SettingsListResponse> {
         let request = SettingsListRequest { name: options.name, at: options.at };
-        let response: SettingsListResponse = self.context.call_with(request, options.policy).await?;
+        let response: SettingsListResponse = self.context.operation_with(request, options.policy).await?;
         Ok(response)
     }
 }
@@ -251,7 +251,7 @@ impl HostPluginsStateResource {
     }
     pub async fn get_with(&self, options: HostPluginsStateGetOptions) -> Result<StateGetResponse> {
         let request = StateGetRequest {};
-        let response: StateGetResponse = self.context.call_with(request, options.policy).await?;
+        let response: StateGetResponse = self.context.operation_with(request, options.policy).await?;
         Ok(response)
     }
     pub async fn put(&self, expected_revision: u64, value: Vec<u8>) -> Result<u64> {
@@ -259,7 +259,7 @@ impl HostPluginsStateResource {
     }
     pub async fn put_with(&self, expected_revision: u64, value: Vec<u8>, options: HostPluginsStatePutOptions) -> Result<u64> {
         let request = StatePutRequest { expected_revision, value };
-        let response: StatePutResponse = self.context.call_with(request, options.policy).await?;
+        let response: StatePutResponse = self.context.operation_with(request, options.policy).await?;
         Ok(response.revision)
     }
 }
@@ -276,7 +276,7 @@ impl HostTimeResource {
     }
     pub async fn get_with(&self, options: HostTimeGetOptions) -> Result<Timestamp> {
         let request = TimeGetRequest {};
-        let response: TimeGetResponse = self.context.call_with(request, options.policy).await?;
+        let response: TimeGetResponse = self.context.operation_with(request, options.policy).await?;
         response.now.ok_or_else(|| Error::Invalid("Read TimeGet: Missing Payload".into()))
     }
     pub async fn sleep(&self, duration: Duration) -> Result<TimeSleepResponse> {
@@ -284,7 +284,7 @@ impl HostTimeResource {
     }
     pub async fn sleep_with(&self, duration: Duration, options: HostTimeSleepOptions) -> Result<TimeSleepResponse> {
         let request = TimeSleepRequest { duration: Some(duration) };
-        let response: TimeSleepResponse = self.context.call_with(request, options.policy).await?;
+        let response: TimeSleepResponse = self.context.operation_with(request, options.policy).await?;
         Ok(response)
     }
 }

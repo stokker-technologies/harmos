@@ -26,32 +26,34 @@ namespace Harmos.Internal.Plugin;
           string.Concat(
             "CiFoYXJtb3MvcGx1Z2luL3YxL2ludm9jYXRpb24ucHJvdG8SEGhhcm1vcy5w",
             "bHVnaW4udjEaHWhhcm1vcy9tb2RlbC92MS9mYWlsdXJlLnByb3RvGhxoYXJt",
-            "b3MvbW9kZWwvdjEvcG9saWN5LnByb3RvIpEBCgdSZXF1ZXN0EhwKCW9wZXJh",
+            "b3MvbW9kZWwvdjEvcG9saWN5LnByb3RvIsQBCgdSZXF1ZXN0EhwKCW9wZXJh",
             "dGlvbhgBIAEoCVIJb3BlcmF0aW9uEhgKB3BheWxvYWQYAiABKAxSB3BheWxv",
             "YWQSHgoKaW52b2NhdGlvbhgDIAEoCVIKaW52b2NhdGlvbhIYCgdhdHRlbXB0",
-            "GAQgASgNUgdhdHRlbXB0EhQKBXNjb3BlGAUgASgJUgVzY29wZSIgCgZDYW5j",
-            "ZWwSFgoGcmVhc29uGAEgASgJUgZyZWFzb24iZgoIUmVzcG9uc2USGgoHcGF5",
-            "bG9hZBgBIAEoDEgAUgdwYXlsb2FkEjQKB2ZhaWx1cmUYAiABKAsyGC5oYXJt",
-            "b3MubW9kZWwudjEuRmFpbHVyZUgAUgdmYWlsdXJlQggKBnJlc3VsdCKaAgoM",
-            "Q2hpbGRSZXF1ZXN0EhIKBGNhbGwYASABKARSBGNhbGwSHAoJb3BlcmF0aW9u",
-            "GAIgASgJUglvcGVyYXRpb24SGAoHcGF5bG9hZBgDIAEoDFIHcGF5bG9hZBIg",
-            "CgtmaW5nZXJwcmludBgEIAEoDFILZmluZ2VycHJpbnQSOAoGcG9saWN5GAUg",
-            "ASgLMiAuaGFybW9zLm1vZGVsLnYxLk9wZXJhdGlvblBvbGljeVIGcG9saWN5",
-            "EhQKBXdhdGNoGAYgASgIUgV3YXRjaBIsChJtYXhfcmVzcG9uc2VfYnl0ZXMY",
-            "ByABKARSEG1heFJlc3BvbnNlQnl0ZXMSHgoKYmFja2dyb3VuZBgIIAEoCFIK",
-            "YmFja2dyb3VuZCIhCgtDaGlsZERlbWFuZBISCgRjYWxsGAEgASgEUgRjYWxs",
-            "IiEKC0NoaWxkQ2FuY2VsEhIKBGNhbGwYASABKARSBGNhbGwilQEKDUNoaWxk",
-            "UmVzcG9uc2USEgoEY2FsbBgBIAEoBFIEY2FsbBIaCgdwYXlsb2FkGAIgASgM",
-            "SABSB3BheWxvYWQSNAoHZmFpbHVyZRgDIAEoCzIYLmhhcm1vcy5tb2RlbC52",
-            "MS5GYWlsdXJlSABSB2ZhaWx1cmUSFAoEaXRlbRgEIAEoDEgAUgRpdGVtQggK",
-            "BnJlc3VsdGIGcHJvdG8z"));
+            "GAQgASgNUgdhdHRlbXB0EhQKBXNjb3BlGAUgASgJUgVzY29wZRIxChRjYXB0",
+            "dXJpbmdfZXhlY3V0aW9ucxgGIAMoCVITY2FwdHVyaW5nRXhlY3V0aW9ucyIg",
+            "CgZDYW5jZWwSFgoGcmVhc29uGAEgASgJUgZyZWFzb24iZgoIUmVzcG9uc2US",
+            "GgoHcGF5bG9hZBgBIAEoDEgAUgdwYXlsb2FkEjQKB2ZhaWx1cmUYAiABKAsy",
+            "GC5oYXJtb3MubW9kZWwudjEuRmFpbHVyZUgAUgdmYWlsdXJlQggKBnJlc3Vs",
+            "dCK8AgoMQ2hpbGRSZXF1ZXN0EhIKBGNhbGwYASABKARSBGNhbGwSHAoJb3Bl",
+            "cmF0aW9uGAIgASgJUglvcGVyYXRpb24SGAoHcGF5bG9hZBgDIAEoDFIHcGF5",
+            "bG9hZBIgCgtmaW5nZXJwcmludBgEIAEoDFILZmluZ2VycHJpbnQSOAoGcG9s",
+            "aWN5GAUgASgLMiAuaGFybW9zLm1vZGVsLnYxLk9wZXJhdGlvblBvbGljeVIG",
+            "cG9saWN5EhQKBXdhdGNoGAYgASgIUgV3YXRjaBIsChJtYXhfcmVzcG9uc2Vf",
+            "Ynl0ZXMYByABKARSEG1heFJlc3BvbnNlQnl0ZXMSHgoKYmFja2dyb3VuZBgI",
+            "IAEoCFIKYmFja2dyb3VuZBIXCgRqc29uGAkgASgJSABSBGpzb26IAQFCBwoF",
+            "X2pzb24iIQoLQ2hpbGREZW1hbmQSEgoEY2FsbBgBIAEoBFIEY2FsbCIhCgtD",
+            "aGlsZENhbmNlbBISCgRjYWxsGAEgASgEUgRjYWxsIpUBCg1DaGlsZFJlc3Bv",
+            "bnNlEhIKBGNhbGwYASABKARSBGNhbGwSGgoHcGF5bG9hZBgCIAEoDEgAUgdw",
+            "YXlsb2FkEjQKB2ZhaWx1cmUYAyABKAsyGC5oYXJtb3MubW9kZWwudjEuRmFp",
+            "bHVyZUgAUgdmYWlsdXJlEhQKBGl0ZW0YBCABKAxIAFIEaXRlbUIICgZyZXN1",
+            "bHRiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Harmos.FailureReflection.Descriptor, global::Harmos.PolicyReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Request), global::Harmos.Internal.Plugin.Request.Parser, new[]{ "Operation", "Payload", "Invocation", "Attempt", "Scope" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Request), global::Harmos.Internal.Plugin.Request.Parser, new[]{ "Operation", "Payload", "Invocation", "Attempt", "Scope", "CapturingExecutions" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Cancel), global::Harmos.Internal.Plugin.Cancel.Parser, new[]{ "Reason" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.Response), global::Harmos.Internal.Plugin.Response.Parser, new[]{ "Payload", "Failure" }, new[]{ "Result" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildRequest), global::Harmos.Internal.Plugin.ChildRequest.Parser, new[]{ "Call", "Operation", "Payload", "Fingerprint", "Policy", "Watch", "MaxResponseBytes", "Background" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildRequest), global::Harmos.Internal.Plugin.ChildRequest.Parser, new[]{ "Call", "Operation", "Payload", "Fingerprint", "Policy", "Watch", "MaxResponseBytes", "Background", "Json" }, new[]{ "Json" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildDemand), global::Harmos.Internal.Plugin.ChildDemand.Parser, new[]{ "Call" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildCancel), global::Harmos.Internal.Plugin.ChildCancel.Parser, new[]{ "Call" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.ChildResponse), global::Harmos.Internal.Plugin.ChildResponse.Parser, new[]{ "Call", "Payload", "Failure", "Item" }, new[]{ "Result" }, null, null, null)
@@ -101,6 +103,7 @@ namespace Harmos.Internal.Plugin;
       invocation_ = other.invocation_;
       attempt_ = other.attempt_;
       scope_ = other.scope_;
+      capturingExecutions_ = other.capturingExecutions_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -170,6 +173,17 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "capturing_executions" field.</summary>
+    public const int CapturingExecutionsFieldNumber = 6;
+    private static readonly pb::FieldCodec<string> _repeated_capturingExecutions_codec
+        = pb::FieldCodec.ForString(50);
+    private readonly pbc::RepeatedField<string> capturingExecutions_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> CapturingExecutions {
+      get { return capturingExecutions_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -190,6 +204,7 @@ namespace Harmos.Internal.Plugin;
       if (Invocation != other.Invocation) return false;
       if (Attempt != other.Attempt) return false;
       if (Scope != other.Scope) return false;
+      if(!capturingExecutions_.Equals(other.capturingExecutions_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -202,6 +217,7 @@ namespace Harmos.Internal.Plugin;
       if (Invocation.Length != 0) hash ^= Invocation.GetHashCode();
       if (Attempt != 0) hash ^= Attempt.GetHashCode();
       if (Scope.Length != 0) hash ^= Scope.GetHashCode();
+      hash ^= capturingExecutions_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -240,6 +256,7 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(42);
         output.WriteString(Scope);
       }
+      capturingExecutions_.WriteTo(output, _repeated_capturingExecutions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -270,6 +287,7 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(42);
         output.WriteString(Scope);
       }
+      capturingExecutions_.WriteTo(ref output, _repeated_capturingExecutions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -295,6 +313,7 @@ namespace Harmos.Internal.Plugin;
       if (Scope.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Scope);
       }
+      size += capturingExecutions_.CalculateSize(_repeated_capturingExecutions_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -322,6 +341,7 @@ namespace Harmos.Internal.Plugin;
       if (other.Scope.Length != 0) {
         Scope = other.Scope;
       }
+      capturingExecutions_.Add(other.capturingExecutions_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -361,6 +381,10 @@ namespace Harmos.Internal.Plugin;
             Scope = input.ReadString();
             break;
           }
+          case 50: {
+            capturingExecutions_.AddEntriesFrom(input, _repeated_capturingExecutions_codec);
+            break;
+          }
         }
       }
     #endif
@@ -398,6 +422,10 @@ namespace Harmos.Internal.Plugin;
           }
           case 42: {
             Scope = input.ReadString();
+            break;
+          }
+          case 50: {
+            capturingExecutions_.AddEntriesFrom(ref input, _repeated_capturingExecutions_codec);
             break;
           }
         }
@@ -943,6 +971,7 @@ namespace Harmos.Internal.Plugin;
       watch_ = other.watch_;
       maxResponseBytes_ = other.maxResponseBytes_;
       background_ = other.background_;
+      json_ = other.json_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1048,6 +1077,32 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "json" field.</summary>
+    public const int JsonFieldNumber = 9;
+    private readonly static string JsonDefaultValue = "";
+
+    private string json_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Json {
+      get { return json_ ?? JsonDefaultValue; }
+      set {
+        json_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "json" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasJson {
+      get { return json_ != null; }
+    }
+    /// <summary>Clears the value of the "json" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearJson() {
+      json_ = null;
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1071,6 +1126,7 @@ namespace Harmos.Internal.Plugin;
       if (Watch != other.Watch) return false;
       if (MaxResponseBytes != other.MaxResponseBytes) return false;
       if (Background != other.Background) return false;
+      if (Json != other.Json) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1086,6 +1142,7 @@ namespace Harmos.Internal.Plugin;
       if (Watch != false) hash ^= Watch.GetHashCode();
       if (MaxResponseBytes != 0UL) hash ^= MaxResponseBytes.GetHashCode();
       if (Background != false) hash ^= Background.GetHashCode();
+      if (HasJson) hash ^= Json.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1136,6 +1193,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(64);
         output.WriteBool(Background);
       }
+      if (HasJson) {
+        output.WriteRawTag(74);
+        output.WriteString(Json);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1178,6 +1239,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(64);
         output.WriteBool(Background);
       }
+      if (HasJson) {
+        output.WriteRawTag(74);
+        output.WriteString(Json);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1211,6 +1276,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (Background != false) {
         size += 1 + 1;
+      }
+      if (HasJson) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Json);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1250,6 +1318,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (other.Background != false) {
         Background = other.Background;
+      }
+      if (other.HasJson) {
+        Json = other.Json;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1305,6 +1376,10 @@ namespace Harmos.Internal.Plugin;
             Background = input.ReadBool();
             break;
           }
+          case 74: {
+            Json = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -1357,6 +1432,10 @@ namespace Harmos.Internal.Plugin;
           }
           case 64: {
             Background = input.ReadBool();
+            break;
+          }
+          case 74: {
+            Json = input.ReadString();
             break;
           }
         }

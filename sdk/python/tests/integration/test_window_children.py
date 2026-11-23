@@ -26,7 +26,7 @@ from grpc.aio import EOF, AioRpcError
 from harmos import (
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
-    FailureError,
+    OperationError,
     Position,
     ReadCut,
     SettingDeclaration,
@@ -39,7 +39,7 @@ from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
-from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
+from harmos._wire.plugin.v1.stream_pb2 import CollectionDemand, SampleBatch, SamplesSelection, Window
 from harmos.plugin import Catalog, Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 from tests.fixtures.conformance import Value, Values
 
@@ -68,7 +68,7 @@ class Reader:
     async def read(self, context: Context) -> Value:
         self.escaped = context
         if context.sequence == 1:
-            first, second = await asyncio.gather(context.call(ECHO, Value(value=b"first")), context.call(ECHO, Value(value=b"second")))
+            first, second = await asyncio.gather(context._call(ECHO, Value(value=b"first")), context._call(ECHO, Value(value=b"second")))
             return Value(value=first.value + second.value + context.scope().encode())
         if context.sequence == 2:
             settings = await context.host.plugins.settings.list()
@@ -85,12 +85,12 @@ class Reader:
                 await items.aclose()
             return Value(value=result + now.seconds.to_bytes(8, "little"))
         if context.sequence == 3:
-            self.pending = asyncio.create_task(context.call(ECHO, Value(value=b"pending")))
+            self.pending = asyncio.create_task(context._call(ECHO, Value(value=b"pending")))
             await self.answer.wait()
             return Value(value=b"answered")
         try:
-            return await context.call(ECHO, Value(value=b"failure"))
-        except FailureError as failure:
+            return await context._call(ECHO, Value(value=b"failure"))
+        except OperationError as failure:
             return Value(value=failure.value.SerializeToString())
 
     @publisher("conformance.example.device", row=Value)
@@ -100,6 +100,71 @@ class Reader:
 
 
 class WindowChildren(IsolatedAsyncioTestCase):
+    async def test_observer_sampling_hooks_release_and_recreate_resources(self) -> None:
+        # Keep a Fresh Resource for Each Sampling Period.
+        acquired: list[object] = []
+        released: list[object] = []
+        current: list[object] = []
+        stopping = Event()
+        release = Event()
+        stopped = Event()
+
+        async def start(context: Context) -> None:
+            resource = object()
+            current.append(resource)
+            acquired.append(resource)
+
+        async def stop(context: Context) -> None:
+            if len(acquired) == 3:
+                stopping.set()
+                await release.wait()
+            released.append(current.pop())
+            stopped.set()
+
+        class Sensor:
+            sampled: object | None = None
+
+            @observer("conformance.sensor", row=Value, interval=Duration(seconds=1), on_start=start, on_stop=stop)
+            async def sample(self, context: Context) -> Value:
+                self.sampled = current[0]
+                return Value(value=b"sample")
+
+        sensor = Sensor()
+        plugin = Plugin(id="conformance", version="1.0.0", register=lambda ctx: ctx.register(Catalog(sensor)))
+        endpoint = await plugin.start("127.0.0.1:0")
+        self.addAsyncCleanup(endpoint.stop)
+        channel = grpc.aio.insecure_channel(endpoint.address)
+        self.addAsyncCleanup(channel.close)
+        stream = InstanceStub(channel).Samples()
+        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.sensor")))
+
+        # Each Acknowledgement Follows Acquisition or Cleanup.
+        for period in range(2):
+            await stream.write(InstanceSamplesRequest(demand=CollectionDemand(streams=["conformance.sensor"])))
+            self.assertEqual((await stream.read()).WhichOneof("frame"), "demand")
+            self.assertEqual(len(acquired), period + 1)
+            await stream.write(
+                InstanceSamplesRequest(window=Window(start=Timestamp(seconds=1), period=Duration(seconds=1), count=1, sequence=period + 1))
+            )
+            self.assertEqual((await stream.read()).batch.count, 1)
+            self.assertIs(sensor.sampled, acquired[-1])
+            await stream.write(InstanceSamplesRequest(demand=CollectionDemand()))
+            self.assertEqual((await stream.read()).WhichOneof("frame"), "demand")
+            self.assertEqual(released, acquired)
+            self.assertEqual(current, [])
+        self.assertIsNot(acquired[0], acquired[1])
+
+        # Disconnecting During Cleanup Still Joins the Hook.
+        stopped.clear()
+        await stream.write(InstanceSamplesRequest(demand=CollectionDemand(streams=["conformance.sensor"])))
+        self.assertEqual((await stream.read()).WhichOneof("frame"), "demand")
+        await stream.write(InstanceSamplesRequest(demand=CollectionDemand()))
+        await stopping.wait()
+        stream.cancel()
+        release.set()
+        await stopped.wait()
+        self.assertEqual(released, acquired)
+
     async def test_observer_children_keep_window_scope_and_reject_invalid_traffic(self) -> None:
         # Declare Typed Settings and Serve the Observer.
         reader = Reader()
@@ -142,7 +207,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).batch, SampleBatch(count=1, columns=_columns(b"firstsecondselected"), last=True))
         assert reader.escaped is not None
         with self.assertRaises(ValueError):
-            await reader.escaped.call(ECHO, Value())
+            await reader.escaped._call(ECHO, Value())
 
         # Settings and the Controlled Host Clock Drive the Next Window's Watch.
         await stream.write(
@@ -192,10 +257,10 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).child_cancel.call, pending.call)
         self.assertEqual((await stream.read()).batch.columns, _columns(b"answered"))
         assert reader.pending is not None
-        with self.assertRaises(FailureError):
+        with self.assertRaises(OperationError):
             await reader.pending
 
-        # A Late Retired Reply Cannot Corrupt the Next Window or Its FailureError.
+        # A Late Retired Reply Cannot Corrupt the Next Window or Its OperationError.
         await stream.write(
             InstanceSamplesRequest(window=Window(start=Timestamp(seconds=103), period=Duration(seconds=1), count=1, sequence=4))
         )
@@ -267,18 +332,7 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertIs(await closing.read(), EOF)
         await active.cancelled()
         with self.assertRaises(ValueError):
-            await active.call(ECHO, Value())
-
-        # Reject Incomplete or Duplicate Settings at Declarations Construction.
-        for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):
-            self.assertRaises(
-                ValueError,
-                lambda declarations=declarations: Plugin(
-                    id="conformance",
-                    version="1.0.0",
-                    register=lambda ctx, declarations=declarations: ctx.register(Catalog(reader, settings=declarations)),
-                ).declarations(),
-            )
+            await active._call(ECHO, Value())
 
 
 # === Public Functions === #

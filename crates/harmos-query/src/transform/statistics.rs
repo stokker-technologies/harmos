@@ -114,10 +114,7 @@ fn box_summary(input: Spool, plan: &BoxSummary, check: &mut impl FnMut() -> Resu
             if matches!(value, ScalarValue::Missing | ScalarValue::Null) {
                 continue;
             }
-            let value = number(&value)?;
-            if value.is_finite() {
-                quantiles.push(value)?;
-            }
+            quantiles.push(number(&value)?)?;
         }
     }
     let mut summary = statistics::BoxSummary::new(quantiles, plan.max_outliers, plan.scratch_bytes, check)?;

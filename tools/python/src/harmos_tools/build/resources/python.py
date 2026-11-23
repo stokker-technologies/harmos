@@ -203,11 +203,11 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
         package / "__init__.py",
         [
             "from ._connection import Connection",
-            "from ._invocation import FailureError",
+            "from ._invocation import OperationError",
             "from ._invocation import ProtocolError",
             *[f"from ._generated.shared import {name}" for name in shared],
         ],
-        ["Connection", "FailureError", "ProtocolError", *shared],
+        ["Connection", "OperationError", "ProtocolError", *shared],
     )
     client = sorted({name.split(".", 1)[0] for _, _, name in groups["client_types"]})
     barrel(
@@ -563,7 +563,7 @@ def host(
                 ]
                 indent = "                "
             else:
-                lines += [f"        response = await self._context.call(_{name}, request, policy=policy)"]
+                lines += [f"        response = await self._context._call(_{name}, request, policy=policy)"]
             if payload and payload["kind"] == 11 and not payload["repeated"]:
                 lines += [
                     f'{indent}if not response.HasField("{payload["name"]}"):',

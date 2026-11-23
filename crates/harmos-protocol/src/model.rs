@@ -333,7 +333,7 @@ pub struct SettingDeclaration {
     pub title: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub description: ::prost::alloc::string::String,
-    /// Required typed default; the value discriminator must be selected.
+    /// Required typed default; its discriminator declares text, flag, integer, number or duration.
     #[prost(message, optional, tag = "4")]
     pub default: ::core::option::Option<SettingValue>,
     /// Inclusive lower bound, using the default's numeric or duration variant.
@@ -342,6 +342,12 @@ pub struct SettingDeclaration {
     /// Inclusive upper bound, using the default's numeric or duration variant.
     #[prost(message, optional, tag = "6")]
     pub maximum: ::core::option::Option<SettingValue>,
+    /// Allowed values, using the default's variant. Empty means unrestricted.
+    #[prost(message, repeated, tag = "7")]
+    pub choices: ::prost::alloc::vec::Vec<SettingValue>,
+    /// Saving a complete value must explicitly include this setting.
+    #[prost(bool, tag = "8")]
+    pub required: bool,
 }
 /// Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.
 #[allow(clippy::all)]
@@ -503,6 +509,24 @@ pub struct Failure {
     /// Stack or source chain for support. Never shown as the message.
     #[prost(string, tag = "9")]
     pub diagnostics: ::prost::alloc::string::String,
+    /// Host-Owned Retry Evidence for This Invocation.
+    #[prost(message, optional, tag = "10")]
+    pub retry: ::core::option::Option<OperationRetry>,
+}
+/// Retry Eligibility and Attempt Counts Reported by the Host Scheduler.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct OperationRetry {
+    #[prost(bool, tag = "1")]
+    pub retryable: bool,
+    /// Attempts Already Run; Zero Means Admission Failed Before Execution.
+    #[prost(uint64, tag = "2")]
+    pub attempts: u64,
+    #[prost(uint64, tag = "3")]
+    pub max_attempts: u64,
+    /// Delay Before Another Attempt, in Seconds; Zero When No Attempt Is Scheduled.
+    #[prost(double, tag = "4")]
+    pub next_after_s: f64,
 }
 /// The Failure Category Used for Admission and Retry Decisions.
 #[allow(clippy::all)]
@@ -518,6 +542,8 @@ pub enum Classification {
     TimedOut = 4,
     /// Not admitted: visibility, fingerprint mismatch or absent provider.
     Refused = 5,
+    /// The Request Does Not Match the Served Operation Contract.
+    Invalid = 6,
 }
 impl Classification {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -532,6 +558,7 @@ impl Classification {
             Self::Cancelled => "CLASSIFICATION_CANCELLED",
             Self::TimedOut => "CLASSIFICATION_TIMED_OUT",
             Self::Refused => "CLASSIFICATION_REFUSED",
+            Self::Invalid => "CLASSIFICATION_INVALID",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -543,6 +570,7 @@ impl Classification {
             "CLASSIFICATION_CANCELLED" => Some(Self::Cancelled),
             "CLASSIFICATION_TIMED_OUT" => Some(Self::TimedOut),
             "CLASSIFICATION_REFUSED" => Some(Self::Refused),
+            "CLASSIFICATION_INVALID" => Some(Self::Invalid),
             _ => None,
         }
     }

@@ -59,7 +59,7 @@ fn cancellation_and_finiteness() {
         for statistic in [Aggregate::Median, Aggregate::Percentile(95), Aggregate::Percentile(99)] {
             let mut accumulator = Accumulator::with_settings(Agg::Of(statistic), QueryAccumulatorSettings { memory_bytes });
             for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-                assert!(accumulator.push(0, &ScalarValue::Float(value)).is_err());
+                accumulator.push(0, &ScalarValue::Float(value)).unwrap();
             }
             for (capture, value) in
                 [ScalarValue::Null, ScalarValue::Missing, ScalarValue::Float(-f64::MAX), ScalarValue::Float(f64::MAX)].iter().enumerate()

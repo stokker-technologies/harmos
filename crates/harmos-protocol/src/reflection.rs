@@ -712,6 +712,12 @@ impl ReflectMessage for crate::model::Failure {
     }
 }
 
+impl ReflectMessage for crate::model::OperationRetry {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.model.v1.OperationRetry").expect("generated message")
+    }
+}
+
 impl ReflectMessage for crate::model::PageRequest {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.model.v1.PageRequest").expect("generated message")

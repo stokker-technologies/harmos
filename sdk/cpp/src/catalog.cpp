@@ -210,12 +210,6 @@ Plugin &Plugin::on_stop(std::function<void()> cleanup) {
 }
 
 Registrar &Registrar::add(model::v1::SettingDeclaration declaration) {
-  if (declaration.name().empty() || !declaration.has_default_() ||
-      declaration.default_().value_case() == model::v1::SettingValue::VALUE_NOT_SET)
-    throw invalid_argument("Declare Setting " + declaration.name() + ": Name and Typed Default Are Required");
-  for (const auto &existing : plugin_.settings_.values())
-    if (existing.name() == declaration.name())
-      throw invalid_argument("Declare Setting " + declaration.name() + ": Duplicate Name");
   *plugin_.settings_.add_values() = std::move(declaration);
   return *this;
 }
@@ -255,15 +249,13 @@ model::v1::Declarations Plugin::declarations() const {
         throw invalid_argument("Declare Operation `" + contract.id() + "` Lane `" + contract.lane() + "`: Declare This Lane in the Plugin");
       }
     }
-    if (!operations.insert(operation.contract.id()).second || !operation.handler) {
+    if (!operations.insert(operation.contract.id()).second || !operation.prepare) {
       throw invalid_argument("Duplicate or Unhandled Operation");
     }
     const auto visibility = operation.contract.visibility();
     if (visibility != model::v1::VISIBILITY_PRIVATE && visibility != model::v1::VISIBILITY_PROTECTED &&
         visibility != model::v1::VISIBILITY_PUBLIC)
       throw invalid_argument("Register " + operation.contract.id() + ": Explicit Visibility Is Required");
-    if (visibility == model::v1::VISIBILITY_PRIVATE)
-      continue;
     *declarations.add_operations() = operation.contract;
     detail::merge(*declarations.mutable_types(), operation.types);
   }

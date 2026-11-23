@@ -18,6 +18,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -31,6 +32,7 @@
 // Third Party Imports
 #include <google/protobuf/duration.pb.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/struct.pb.h>
 #include <google/protobuf/timestamp.pb.h>
 
 // Local Imports
@@ -44,6 +46,10 @@
 
 /* === Types === */
 
+namespace harmos {
+// Parse a JSON Object for an Untyped Operation Call.
+google::protobuf::Struct json(const std::string &text);
+} // namespace harmos
 namespace harmos::plugin {
 enum class HostOperation;
 struct HostRoot;
@@ -81,8 +87,28 @@ struct OperationDefinition {
   OperationContract contract;
   bool watch = false;
   google::protobuf::FileDescriptorSet types;
-  std::function<std::string(Context &, const std::string &)> handler;
+  std::function<std::function<std::string(Context &)>(const std::string &)> prepare;
 };
+struct Sampling {
+  std::mutex mutex;
+  std::size_t active = 0;
+  std::function<void(Context &)> start;
+  std::function<void(Context &)> stop;
+
+  void change(Context &context, bool begin) {
+    std::lock_guard lock(mutex);
+    if (begin) {
+      if (active == 0 && start)
+        start(context);
+      ++active;
+      return;
+    }
+    --active;
+    if (active == 0 && stop)
+      stop(context);
+  }
+};
+
 struct StreamDefinition {
   StreamDeclaration declaration;
   google::protobuf::FileDescriptorSet types;
@@ -92,6 +118,7 @@ struct StreamDefinition {
   // A Window Observer Answers a Whole Window with One Columns Message.
   std::function<std::unique_ptr<google::protobuf::Message>(Context &, const Window &)> window;
   std::function<void(Context &, std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>)> producer;
+  std::shared_ptr<Sampling> sampling = std::make_shared<Sampling>();
 };
 struct Invocation;
 struct Watch {
@@ -133,10 +160,41 @@ std::variant<SubscriptionRow, Gap> subscription_item(const std::string &payload)
 
 } // namespace harmos::plugin
 namespace harmos {
-class Failure : public std::runtime_error {
+class OperationError : public std::runtime_error {
 public:
   model::Failure value;
-  explicit Failure(model::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+  explicit OperationError(model::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+
+  const char *kind() const {
+    switch (value.classification()) {
+    case CLASSIFICATION_TRANSIENT:
+      return "transient";
+    case CLASSIFICATION_REFUSED:
+      return "refused";
+    case CLASSIFICATION_INVALID:
+      return "invalid";
+    case CLASSIFICATION_CANCELLED:
+    case CLASSIFICATION_TIMED_OUT:
+      return "cancelled";
+    default:
+      return "permanent";
+    }
+  }
+  const std::string &code() const {
+    return value.code();
+  }
+  const std::string &message() const {
+    return value.message();
+  }
+  const std::string &action() const {
+    return value.action();
+  }
+  const std::string &operation() const {
+    return value.operation();
+  }
+  const ::harmos::OperationRetry &retry() const {
+    return value.retry();
+  }
 };
 
 class TransportError : public std::runtime_error {
@@ -152,12 +210,16 @@ public:
   HostRoot host();
   HostPluginsStateResource state();
   std::string invocation;
+  std::vector<std::string> capturing_executions;
   const std::string &scope() const;
   std::uint32_t attempt = 0;
   std::uint64_t sequence = 0;
 
   explicit Context(std::shared_ptr<detail::Invocation> state);
-  template <class Q, class R> Call<R> call(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
+  template <class Q, class R>
+  Call<R> operation(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy = {});
+  google::protobuf::Struct operation(const std::string &operation, const google::protobuf::Struct &payload = {},
+                                     std::optional<OperationPolicy> policy = {});
   template <class Q, class R> Watching<R> watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes);
   template <class R> Subscription<R> subscribe(const std::string &stream, std::size_t max_item_bytes);
   void sleep(const google::protobuf::Duration &duration);
@@ -178,11 +240,10 @@ private:
   std::shared_ptr<detail::Invocation> state_;
   std::unordered_map<std::type_index, std::any> resources_;
   std::shared_future<std::string> send(const detail::OperationDefinition &operation, const std::string &payload,
-                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel = nullptr);
+                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel = nullptr,
+                                       std::optional<std::string> json = {});
   std::shared_ptr<detail::Watch> open_watch(const detail::OperationDefinition &operation, const std::string &payload,
                                             std::size_t max_item_bytes);
-  std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition &operation, const std::string &payload,
-                                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel);
 };
 
 template <class T> struct Dependency {
@@ -263,6 +324,10 @@ public:
     return *this;
   }
   Plugin &on_stop(std::function<void()> cleanup);
+  Plugin &failure_mapper(std::function<std::optional<OperationError>(std::exception_ptr)> mapper) {
+    failure_mapper_ = std::move(mapper);
+    return *this;
+  }
   Declarations declarations() const;
   // Binds the Supplied Address; Port Zero Selects a Free Port. Stop Keeps Serving.
   Listener start(std::string address) const;
@@ -284,6 +349,7 @@ private:
   std::vector<std::pair<Requirement, google::protobuf::FileDescriptorSet>> requirements_;
   std::vector<std::pair<Section, google::protobuf::FileDescriptorSet>> sections_;
   std::vector<std::function<void()>> cleanup_;
+  std::function<std::optional<OperationError>(std::exception_ptr)> failure_mapper_;
 };
 
 // Declaration-Only Accumulation; No Runtime Facilities Are Available.
@@ -302,8 +368,6 @@ public:
   }
   template <class Q, class R> Registrar &add(const Dependency<Operation<Q, R>> &dependency) {
     const auto &operation = dependency.operation;
-    if (operation.definition.contract.visibility() == VISIBILITY_PRIVATE)
-      throw std::invalid_argument("Require " + operation.definition.contract.id() + ": Private Calls Are Local");
     Requirement requirement;
     requirement.set_id(operation.definition.contract.id());
     requirement.set_fingerprint(operation.definition.contract.fingerprint());
@@ -384,8 +448,10 @@ public:
     definition.types = request;
     detail::merge(definition.types, response);
     if (handler)
-      definition.handler = [handler](Context &ctx, const std::string &bytes) {
-        return detail::encode(handler(ctx, decode<Q>(bytes)));
+      definition.prepare = [handler](const std::string &bytes) -> std::function<std::string(Context &)> {
+        return [handler, request = decode<Q>(bytes)](Context &ctx) {
+          return detail::encode(handler(ctx, request));
+        };
       };
   }
   Operation &lane(const Lane &lane) {
@@ -476,13 +542,11 @@ template <class R> Subscription<R> Context::subscribe(const std::string &stream,
 }
 
 template <class Q, class R>
-Call<R> Context::call(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy) {
+Call<R> Context::operation(const Operation<Q, R> &operation, const Q &request, std::optional<OperationPolicy> policy) {
   if (operation.definition.watch)
     throw std::invalid_argument("Call " + operation.definition.contract.id() + ": Use Watch for a Streaming Contract");
   const auto payload = detail::encode(request);
   std::function<void()> cancel;
-  if (auto result = local(operation.definition, payload, policy, &cancel))
-    return Call<R>(*result, std::move(cancel));
   auto result = send(operation.definition, payload, std::move(policy), &cancel);
   return Call<R>(std::move(result), std::move(cancel));
 }
@@ -536,6 +600,14 @@ private:
   }
 
 public:
+  Observer &on_start(std::function<void(Context &)> hook) {
+    definition.sampling->start = std::move(hook);
+    return *this;
+  }
+  Observer &on_stop(std::function<void(Context &)> hook) {
+    definition.sampling->stop = std::move(hook);
+    return *this;
+  }
   // Answers One Sample per Call; the SDK Calls It for Each Sample of a Window in Order.
   Observer(const Stream<R> &stream, std::function<R(Context &)> handler) : Observer(stream) {
     definition.sample = [handler](Context &ctx) -> std::unique_ptr<google::protobuf::Message> {
@@ -584,6 +656,7 @@ template <class R> Registrar &Registrar::add(const Observer<R> &observer) {
       throw std::invalid_argument("Observer Row Differs from Its Stream");
     stream.sample = observer.definition.sample;
     stream.window = observer.definition.window;
+    stream.sampling = observer.definition.sampling;
     if (observer.definition.declaration.has_interval()) {
       *stream.declaration.mutable_interval() = observer.definition.declaration.interval();
     }

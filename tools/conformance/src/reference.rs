@@ -25,6 +25,7 @@ use futures_core::Stream;
 use futures_util::stream;
 use prost::Message;
 use prost_types::{Duration, Timestamp};
+use serde_json::Value;
 use tokio::{
     net::TcpListener,
     sync::{Mutex, mpsc, oneshot},
@@ -234,6 +235,33 @@ async fn invoke(
     output: &mpsc::Sender<result::Result<InstanceInvokeResponse, Status>>,
 ) -> result::Result<(), Status> {
     let result = match request.operation.as_str() {
+        "conformance.untyped" => {
+            let value = fixture::Value::decode(request.payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()))?;
+            let request: Value = serde_json::from_slice(&value.value).map_err(|error| Status::invalid_argument(error.to_string()))?;
+            let operation =
+                request["operation"].as_str().ok_or_else(|| Status::invalid_argument("Call Untyped: Supply an Operation Identifier"))?;
+            let child = ChildRequest {
+                call: 1,
+                operation: operation.into(),
+                json: Some(request["payload"].to_string()),
+                ..Default::default()
+            };
+            output
+                .send(Ok(InstanceInvokeResponse {
+                    frame: Some(instance_invoke_response::Frame::Child(child)),
+                }))
+                .await
+                .map_err(|_| Status::cancelled("Invocation Closed"))?;
+            let Some(instance_invoke_request::Frame::Child(child)) = input.message().await?.and_then(|frame| frame.frame) else {
+                return Err(Status::invalid_argument("Call Untyped: Expected a Child Reply"));
+            };
+            let value = match child.result {
+                Some(child_response::Result::Payload(payload)) => payload,
+                Some(child_response::Result::Failure(failure)) => failure.encode_to_vec(),
+                _ => return Err(Status::invalid_argument("Call Untyped: Expected JSON or Failure")),
+            };
+            response::Result::Payload(fixture::payload(&value))
+        }
         "conformance.caller_refusal" => {
             send_child(output, 1, "application.host.v1.Invocations/Create", crate::callers::request()).await?;
             let Some(instance_invoke_request::Frame::Child(ChildResponse {
@@ -359,85 +387,14 @@ async fn invoke(
             }
         }
         "conformance.local_call" => {
-            let value = fixture::Value::decode(request.payload.as_slice()).unwrap().value;
-            if matches!(value.as_slice(), b"deadline" | b"overall") {
-                for call in 1..=2 {
-                    send_child(output, call, "harmos.plugin.v1.Time/Get", Vec::new()).await?;
-                    input.message().await?;
-                }
-                for (call, seconds, background) in [(3, 2, true), (4, 3600, false)] {
-                    output
-                        .send(Ok(InstanceInvokeResponse {
-                            frame: Some(instance_invoke_response::Frame::Child(ChildRequest {
-                                call,
-                                operation: "harmos.plugin.v1.Time/Sleep".into(),
-                                payload: TimeSleepRequest {
-                                    duration: Some(Duration { seconds, nanos: 0 }),
-                                }
-                                .encode_to_vec(),
-                                fingerprint: fixture::fingerprint("harmos.plugin.v1.Time/Sleep"),
-                                background,
-                                ..Default::default()
-                            })),
-                        }))
-                        .await
-                        .map_err(|_| Status::cancelled("Host Closed"))?;
-                }
-                input.message().await?;
-                output
-                    .send(Ok(InstanceInvokeResponse {
-                        frame: Some(instance_invoke_response::Frame::ChildCancel(ChildCancel { call: 4 })),
-                    }))
-                    .await
-                    .map_err(|_| Status::cancelled("Host Closed"))?;
-                response::Result::Failure(Failure {
-                    classification: Classification::TimedOut as i32,
-                    code: "deadline".into(),
-                    message: "Invoke: Deadline Reached".into(),
-                    ..Default::default()
-                })
-            } else if value == b"cancel" {
-                send_child(output, 1, "conformance.host.echo", request.payload.clone()).await?;
-                input.message().await?;
-                let Some(instance_invoke_request::Frame::Cancel(cancel)) = input.message().await?.and_then(|frame| frame.frame) else {
-                    return Err(Status::invalid_argument("Private Cancel: Expected Cancel"));
-                };
-                response::Result::Payload(fixture::payload(cancel.reason.as_bytes()))
-            } else if value == b"retry-bound" {
-                send_child(output, 1, "harmos.plugin.v1.Time/Get", Vec::new()).await?;
-                input.message().await?;
-                send_child(
-                    output,
-                    2,
-                    "harmos.plugin.v1.Time/Sleep",
-                    TimeSleepRequest {
-                        duration: Some(Duration { seconds: 1, nanos: 0 }),
-                    }
-                    .encode_to_vec(),
-                )
-                .await?;
-                input.message().await?;
-                response::Result::Failure(Failure {
-                    classification: Classification::TimedOut as i32,
-                    code: "deadline".into(),
-                    message: "Invoke Local: Overall Deadline Reached".into(),
-                    ..Default::default()
-                })
-            } else if value == b"retry" {
-                send_child(
-                    output,
-                    1,
-                    "harmos.plugin.v1.Time/Sleep",
-                    TimeSleepRequest {
-                        duration: Some(Duration { seconds: 1, nanos: 11 }),
-                    }
-                    .encode_to_vec(),
-                )
-                .await?;
-                input.message().await?;
-                response::Result::Payload(fixture::payload(b"2"))
-            } else {
-                response::Result::Payload(request.payload.clone())
+            send_child(output, 1, "conformance.local", request.payload.clone()).await?;
+            let Some(instance_invoke_request::Frame::Child(reply)) = input.message().await?.and_then(|frame| frame.frame) else {
+                return Err(Status::invalid_argument("Invoke Private Operation: Return the Host Child Result"));
+            };
+            match reply.result {
+                Some(child_response::Result::Payload(payload)) => response::Result::Payload(payload),
+                Some(child_response::Result::Failure(failure)) => response::Result::Failure(failure),
+                _ => return Err(Status::invalid_argument("Invoke Private Operation: Return a Unary Result")),
             }
         }
         "conformance.clock" if fixture::Value::decode(request.payload.as_slice()).is_ok_and(|value| value.value == b"wind_down") => {
@@ -513,12 +470,7 @@ async fn invoke(
                 payload: request.payload,
                 fingerprint: fixture::fingerprint("conformance.host.echo"),
                 policy: Some(OperationPolicy {
-                    retries: Some(RetryPolicy {
-                        total_attempts: 3,
-                        initial: Some(Duration { seconds: 1, nanos: 0 }),
-                        maximum: Some(Duration { seconds: 4, nanos: 0 }),
-                        deterministic_jitter: true,
-                    }),
+                    retries: Some(RetryPolicy { total_attempts: 3, ..Default::default() }),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -734,6 +686,19 @@ async fn samples(
         let Some(frame) = frame else {
             return Ok(());
         };
+        if let Some(instance_samples_request::Frame::Demand(demand)) = &frame.frame {
+            if demand.streams.len() > 1 || demand.streams.first().is_some_and(|stream| stream != &open.stream) {
+                return Err(Status::invalid_argument("Change Sampling Demand: Select This Observer's Stream Once or Release It"));
+            }
+            output
+                .send(Ok(InstanceSamplesResponse {
+                    samples: vec![],
+                    frame: Some(instance_samples_response::Frame::Demand(plugin::CollectionDemandResponse {})),
+                }))
+                .await
+                .map_err(|_| Status::cancelled("Sampling Demand Closed"))?;
+            continue;
+        }
         let Some(instance_samples_request::Frame::Window(window)) = frame.frame else {
             return Err(Status::invalid_argument("Receive Samples: Expected a Window"));
         };

@@ -49,11 +49,25 @@ Your application defines each change; Harmos manages its accepted history.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **gRPC Plugin Placement**: Invoke managed or remote gRPC plugins, capture their streams and drive plugin waits and observers from the host clock or [a scoped unit's clock](docs/project/architecture.md#scoped-plugin-bindings).
-- **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
+- **Explicit Visibility**: Every operation call is scheduled by the host. Private operations admit their owning plugin, Protected operations remain host/owner callable, and Public operations admit declared peers and clients.
 - **[Plugin Management](docs/guides/plugin-manager.md)**: Persist settings and revisioned plugin recovery state, and manage native or WebAssembly plugin entries.
 - **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/guides/access-status.md).
 - **gRPC Interfaces** [`grpc`]: Declare product wrappers over native operations and generate product client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
+
+Plugin setting declarations carry their type in the default value's discriminator and
+support inclusive bounds, allowed choices and required values. The host owns declaration validation and validates settings at admission. Saving invalid settings
+returns an actionable InvalidArgument error naming the setting. Observer sampling demand
+is acknowledged separately from the sample carrier: start and stop hooks acquire and
+release resources on the first and last demand, and run again for the next sampling period.
+Rust and C++ expose `on_start` / `on_stop`, Python uses observer decorator arguments of
+the same names, and C# uses `onStart` / `onStop` registration arguments.
+
+Hosts supply current capture identities with `runtime.streams.capture_resolver`, which
+receives a stream ID and optional opaque scope and returns execution IDs. Each observer
+window snapshots the sorted unique IDs; its child calls inherit the same snapshot.
+Observer contexts expose `capturing_executions` in Rust, Python and C++, and
+`CapturingExecutions` in C#. An absent capture resolver yields an empty list.
 
 ## Interfaces
 
@@ -78,6 +92,37 @@ settings through their plugin entries; see [Schematic](docs/schematic.md).
 
 Install `harmos-sdk` (import `harmos`) for plugin carrier helpers. Products own their author-facing SDKs and generated clients.
 Applications generate their own protobuf messages and own connection and authentication.
+
+gRPC plugin contexts call operations by identifier with a JSON object. The host resolves the
+served Protobuf contract and rejects unknown fields. Replies use Protobuf field names
+(snake_case), include default-valued fields and represent absent optional fields as null.
+Requests and replies are JSON objects; a message with a scalar JSON mapping uses
+`{"value": ...}` instead of a scalar root.
+The same invocation owns admission, retries, cancellation and deadlines:
+
+```python
+reply = await ctx.operation("example.radio.set", {"radio": "wifi", "state": "off"})
+```
+
+Python has one public generic operation call. Typed host resources remain available through
+`ctx.host`; `ctx.now()` and `ctx.sleep()` delegate to its generated `ctx.host.time` resource.
+Rust keeps typed request values and accepts `ctx.operation(harmos::untyped(id, payload))`
+for `serde_json::Value` replies. C# offers `ctx.Operation(id, payload)` returning `JsonNode`
+alongside typed declarations; the invocation's identifier is `OperationId`.
+C++ offers `ctx.operation(id, harmos::json(text))` with Protobuf `Struct` objects.
+All four SDKs take and return JSON objects for identifier-based calls.
+Typed and identifier-based calls share `operation` in Rust and C++, `Operation` in C#,
+and `operation` in Python. Rust accepts either a typed request or `untyped(id, payload)`.
+
+Operation failures expose kind, code, message, action, operation and retry evidence
+(`retryable`, `attempts`, `max_attempts`, `next_after_s`). Rust returns `Err(Error)`;
+Python raises `OperationError`, C# throws `OperationException`, and C++20 throws
+`harmos::OperationError`. Plugins can register one failure mapper; an unmapped
+handler error becomes Permanent and retains the exception text and handler identity.
+Native and WebAssembly Rust handlers share the same failure mapper and protobuf failure carrier.
+Rust handlers preserve arbitrary application errors with `Error::other(error)`;
+the plugin's mapper receives the original error for downcasting.
+
 
 #### Examples
 

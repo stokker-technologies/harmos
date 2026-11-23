@@ -15,28 +15,26 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::{
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, BTreeSet},
+    rc::Rc,
+    sync::{Arc, OnceLock},
+};
+
+// Third Party Imports
+use prost::Message;
+use tokio::sync::watch;
+
+// Local Imports
 use super::{
     Registration,
     context::{Import, Transport},
 };
-use crate::{Context, Error, Result, operation::LocalFuture};
-use prost::Message as _;
-use std::{
-    cell::{Cell, RefCell},
-    collections::BTreeMap,
-    rc::Rc,
-    sync::{Arc, OnceLock},
-};
-use tokio::sync::watch;
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
+use crate::{Context, Error, Plugin, Result, context::ChildTransport, operation::LocalFuture};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
-use harmos_protocol::model::Visibility;
 use harmos_protocol::plugin::GuestInitialize;
 use harmos_protocol::plugin::GuestInvocation;
 use harmos_protocol::plugin::GuestPrepare;
@@ -179,10 +177,10 @@ impl Session {
                     self.assignments.set(assignments).map_err(|_| invalid("Guest Assignments Are Frozen"))?;
                     *self.generation_context.borrow_mut() = initialize.generation_context;
                     let mut context = context;
-                    context.child = Some(self.transport(context.guest_transport()?.context.clone(), true));
+                    context.queue.child = Some(self.transport(context.guest_transport()?.context.clone(), true));
                     slot.failed_initialization.set(true);
                     if let Some(initialize_callback) = &self.registration.initialize {
-                        initialize_callback.run(&context, initialize.configuration).await?;
+                        initialize_callback.run(&context, initialize.configuration).await.map_err(|error| mapped(&context, error))?;
                     }
                     slot.failed_initialization.set(false);
                     self.initialized.set(true);
@@ -191,7 +189,7 @@ impl Session {
                 if operation == "harmos.shutdown" {
                     self.closed.set(true);
                     if let Some(shutdown) = &self.registration.shutdown {
-                        shutdown.run(&context).await?;
+                        shutdown.run(&context).await.map_err(|error| mapped(&context, error))?;
                     }
                     self.initialized.set(false);
                     return Ok(Vec::new());
@@ -206,7 +204,7 @@ impl Session {
                     .iter()
                     .find(|entry| entry.contract.id == operation)
                     .ok_or_else(|| invalid("Unknown Guest Operation"))?;
-                handler.handler.execute(&context, slot.prepare.payload.clone()).await
+                handler.handler.execute(&context, slot.prepare.payload.clone()).await.map_err(|error| mapped(&context, error))
             }
             guest_command::Phase::Cancel(invocation) => {
                 if let Ok(slot) = self.slot(invocation) {
@@ -301,7 +299,7 @@ impl Session {
     fn slot(&self, invocation: u64) -> Result<Rc<Slot>> {
         self.slots.borrow().get(&invocation).cloned().ok_or_else(|| invalid("Guest Invocation Was Not Prepared"))
     }
-    fn transport(&self, context: Vec<u8>, retained: bool) -> Arc<dyn crate::context::ChildTransport> {
+    fn transport(&self, context: Vec<u8>, retained: bool) -> Arc<dyn ChildTransport> {
         Arc::new(Transport {
             import: Arc::clone(&self.import),
             context,
@@ -328,20 +326,12 @@ impl Session {
                 ..Default::default()
             },
             self.registration.plugin.id.clone(),
-            crate::Plugin::requirements(declarations),
+            Plugin::requirements(declarations),
         );
-        context.local = Arc::new(
-            self.registration
-                .plugin
-                .operations
-                .iter()
-                .filter(|operation| operation.contract.visibility == Visibility::Private as i32)
-                .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
-                .collect(),
-        );
-        context.child = Some(self.transport(invocation.context, false));
+        context.queue.child = Some(self.transport(invocation.context, false));
         context.values = invocation.values;
         context.cancellation = slot.cancellation.clone();
+        context.failure_mapper = self.registration.plugin.failure_mapper.clone();
         Ok(context)
     }
 }
@@ -355,11 +345,15 @@ impl Drop for Loan {
 
 /* === Private Functions === */
 
+fn mapped(context: &Context, error: Error) -> Error {
+    error.mapped(context.failure_mapper.as_ref()).into_failure(&context.operation, &context.plugin).into()
+}
+
 fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }
 fn validate_assignments(assignments: &OperationAssignments) -> Result<()> {
-    let mut locals = std::collections::BTreeSet::new();
+    let mut locals = BTreeSet::new();
     for entry in &assignments.operations {
         let local =
             entry.operation.split_once('.').map(|(_, local)| local).ok_or_else(|| invalid("Assigned Operation Is Not Qualified"))?;
@@ -371,3 +365,90 @@ fn validate_assignments(assignments: &OperationAssignments) -> Result<()> {
     Ok(())
 }
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Plugin, Visibility, plugin::Operation};
+    use harmos_protocol::plugin::GuestCommand;
+    use std::io;
+
+    async fn fail(_: &Context, _: ()) -> Result<()> {
+        Err(Error::other(io::Error::other("Reconnect Sensor")))
+    }
+
+    #[tokio::test]
+    async fn guest_attempt_maps_original_errors_and_retains_handler_identity() {
+        for map in [false, true] {
+            let mut plugin = Plugin::new("fixture", "1.0.0")
+                .register(|ctx| {
+                    ctx.register(Operation::new("fixture.fail", fail).visibility(Visibility::Public))?;
+                    Ok(())
+                })
+                .unwrap();
+            if map {
+                plugin = plugin.failure_mapper(|error| {
+                    assert!(error.downcast_ref::<io::Error>().is_some());
+                    Some(Error::failure(Classification::Transient, "sensor_unavailable", "Sensor Is Unavailable", "Reconnect Sensor"))
+                });
+            }
+            let adapter = Adapter::new(Registration::new(plugin), |_| Box::pin(async { panic!("No Child Import Expected") })).unwrap();
+            adapter.0.initialized.set(true);
+            let fingerprint = adapter.metadata().declarations.as_ref().unwrap().operations[0].fingerprint.clone();
+            let operation = "fixture.fixture.fail";
+            let invocation = GuestInvocation {
+                invocation: 1,
+                context: vec![1; 32],
+                values: Vec::new(),
+            };
+            for phase in [
+                guest_command::Phase::Prepare(GuestPrepare {
+                    invocation: 1,
+                    operation: operation.into(),
+                    fingerprint,
+                    generation: 1,
+                    payload: Vec::new(),
+                }),
+                guest_command::Phase::Initialize(invocation.clone()),
+                guest_command::Phase::Attempt(invocation),
+            ] {
+                let attempt = matches!(&phase, guest_command::Phase::Attempt(_));
+                let bytes = adapter.operate("fixture", &GuestCommand { phase: Some(phase) }.encode_to_vec()).await;
+                let result = Response::decode(bytes.as_slice()).unwrap().result.unwrap();
+                if !attempt {
+                    assert!(matches!(result, response::Result::Payload(_)));
+                    continue;
+                }
+                let response::Result::Failure(failure) = result else {
+                    panic!("Expected Handler Failure")
+                };
+                assert_eq!(failure.operation, operation);
+                assert_eq!(failure.plugin, "fixture");
+                assert_eq!(
+                    failure.classification(),
+                    if map {
+                        Classification::Transient
+                    } else {
+                        Classification::Permanent
+                    }
+                );
+                assert_eq!(
+                    failure.code,
+                    if map {
+                        "sensor_unavailable"
+                    } else {
+                        "sdk_error"
+                    }
+                );
+                assert_eq!(
+                    failure.message,
+                    if map {
+                        "Sensor Is Unavailable"
+                    } else {
+                        "Reconnect Sensor"
+                    }
+                );
+            }
+        }
+    }
+}

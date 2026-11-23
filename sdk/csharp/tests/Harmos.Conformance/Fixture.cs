@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#nullable enable
+
 using System.Buffers.Binary;
+using System.Text.Json.Nodes;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,7 +38,7 @@ public sealed class Fixture
   private static readonly Lane Other = Lane.Serial("other");
 
   public global::Harmos.Plugins.Plugin Build() => new global::Harmos.Plugins.Plugin("conformance", "1.0.0")
-      .Lane(Instrument).Lane(Parallel).Lane(Open).Lane(Other).Register(Register);
+      .Lane(Instrument).Lane(Parallel).Lane(Open).Lane(Other).FailureMapper(MapFailure).Register(Register);
 
   private void Register(Registrar ctx)
   {
@@ -53,6 +56,7 @@ public sealed class Fixture
     ctx.Register(new Operation<Value, Value>("conformance.failure", Visibility.Public), Failure);
     ctx.Register(new Operation<Value, Value>("conformance.child_failure", Visibility.Public), ChildFailure);
     ctx.Register(new Operation<Value, Value>("conformance.policy", Visibility.Public), Policy);
+    ctx.Register(new Operation<Value, Value>("conformance.untyped", Visibility.Public), UntypedCall);
     ctx.Register(new Operation<Graph, Graph.Types.Nested>("conformance.schema", Visibility.Public),
           (context, request) => Task.FromResult(new Graph.Types.Nested { Count = request.Items.Count, Next = request }));
     ctx.Register(new Operation<Graph.Types.Nested, Graph>("conformance.nested", Visibility.Public),
@@ -107,14 +111,28 @@ public sealed class Fixture
     ctx.Register("label", new SettingValue { Text = "default" }, "label", "Conformance label");
   };
 
+  private async Task<Value> UntypedCall(global::Harmos.Plugins.Context context, Value request)
+  {
+    var value = JsonNode.Parse(request.Value_.ToStringUtf8())!;
+    try
+    {
+      var reply = await context.Operation(value["operation"]!.GetValue<string>(), value["payload"]);
+      return new Value { Value_ = ByteString.CopyFromUtf8(reply!.ToJsonString()) };
+    }
+    catch (OperationException error)
+    {
+      return new Value { Value_ = error.Failure.ToByteString() };
+    }
+  }
+
   private async Task<Value> CallerRefusal(global::Harmos.Plugins.Context context, Value request)
   {
     try
     {
       var invocation = Wire.InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
-      await context.CallAsync(createInvocation, invocation);
+      await context.Operation(createInvocation, invocation);
     }
-    catch (PluginFailureException error)
+    catch (OperationException error)
     {
       if (request.Value_ == ByteString.CopyFromUtf8("propagate"))
         throw;
@@ -139,7 +157,7 @@ public sealed class Fixture
 
   private async Task<Value> SampleContext(global::Harmos.Plugins.Context context)
   {
-    var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
+    var echo = await context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
     var settings = await context.Host.Plugins.Settings.List();
     using var value = new MemoryStream();
@@ -158,66 +176,40 @@ public sealed class Fixture
   {
     try
     {
-      return await context.CallAsync(hostFail, new Value());
+      return await context.Operation(hostFail, new Value());
     }
-    catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
+    catch (OperationException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
   }
 
   private async Task<Value> SampleCancel(global::Harmos.Plugins.Context context)
   {
     using var cancelled = new CancellationTokenSource();
-    var pending = context.CallAsync(hostPending, new Value(), cancellationToken: cancelled.Token);
+    var pending = context.Operation(hostPending, new Value(), cancellationToken: cancelled.Token);
     _ = pending.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
-    await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("release") });
+    await context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("release") });
     await cancelled.CancelAsync();
     try
     {
       await pending;
     }
     catch (OperationCanceledException) { }
-    var automatic = context.CallAsync(hostPending, new Value());
+    var automatic = context.Operation(hostPending, new Value());
     _ = automatic.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
     return new Value { Value_ = ByteString.CopyFromUtf8("cancelled") };
   }
 
   private Task<Value> PeerCall(global::Harmos.Plugins.Context context, Value request) => request.Value_.ToStringUtf8() switch
   {
-    "public" => context.CallAsync(peerPublic, new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }),
-    "protected" => context.CallAsync(peerProtected, request),
-    "self" => context.CallAsync(ownProtected, request),
-    _ => context.CallAsync(peerLocal, request),
+    "public" => context.Operation(peerPublic, new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }),
+    "protected" => context.Operation(peerProtected, request),
+    "self" => context.Operation(ownProtected, request),
+    _ => context.Operation(peerLocal, request),
   };
 
-  private async Task<Value> Local(global::Harmos.Plugins.Context context, Value request)
-  {
-    if (request.Value_.ToStringUtf8() is "deadline" or "overall")
-    {
-      await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
-      return request;
-    }
-    if (request.Value_ == ByteString.CopyFromUtf8("cancel"))
-    {
-      await context.CallAsync(hostEcho, request);
-      return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
-    }
-    if (request.Value_.ToStringUtf8() is not ("retry" or "retry-bound"))
-      return request;
-    if (context.Attempt == 1)
-      throw new PluginFailureException(new Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
-    return new Value { Value_ = ByteString.CopyFromUtf8(context.Attempt.ToString()) };
-  }
+  private Task<Value> Local(global::Harmos.Plugins.Context context, Value request) => Task.FromResult(request);
   private Task<Value> LocalCall(global::Harmos.Plugins.Context context, Value request)
   {
-    var policy = request.Value_.ToStringUtf8() switch
-    {
-      "retry" => new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 2, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } },
-      "deadline" => new OperationPolicy { Timeout = new Duration { Seconds = 3 }, AttemptTimeout = new Duration { Seconds = 2 } },
-      "cancel" => new OperationPolicy { CancellationTimeout = new Duration { Seconds = 1 } },
-      "overall" => new OperationPolicy { Timeout = new Duration { Seconds = 2 }, CancellationTimeout = new Duration { Seconds = 1 } },
-      "retry-bound" => new OperationPolicy { Timeout = new Duration { Seconds = 1 }, Retries = new RetryPolicy { TotalAttempts = 2, Initial = new Duration { Seconds = 3600 } } },
-      _ => null
-    };
-    return context.CallAsync(local, request, policy);
+    return context.Operation(local, request);
   }
 
   private async Task<Value> Watch(global::Harmos.Plugins.Context context, Value request)
@@ -235,13 +227,13 @@ public sealed class Fixture
   private async Task<Value> Resources(global::Harmos.Plugins.Context context, Value request)
   {
     context.Set(request.Clone());
-    await context.CallAsync(hostEcho, request);
+    await context.Operation(hostEcho, request);
     return context.Get<Value>();
   }
 
   private async Task<Value> CancelReason(global::Harmos.Plugins.Context context, Value request)
   {
-    await context.CallAsync(hostEcho, request);
+    await context.Operation(hostEcho, request);
     return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
   }
 
@@ -274,8 +266,8 @@ public sealed class Fixture
 
   private async Task<Value> Children(global::Harmos.Plugins.Context context, Value request)
   {
-    var first = context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFrom([1]) });
-    var second = context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFrom([2]) });
+    var first = context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFrom([1]) });
+    var second = context.Operation(hostEcho, new Value { Value_ = ByteString.CopyFrom([2]) });
     var replies = await Task.WhenAll(first, second);
     var bytes = replies.SelectMany(reply => reply.Value_).ToArray();
     return new Value { Value_ = ByteString.CopyFrom(bytes) };
@@ -283,34 +275,37 @@ public sealed class Fixture
 
   private async Task<Value> Policy(global::Harmos.Plugins.Context context, Value request)
   {
-    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } });
-    return await context.CallAsync(hostEcho, first);
+    var first = await context.Operation(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3 } });
+    return await context.Operation(hostEcho, first);
   }
 
-  private Task<Value> Cancel(global::Harmos.Plugins.Context context, Value request) => context.CallAsync(hostPending, request);
+  private Task<Value> Cancel(global::Harmos.Plugins.Context context, Value request) => context.Operation(hostPending, request);
 
-  private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.CallAsync(hostFail, request);
+  private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.Operation(hostFail, request);
 
-  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new PluginFailureException(new Failure
-  {
-    Classification = Classification.Permanent,
-    Code = "fixture_failure",
-    Message = "Fixture Failed",
-    Action = "Use Another Input",
-    Operation = "conformance.failure",
-    Plugin = "conformance",
-    Diagnostics = "Fixture Diagnostics",
-    Details = { ["fixture"] = "value" },
-    Cause = new Failure
-    {
-      Classification = Classification.Transient,
-      Code = "fixture_cause",
-      Message = "Fixture Cause",
-      Action = "Retry",
-      Operation = "conformance.host.fail",
-      Plugin = "host"
-    }
-  });
+  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new InvalidOperationException("Fixture Failure");
+
+  private static OperationException? MapFailure(Exception error) =>
+      error is InvalidOperationException && error.Message == "Fixture Failure" ? new OperationException(new Failure
+      {
+        Classification = Classification.Permanent,
+        Code = "fixture_failure",
+        Message = "Fixture Failed",
+        Action = "Use Another Input",
+        Operation = "conformance.failure",
+        Plugin = "conformance",
+        Diagnostics = "Fixture Diagnostics",
+        Details = { ["fixture"] = "value" },
+        Cause = new Failure
+        {
+          Classification = Classification.Transient,
+          Code = "fixture_cause",
+          Message = "Fixture Cause",
+          Action = "Retry",
+          Operation = "conformance.host.fail",
+          Plugin = "host"
+        }
+      }) : null;
 
   private Task<Value> Sequence(global::Harmos.Plugins.Context context)
   {

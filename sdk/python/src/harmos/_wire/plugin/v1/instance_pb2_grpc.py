@@ -89,8 +89,9 @@ class InstanceServicer:
 
     def Samples(self, request_iterator, context):
         """One declared stream or collection, selected by its lexicographically first member.
-        The host opens with SamplesSelection. Ordinary streams take demand from open/close;
-        collections take listened members from CollectionDemand, acknowledged after listener hooks.
+        The host opens with SamplesSelection. Device streams take demand from open/close;
+        interval observers take sampling demand from CollectionDemand, acknowledged after
+        first-demand start or last-demand stop hooks. Collections select their listened members.
         For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
         the plugin answers with SampleBatch column parts or one CollectionBatch per tick;
         the final part or tick is marked last. Only one window may be unanswered.

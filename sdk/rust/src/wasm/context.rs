@@ -20,18 +20,18 @@ mod release_native;
 
 /* === Imports === */
 
-use crate::{Context, Error, Message, OperationRequest, Result, context::ChildTransport, operation::LocalFuture};
-use prost::Message as _;
+// Standard Library Imports
 use std::{
+    any::Any,
     marker::PhantomData,
     sync::{Arc, OnceLock},
 };
 
-// Standard Library Imports
-
 // Third Party Imports
+use prost::Message;
 
 // Local Imports
+use crate::{Context, Error, OperationRequest, Result, context::ChildTransport, message, operation::LocalFuture};
 use harmos_protocol::model::InstanceState;
 use harmos_protocol::model::OperationPolicy;
 use harmos_protocol::plugin::ChildRequest;
@@ -62,7 +62,7 @@ pub(crate) struct Transport {
 
 /// The original attempt owns the child until join, release or parent settlement.
 #[must_use = "dropping a child releases and cancels its work"]
-pub struct Child<R: Message> {
+pub struct Child<R: message::Message> {
     context: Context,
     instance: u64,
     released: bool,
@@ -118,21 +118,19 @@ impl Transport {
 
 impl Context {
     pub(super) fn guest_transport(&self) -> Result<&Transport> {
-        let transport = self.child.as_ref().ok_or_else(|| Error::Invalid("Guest Attempt Context Required".into()))?;
-        (transport.as_ref() as &dyn std::any::Any)
-            .downcast_ref::<Transport>()
-            .ok_or_else(|| Error::Invalid("Guest Transport Required".into()))
+        let transport = self.queue.child.as_ref().ok_or_else(|| Error::Invalid("Guest Attempt Context Required".into()))?;
+        (transport.as_ref() as &dyn Any).downcast_ref::<Transport>().ok_or_else(|| Error::Invalid("Guest Transport Required".into()))
     }
 
     /// Clone portable protobuf values into a child context without changing the parent.
-    pub fn with_value<T: Message>(&self, value: T) -> Self {
+    pub fn with_value<T: message::Message>(&self, value: T) -> Self {
         let mut context = self.clone();
         let key = T::name();
         context.values.retain(|entry| entry.key != key);
         context.values.push(GuestValue { key, payload: value.encode_to_vec() });
         context
     }
-    pub fn value<T: Message>(&self) -> Result<Option<T>> {
+    pub fn value<T: message::Message>(&self) -> Result<Option<T>> {
         self.values
             .iter()
             .find(|entry| entry.key == T::name())
@@ -183,7 +181,7 @@ impl Context {
     }
 }
 
-impl<R: Message> Child<R> {
+impl<R: message::Message> Child<R> {
     pub fn id(&self) -> u64 {
         self.instance
     }

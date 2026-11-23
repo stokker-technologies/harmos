@@ -52,7 +52,7 @@ impl Coordinates {
     }
 
     pub fn get(&mut self, index: usize) -> Result<(f64, f64)> {
-        self.0.get(index)
+        self.0.get(index).map(|(x, y, _)| (x, y))
     }
 
     pub fn select(&mut self, plan: &Downsample) -> Result<Vec<usize>> {

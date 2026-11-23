@@ -17,7 +17,7 @@ using Microsoft.Extensions.Hosting;
 namespace Harmos.Plugins;
 
 internal sealed class PluginService(InstanceGetResponse description, Dictionary<string, Handler> operations,
-    Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime)
+    Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime, Func<Exception, OperationException?>? failureMapper = null)
     : Harmos.Internal.Plugin.Instance.InstanceBase
 {
   private readonly Dictionary<string, ByteString> requires = description.Declarations.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
@@ -37,7 +37,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     var request = input.Current.Request;
     if (request.Invocation.Length == 0 || request.Attempt == 0)
       throw Invalid("Invocation and Attempt Are Required");
-    if (!operations.TryGetValue(request.Operation, out var handler) || handler.Contract.Visibility == Visibility.Private)
+    if (!operations.TryGetValue(request.Operation, out var handler))
       throw new RpcException(new global::Grpc.Core.Status(StatusCode.NotFound, "Unknown Operation"));
 
     IMessage decoded;
@@ -51,7 +51,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
 
     using var stopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
     var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
-    var context = new Context(request, description.Id, requires, stopped, frames.Writer, operations);
+    var context = new Context(request, description.Id, requires, stopped, frames.Writer);
     var processing = RunInvoke(input, handler, decoded, context, frames.Writer, call.CancellationToken);
     try
     {
@@ -65,7 +65,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     }
   }
 
-  private static async Task RunInvoke(IAsyncStreamReader<InstanceInvokeRequest> input, Handler handler, IMessage request,
+  private async Task RunInvoke(IAsyncStreamReader<InstanceInvokeRequest> input, Handler handler, IMessage request,
       Context context, ChannelWriter<InstanceInvokeResponse> output, CancellationToken transport)
   {
     Task<ByteString>? executing = null;
@@ -117,7 +117,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       {
         response = new Response { Payload = await executing };
       }
-      catch (PluginFailureException error) { response = new Response { Failure = error.Failure }; }
+      catch (OperationException error) { response = new Response { Failure = error.Failure }; }
       catch (OperationCanceledException) when (!transport.IsCancellationRequested)
       {
         response = new Response { Failure = context.CancellationFailure().Failure };
@@ -148,24 +148,39 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     }
   }
 
-  private static async Task<ByteString> Execute(Handler handler, Context context, IMessage request)
+  private async Task<ByteString> Execute(Handler handler, Context context, IMessage request)
   {
     try
     {
       return await handler.Execute(context, request);
     }
-    catch (PluginFailureException) { throw; }
-    catch (RpcException) { throw; }
+    catch (OperationException error)
+    {
+      if (error.Failure.Operation.Length == 0)
+        error.Failure.Operation = context.OperationId;
+      if (error.Failure.Plugin.Length == 0)
+        error.Failure.Plugin = context.Plugin;
+      throw;
+    }
     catch (OperationCanceledException) { throw; }
     catch (Exception error)
     {
-      throw new PluginFailureException(new Failure
+      var mapped = failureMapper?.Invoke(error);
+      if (mapped is not null)
+      {
+        if (mapped.Failure.Operation.Length == 0)
+          mapped.Failure.Operation = context.OperationId;
+        if (mapped.Failure.Plugin.Length == 0)
+          mapped.Failure.Plugin = context.Plugin;
+        throw mapped;
+      }
+      throw new OperationException(new Failure
       {
         Classification = Classification.Permanent,
         Code = "handler_failed",
         Message = error.Message,
         Action = "Inspect Plugin Diagnostics",
-        Operation = context.Operation,
+        Operation = context.OperationId,
         Plugin = context.Plugin,
         Diagnostics = error.ToString()
       });
@@ -191,6 +206,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     Task<Columns>? observing = null;
     Context? windowContext = null;
     CancellationTokenSource? windowStopped = null;
+    var active = false;
     try
     {
       if (publication.Observer is not null)
@@ -199,6 +215,23 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         reading = input.MoveNext(readingStopped.Token);
         while (await reading)
         {
+          if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.Demand)
+          {
+            var selected = input.Current.Demand.Streams;
+            if (selected.Count > 1 || (selected.Count == 1 && selected[0] != open.Stream))
+              throw Invalid("Change Sampling Demand: Select This Observer's Stream Once or Release It");
+            var wanted = selected.Count != 0;
+            if (active != wanted)
+            {
+              if (!wanted)
+                active = false;
+              await publication.Change(context, wanted);
+              active = wanted;
+            }
+            await output.WriteAsync(new InstanceSamplesResponse { Demand = new CollectionDemandResponse() }, call.CancellationToken);
+            reading = input.MoveNext(readingStopped.Token);
+            continue;
+          }
           if (input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.WindDown && input.Current.WindDown)
           {
             context.RequestWindDown();
@@ -209,9 +242,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
           windowStopped = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
           var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
           windowContext = new Context(new Request { Operation = open.Stream, Scope = open.Scope, Attempt = 1 },
-              description.Id, requires, windowStopped, frames.Writer, operations)
+              description.Id, requires, windowStopped, frames.Writer)
           {
             Sequence = window.Sequence,
+            CapturingExecutions = input.Current.Window.CapturingExecutions.ToArray(),
             At = window.Start.Clone(),
             LastCall = lastCall
           };
@@ -328,6 +362,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         catch (Exception) when (stopped.IsCancellationRequested) { }
       }
       windowStopped?.Dispose();
+      if (active)
+        await publication.Change(context, false);
     }
   }
 

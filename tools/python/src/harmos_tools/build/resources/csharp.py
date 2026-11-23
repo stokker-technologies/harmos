@@ -442,7 +442,7 @@ def host(
                 ]
             else:
                 lines += [
-                    f"    var response = await context.CallAsync(HostContracts.{name}, request, policy, cancellationToken);",
+                    f"    var response = await context.Operation(HostContracts.{name}, request, policy, cancellationToken);",
                     f"    return {value};",
                 ]
             lines += ["  }"]

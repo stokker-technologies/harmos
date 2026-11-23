@@ -19,6 +19,7 @@
 #include "_wire/contracts.hpp"
 #include "generated/types.hpp"
 #include "harmos/host/v1/invocations.pb.h"
+#include <google/protobuf/util/json_util.h>
 
 using google::protobuf::Duration;
 using std::optional;
@@ -84,6 +85,16 @@ harmos::model::Failure failure() {
 
 harmos::plugin::Plugin harmos::conformance::plugin() {
   harmos::plugin::Plugin result("conformance", "1.0.0");
+  result.failure_mapper([](std::exception_ptr error) -> std::optional<harmos::OperationError> {
+    try {
+      std::rethrow_exception(error);
+    } catch (const std::runtime_error &cause) {
+      if (string(cause.what()) == "Fixture Failure")
+        return harmos::OperationError(failure());
+    } catch (...) {
+    }
+    return std::nullopt;
+  });
   result.lane(harmos::plugin::Lane::serial("instrument"))
       .lane(harmos::plugin::Lane::concurrent("parallel", 2))
       .lane(harmos::plugin::Lane::unbounded("open"))
@@ -101,59 +112,13 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     const auto instrument = harmos::plugin::Lane::serial("instrument");
     const auto parallel = harmos::plugin::Lane::concurrent("parallel", 2);
     const auto other = harmos::plugin::Lane::serial("other");
-    harmos::plugin::Operation<Value, Value> local("conformance.local", harmos::VISIBILITY_PRIVATE, [echo](Context &context, Value request) {
-      if (request.value() == "deadline" || request.value() == "overall") {
-        Duration delay;
-        delay.set_seconds(3600);
-        context.sleep(delay);
-        return request;
-      }
-      if (request.value() == "cancel") {
-        context.call(echo, request).get();
-        return value(context.cancelled());
-      }
-      if (request.value() != "retry" && request.value() != "retry-bound")
-        return request;
-      if (context.attempt == 1) {
-        auto error = failure();
-        error.set_classification(harmos::CLASSIFICATION_TRANSIENT);
-        throw harmos::Failure(error);
-      }
-      return value(std::to_string(context.attempt));
+    harmos::plugin::Operation<Value, Value> local("conformance.local", harmos::VISIBILITY_PRIVATE, [](Context &, Value request) {
+      return request;
     });
     local.replay_safe();
     registrar.add(local).add(
         harmos::plugin::Operation<Value, Value>("conformance.local_call", harmos::VISIBILITY_PUBLIC, [local](Context &ctx, Value request) {
-          optional<harmos::OperationPolicy> policy;
-          if (request.value() == "deadline") {
-            policy.emplace();
-            policy->mutable_timeout()->set_seconds(3);
-            policy->mutable_attempt_timeout()->set_seconds(2);
-          }
-          if (request.value() == "cancel") {
-            policy.emplace();
-            policy->mutable_cancellation_timeout()->set_seconds(1);
-          }
-          if (request.value() == "overall") {
-            policy.emplace();
-            policy->mutable_timeout()->set_seconds(2);
-            policy->mutable_cancellation_timeout()->set_seconds(1);
-          }
-          if (request.value() == "retry-bound") {
-            policy.emplace();
-            policy->mutable_timeout()->set_seconds(1);
-            policy->mutable_retries()->set_total_attempts(2);
-            policy->mutable_retries()->mutable_initial()->set_seconds(3600);
-          }
-          if (request.value() == "retry") {
-            policy.emplace();
-            auto *retry = policy->mutable_retries();
-            retry->set_total_attempts(2);
-            retry->mutable_initial()->set_seconds(1);
-            retry->mutable_maximum()->set_seconds(4);
-            retry->set_deterministic_jitter(true);
-          }
-          return ctx.call(local, request, policy).get();
+          return ctx.operation(local, request).get();
         }));
     registrar
         .add(harmos::plugin::Operation<Value, Value>("conformance.step.0", harmos::VISIBILITY_PUBLIC,
@@ -163,24 +128,24 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.children", harmos::VISIBILITY_PUBLIC,
                                                      [echo](Context &ctx, Value) {
-                                                       auto first = ctx.call(echo, value(string(1, '\1')));
-                                                       auto second = ctx.call(echo, value(string(1, '\2')));
+                                                       auto first = ctx.operation(echo, value(string(1, '\1')));
+                                                       auto second = ctx.operation(echo, value(string(1, '\2')));
                                                        return value(first.get().value() + second.get().value());
                                                      })
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.cancel", harmos::VISIBILITY_PUBLIC,
                                                      [pending](Context &ctx, Value request) {
-                                                       return ctx.call(pending, request).get();
+                                                       return ctx.operation(pending, request).get();
                                                      })
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.failure", harmos::VISIBILITY_PUBLIC,
                                                      [](Context &, Value) -> Value {
-                                                       throw harmos::Failure(failure());
+                                                       throw std::runtime_error("Fixture Failure");
                                                      })
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Operation<Value, Value>("conformance.child_failure", harmos::VISIBILITY_PUBLIC,
                                                      [fail](Context &ctx, Value request) {
-                                                       return ctx.call(fail, request).get();
+                                                       return ctx.operation(fail, request).get();
                                                      })
                  .visibility(harmos::VISIBILITY_PUBLIC))
         .add(harmos::plugin::Dependency{echo})
@@ -193,12 +158,23 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
         harmos::plugin::Operation<Value, Value>("conformance.policy", harmos::VISIBILITY_PUBLIC, [echo](Context &ctx, Value request) {
           harmos::OperationPolicy policy;
           policy.mutable_retries()->set_total_attempts(3);
-          policy.mutable_retries()->mutable_initial()->set_seconds(1);
-          policy.mutable_retries()->mutable_maximum()->set_seconds(4);
-          policy.mutable_retries()->set_deterministic_jitter(true);
-          const auto first = ctx.call(echo, request, policy).get();
-          return ctx.call(echo, first).get();
+          const auto first = ctx.operation(echo, request, policy).get();
+          return ctx.operation(echo, first).get();
         }).visibility(harmos::VISIBILITY_PUBLIC));
+    registrar.add(
+        harmos::plugin::Operation<Value, Value>("conformance.untyped", harmos::VISIBILITY_PUBLIC, [](Context &context, Value request) {
+          auto input = harmos::json(request.value());
+          try {
+            auto reply = context.operation(input.fields().at("operation").string_value(), input.fields().at("payload").struct_value());
+            string text;
+            auto status = google::protobuf::util::MessageToJsonString(reply, &text);
+            if (!status.ok())
+              throw runtime_error(status.ToString());
+            return value(std::move(text));
+          } catch (const harmos::OperationError &error) {
+            return value(error.value.SerializeAsString());
+          }
+        }));
     registrar.add(
         harmos::plugin::Operation<Graph, Graph::Nested>("conformance.schema", harmos::VISIBILITY_PUBLIC, [](Context &, Graph request) {
           Graph::Nested response;
@@ -251,14 +227,14 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     registrar.add(harmos::plugin::Operation<Value, Value>(steps_operation, harmos::VISIBILITY_PUBLIC,
                                                           [echo](Context &ctx, Value request) {
                                                             ctx.set(request);
-                                                            ctx.call(echo, request).get();
+                                                            ctx.operation(echo, request).get();
                                                             return ctx.get<Value>();
                                                           })
                       .visibility(harmos::VISIBILITY_PUBLIC)
                       .replay_safe());
     registrar.add(harmos::plugin::Operation<Value, Value>("conformance.cancel_reason", harmos::VISIBILITY_PUBLIC,
                                                           [echo](Context &ctx, Value request) {
-                                                            ctx.call(echo, request).get();
+                                                            ctx.operation(echo, request).get();
                                                             return value(ctx.cancelled());
                                                           })
                       .visibility(harmos::VISIBILITY_PUBLIC));
@@ -294,10 +270,10 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
             "conformance.peer_call", harmos::VISIBILITY_PUBLIC,
             [peer_public, peer_protected, peer_local, own_protected](Context &context, Value request) {
               if (request.value() == "self")
-                return context.call(own_protected, request).get();
+                return context.operation(own_protected, request).get();
               if (request.value() == "public")
-                return context.call(peer_public, value(context.scope())).get();
-              return context.call(request.value() == "protected" ? peer_protected : peer_local, request).get();
+                return context.operation(peer_public, value(context.scope())).get();
+              return context.operation(request.value() == "protected" ? peer_protected : peer_local, request).get();
             }))
         .add(harmos::plugin::Dependency{peer_public})
         .add(harmos::plugin::Dependency{peer_protected})
@@ -361,15 +337,15 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
 
     harmos::plugin::Stream<Value> children("conformance.window_children");
     harmos::plugin::Observer<Value> child_observer(children, [echo](Context &context) {
-      auto first = context.call(echo, value(string(1, '\1')));
-      auto second = context.call(echo, value(string(1, '\2')));
+      auto first = context.operation(echo, value(string(1, '\1')));
+      auto second = context.operation(echo, value(string(1, '\2')));
       return value(first.get().value() + second.get().value());
     });
     registrar.add(children).add(child_observer.every(interval));
 
     harmos::plugin::Stream<Value> calls("conformance.window_context");
     harmos::plugin::Observer<Value> call_observer(calls, [echo](Context &context) {
-      const auto echoed = context.call(echo, value(context.scope())).get();
+      const auto echoed = context.operation(echo, value(context.scope())).get();
       harmos::plugin::TimeGetResponse time;
       *time.mutable_now() = context.host().time.get();
       const auto setting_values = context.host().plugins.settings.list();
@@ -388,8 +364,8 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     harmos::plugin::Stream<Value> failures("conformance.window_failure");
     harmos::plugin::Observer<Value> failure_observer(failures, [fail](Context &context) {
       try {
-        context.call(fail, Value{}).get();
-      } catch (const harmos::Failure &failure) {
+        context.operation(fail, Value{}).get();
+      } catch (const harmos::OperationError &failure) {
         return value(harmos::plugin::detail::encode(failure.value));
       }
       throw runtime_error("Sample Failure: Expected Child Failure");
@@ -408,10 +384,10 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
 
     harmos::plugin::Stream<Value> cancellations("conformance.window_cancel");
     harmos::plugin::Observer<Value> cancel_observer(cancellations, [pending, echo](Context &context) {
-      auto child = context.call(pending, Value{});
-      context.call(echo, value("release")).get();
+      auto child = context.operation(pending, Value{});
+      context.operation(echo, value("release")).get();
       child.cancel();
-      context.call(pending, Value{});
+      context.operation(pending, Value{});
       return value("cancelled");
     });
     registrar.add(cancellations).add(cancel_observer.every(interval));
@@ -425,8 +401,8 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
         throw runtime_error("Create Invocation: Invalid Generated Probe Request");
       }
       try {
-        context.call(create, request).get();
-      } catch (const harmos::Failure &failure) {
+        context.operation(create, request).get();
+      } catch (const harmos::OperationError &failure) {
         if (input.value() == "propagate")
           throw;
         return value(harmos::plugin::detail::encode(failure.value));
@@ -438,7 +414,7 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     for (const auto &name : {"first", "second", "parallel", "other", "open"}) {
       harmos::plugin::Operation<Value, Value> operation(string("conformance.lane.") + name, harmos::VISIBILITY_PUBLIC,
                                                         [pending](Context &ctx, Value request) {
-                                                          return ctx.call(pending, request).get();
+                                                          return ctx.operation(pending, request).get();
                                                         });
       if (string(name) == "first" || string(name) == "second") {
         operation.lane(instrument);

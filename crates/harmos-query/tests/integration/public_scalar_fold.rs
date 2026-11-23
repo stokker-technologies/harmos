@@ -73,6 +73,9 @@ fn public_scalar_fold() {
     assert_eq!(fold(Agg::Len, &sparse), ScalarValue::Unsigned(3));
     assert_eq!(fold(Agg::Of(Aggregate::Count), &sparse), ScalarValue::Unsigned(1));
     assert_eq!(fold(Agg::Of(Aggregate::Mean), &[ScalarValue::Null]), ScalarValue::Missing);
+    let lost = [1.0, f64::NAN, 3.0, f64::INFINITY].map(ScalarValue::Float);
+    assert_eq!(fold(Agg::Of(Aggregate::Count), &lost), ScalarValue::Unsigned(2));
+    assert_eq!(fold(Agg::Of(Aggregate::Max), &lost), ScalarValue::Float(3.0));
 
     // Floating Statistics Answer Through The Signal Kernels: Population Std.
     let values = [1.0, 2.0, 4.0, 8.0].map(ScalarValue::Float);

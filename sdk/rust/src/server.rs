@@ -46,13 +46,13 @@ use tonic::{Request, Response, Status, Streaming, transport};
 
 // Local Imports
 use crate::{
-    Context, Error, Operation, Plugin, Result, columns,
+    Context, Error, Plugin, Result, columns,
     context::ChildOutput,
     operation::Handler,
     stream::{Lifecycle, Observer},
 };
 use harmos_protocol::{
-    model::{Declarations, Visibility},
+    model::Declarations,
     plugin::{
         self, InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
         InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse, Sample, instance_invoke_request, instance_invoke_response,
@@ -82,8 +82,8 @@ struct Settled(Option<oneshot::Sender<()>>);
 
 struct Server {
     description: InstanceGetResponse,
+    failure_mapper: Option<crate::error::FailureMapper>,
     operations: HashMap<String, Arc<dyn Handler>>,
-    local: Arc<HashMap<String, Arc<Operation>>>,
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
     jobs: mpsc::Sender<Job>,
@@ -179,9 +179,9 @@ impl instance_server::Instance for Server {
         handler.validate(&request.payload)?;
         let payload = request.payload.clone();
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
-        context.local = self.local.clone();
+        context.failure_mapper = self.failure_mapper.clone();
         let (output, receiver) = mpsc::channel(1);
-        context.output = Some(ChildOutput::Invoke(output.clone()));
+        context.queue.output = Some(ChildOutput::Invoke(output.clone()));
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
             let result = invoke(jobs, handler, context, payload, &mut input, &output).await;
@@ -212,7 +212,7 @@ impl instance_server::Instance for Server {
             self.description.id.clone(),
             self.requires.clone(),
         );
-        context.local = self.local.clone();
+        context.failure_mapper = self.failure_mapper.clone();
         let (output, receiver) = mpsc::channel(2);
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
@@ -260,6 +260,7 @@ pub(crate) async fn run(
         .collect();
     let stopping = cleanup.clone();
     let server = Server {
+        failure_mapper: plugin.failure_mapper,
         description: InstanceGetResponse {
             id: plugin.id,
             version: plugin.version,
@@ -273,20 +274,7 @@ pub(crate) async fn run(
             sdk_version: env!("CARGO_PKG_VERSION").into(),
             message_bytes: message_bytes as u64,
         },
-        local: Arc::new(
-            plugin
-                .operations
-                .iter()
-                .filter(|operation| operation.contract.visibility == Visibility::Private as i32)
-                .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
-                .collect(),
-        ),
-        operations: plugin
-            .operations
-            .into_iter()
-            .filter(|operation| operation.contract.visibility != Visibility::Private as i32)
-            .map(|operation| (operation.contract.id, operation.handler))
-            .collect(),
+        operations: plugin.operations.into_iter().map(|operation| (operation.contract.id, operation.handler)).collect(),
         streams,
         requires,
         message_bytes,
@@ -348,6 +336,7 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                     },
                 }
             };
+            let result = result.map_err(|error| error.mapped(context.failure_mapper.as_ref()));
             let _ = complete.send(result);
         });
     }
@@ -383,18 +372,18 @@ async fn invoke(
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
-            _ = context.call_changes.notified() => context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?,
+            _ = context.queue.call_changes.notified() => context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?,
             result = &mut complete => break result.map_err(|_| Status::internal("Handler Panicked"))?,
             frame = input.message(), if !eof => match frame? {
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child).await?,
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
                 Some(InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::WindDown(true)) }) => context.request_wind_down(),
-                None => { eof = true; if !context.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
+                None => { eof = true; if !context.queue.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
                 _ => return Err(Status::invalid_argument("Repeated Request")),
             }
         }
     };
-    context.cancel_calls(false, "Invocation Settled", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+    context.cancel_calls("Invocation Settled").await.map_err(|error| Status::unavailable(error.to_string()))?;
     let result = match result {
         Ok(payload) => response::Result::Payload(payload),
         Err(error) => error.response(&context.operation, &context.plugin)?,
@@ -435,18 +424,19 @@ async fn samples(
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
-            _ = context.call_changes.notified(), if observing.is_some() => {
+            _ = context.queue.call_changes.notified(), if observing.is_some() => {
                 context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?;
             }
             frame = input.message() => {
                 let Some(frame) = frame? else { return Ok(()); };
                 match frame.frame {
-                    Some(instance_samples_request::Frame::Demand(demand)) if collection => {
-                        let observer = observer.as_ref().expect("collection observer");
+                    Some(instance_samples_request::Frame::Demand(demand)) if observer.is_some() => {
+                        let observer = observer.as_ref().expect("sampling observer");
                         let members = observer.members.lock().expect("collection members lock is healthy").clone();
                         let mut selected = BTreeSet::new();
                         for stream in &demand.streams {
-                            if !members.contains_key(stream) || !selected.insert(stream) {
+                            let declared = if collection { members.contains_key(stream) } else { stream == &observer.stream };
+                            if !declared || !selected.insert(stream) {
                                 return Err(Status::invalid_argument("Change Collection Demand: select each declared member at most once"));
                             }
                         }
@@ -455,9 +445,9 @@ async fn samples(
                             return Err(Status::invalid_argument("Change Collection Demand: wait for the current window to finish"));
                         }
                         if let Some((_, complete)) = observing.take() {
-                            if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
+                            if let Some(ChildOutput::Samples { active, .. }) = &context.queue.output { active.store(false, Ordering::Release); }
                             context.cancellation.send_replace(Some("Collection Demand Ended".into()));
-                            context.cancel_calls(false, "Collection Demand Ended", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+                            context.cancel_calls("Collection Demand Ended").await.map_err(|error| Status::unavailable(error.to_string()))?;
                             complete.cancel().await;
                         }
                         parts.clear();
@@ -495,12 +485,13 @@ async fn samples(
                         let mut window_context = Context::new(plugin::Request {
                             operation: context.operation.clone(), scope: context.scope.clone(), ..Default::default()
                         }, context.plugin.clone(), context.requires.clone());
-                        window_context.calls = context.calls.clone();
-                        window_context.call_changes = context.call_changes.clone();
-                        window_context.local = context.local.clone();
+                        window_context.queue.calls = context.queue.calls.clone();
+                        window_context.queue.call_changes = context.queue.call_changes.clone();
                         window_context.samples = context.samples.clone();
                         window_context.sequence = window.sequence;
-                        window_context.output = Some(ChildOutput::Samples {
+                        window_context.capturing_executions = window.capturing_executions.clone();
+                        window_context.failure_mapper = context.failure_mapper.clone();
+                        window_context.queue.output = Some(ChildOutput::Samples {
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
                         });
                         context = window_context;
@@ -524,9 +515,9 @@ async fn samples(
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (count, _) = observing.take().expect("Observer Active");
-                if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
+                if let Some(ChildOutput::Samples { active, .. }) = &context.queue.output { active.store(false, Ordering::Release); }
                 context.cancellation.send_replace(Some("Samples Window Answered".into()));
-                context.cancel_calls(false, "Samples Window Answered", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+                context.cancel_calls("Samples Window Answered").await.map_err(|error| Status::unavailable(error.to_string()))?;
                 let columns = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| match error {
                     Error::Transport(status) if collection => status,
                     error => Status::internal(error.to_string()),
@@ -556,12 +547,12 @@ async fn samples(
         }
     }
     }.await;
-    if let Some(ChildOutput::Samples { active, .. }) = &context.output {
+    if let Some(ChildOutput::Samples { active, .. }) = &context.queue.output {
         active.store(false, Ordering::Release);
     }
     context.cancellation.send_replace(Some("Samples Stream Ended".into()));
-    context.output = None;
-    let cancellation = context.cancel_calls(false, "Samples Stream Ended", false).await;
+    context.queue.output = None;
+    let cancellation = context.cancel_calls("Samples Stream Ended").await;
     if let Some((_, complete)) = observing {
         complete.cancel().await;
     }
@@ -603,7 +594,7 @@ async fn transition(
     if let Some(hook) = hook {
         lifecycle.completed.store(false, Ordering::Release);
         let mut context = context.clone();
-        context.output = None;
+        context.queue.output = None;
         context.cancellation = watch::channel(None).0;
         let mut complete = dispatch(jobs, hook.clone(), context, Vec::new()).await?;
         let closing = async {
@@ -618,7 +609,8 @@ async fn transition(
         let result = tokio::select! {
             biased;
             result = &mut complete => Some(result),
-            () = output.closed() => None,
+            // Cleanup Retains Its Work Until the Hook Has Completed Its Effect.
+            () = output.closed(), if start || lifecycle.completed.load(Ordering::Acquire) => None,
             () = closing => None,
         };
         let Some(result) = result else {

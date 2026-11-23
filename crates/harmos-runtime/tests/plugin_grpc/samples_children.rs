@@ -47,6 +47,7 @@ use harmos_protocol::plugin;
 use harmos_protocol::plugin::ChildCancel;
 use harmos_protocol::plugin::ChildDemand;
 use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::CollectionDemandResponse;
 use harmos_protocol::plugin::InstanceSamplesResponse;
 use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::instance_samples_request;
@@ -306,6 +307,16 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
             }
             let mut sequence = 0;
             while let Some(next) = input.message().await.unwrap() {
+                if matches!(next.frame, Some(instance_samples_request::Frame::Demand(_))) {
+                    output
+                        .send(Ok(InstanceSamplesResponse {
+                            samples: vec![],
+                            frame: Some(instance_samples_response::Frame::Demand(CollectionDemandResponse {})),
+                        }))
+                        .await
+                        .unwrap();
+                    continue;
+                }
                 let Some(instance_samples_request::Frame::Window(window)) = next.frame else {
                     panic!("Expected a Window");
                 };
@@ -450,4 +461,27 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
         signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("window_owner") && reported == "fixture")
     );
     host.close().await;
+}
+
+#[tokio::test]
+async fn observer_children_inherit_every_capturing_execution_and_empty_snapshots() {
+    let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let host = super::invoke_support::HostFixture::with_clock(Some(clock)).await;
+    let resolutions = AtomicUsize::new(0);
+    host.runtime.streams.capture_resolver(move |stream, scope| {
+        assert_eq!(stream, "fixture.captures");
+        assert_eq!(scope, None);
+        if resolutions.fetch_add(1, Ordering::SeqCst) == 0 { vec!["execution-b".into(), "execution-a".into()] } else { Vec::new() }
+    });
+    let sdk = host.sdk("captures").await;
+    let attached =
+        host.runtime.attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let watching = host.watch("fixture.captures");
+    controller.advance_until(Duration::from_secs(5), || host.signals.captures.lock().unwrap().len() >= 2).await.unwrap();
+    let captures = host.signals.captures.lock().unwrap().clone();
+    assert_eq!(captures[0], ["execution-a", "execution-b"]);
+    assert!(captures[1].is_empty());
+    drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

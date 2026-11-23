@@ -3,12 +3,14 @@ from harmos._wire.model.v1.callers_pb2 import ALL, CALLERS_UNSPECIFIED, CLIENTS,
 from harmos._wire.model.v1.description_pb2 import Declarations, LaneDeclaration, Section
 from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
+    CLASSIFICATION_INVALID,
     CLASSIFICATION_PERMANENT,
     CLASSIFICATION_REFUSED,
     CLASSIFICATION_TIMED_OUT,
     CLASSIFICATION_TRANSIENT,
     CLASSIFICATION_UNSPECIFIED,
     Classification,
+    OperationRetry,
 )
 from harmos._wire.model.v1.file_pb2 import (
     UPLOAD_STATE_ABANDONED,
@@ -60,6 +62,8 @@ LaneDeclaration.__module__ = "harmos"
 LaneDeclaration.__qualname__ = "LaneDeclaration"
 Section.__module__ = "harmos"
 Section.__qualname__ = "Section"
+OperationRetry.__module__ = "harmos"
+OperationRetry.__qualname__ = "OperationRetry"
 File.__module__ = "harmos"
 File.__qualname__ = "File"
 FileMetadata.__module__ = "harmos"
@@ -123,6 +127,7 @@ __all__ = [
     "ALL",
     "CALLERS_UNSPECIFIED",
     "CLASSIFICATION_CANCELLED",
+    "CLASSIFICATION_INVALID",
     "CLASSIFICATION_PERMANENT",
     "CLASSIFICATION_REFUSED",
     "CLASSIFICATION_TIMED_OUT",
@@ -147,6 +152,7 @@ __all__ = [
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",
+    "OperationRetry",
     "PLUGINS",
     "PageRequest",
     "Position",

@@ -93,6 +93,7 @@ pub(super) struct PreparedPublications {
     demands: Vec<PreparedDemand>,
 }
 struct PreparedDemand {
+    captures: streams::Captures,
     id: String,
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
@@ -118,6 +119,7 @@ struct Gate {
 }
 
 struct Demand {
+    captures: streams::Captures,
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
     row: Option<Row>,
@@ -221,6 +223,7 @@ impl Publications {
             let input =
                 activation.connection.client().samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
             demands.push(PreparedDemand {
+                captures: streams.captures.clone(),
                 id,
                 output,
                 input,
@@ -352,6 +355,7 @@ impl Publications {
             });
             publications.jobs.spawn(async move {
                 let demand = Demand {
+                    captures: prepared.captures,
                     output: prepared.output,
                     input: prepared.input,
                     row: prepared.row,
@@ -693,7 +697,8 @@ async fn change_demand(
             && matches!(
                 response.frame,
                 Some(
-                    instance_samples_response::Frame::Collection(_)
+                    instance_samples_response::Frame::Batch(_)
+                        | instance_samples_response::Frame::Collection(_)
                         | instance_samples_response::Frame::Child(_)
                         | instance_samples_response::Frame::ChildDemand(_)
                         | instance_samples_response::Frame::ChildCancel(_)
@@ -708,6 +713,7 @@ async fn change_demand(
 
 async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
+        captures,
         output,
         input,
         row,
@@ -809,19 +815,17 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
             let mut active = BTreeSet::new();
             loop {
-                if !members.is_empty() {
-                    let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
-                    if active != listened {
-                        change_demand(&input, &output, &stream, &listened).await?;
-                        active = listened;
-                    }
+                let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
+                if active != listened {
+                    change_demand(&input, &output, &stream, &listened).await?;
+                    active = listened;
                 }
                 // The Unscoped Demand Grants Only While Its Stream Is Watched and No Scope of Its Activation
                 // Samples That Stream; It Resumes From a Fresh Origin.
-                if let Some(gate) = &mut gate
-                    && !gate.open()
-                {
-                    activity.wait(gate.until(true)).await;
+                if active.is_empty() {
+                    if let Some(gate) = &mut gate {
+                        activity.wait(gate.until(true)).await;
+                    }
                     origin = clock.read();
                     granted = 0;
                     lagging = 0;
@@ -916,7 +920,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                         rows: streams::RETAINED_ROWS,
                     });
                 }
-                if !members.is_empty() {
+                {
                     let listened = gate.as_ref().map_or_else(|| selected.clone(), Gate::listened);
                     if active != listened {
                         change_demand(&input, &output, &stream, &listened).await?;
@@ -938,6 +942,7 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     period: Some(wire_period),
                     count,
                     sequence: sequence + 1,
+                    capturing_executions: captures.executions(&active, operations.call_context().get::<Scope>().map(Scope::as_str)),
                 };
                 let request = super::samples::Request {
                     input: input.clone(),
@@ -948,6 +953,9 @@ async fn run(clock: &Clock, activity: Activity, demand: Demand) -> Result<(), Er
                     window: grant,
                     collection: members.keys().cloned().collect(),
                 };
+                let mut context = operations.call_context().clone();
+                context.insert(streams::CapturingExecutions(request.window.capturing_executions.clone())).map_err(invalid)?;
+                let operations = operations.with_context(context);
                 let answer = activity.wait(operations.call_native::<super::samples::Window>(request));
                 let parts = if members.is_empty() {
                     Some(answer.await.map_err(sample_error)?)

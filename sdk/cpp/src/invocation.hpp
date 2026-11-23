@@ -44,12 +44,9 @@ struct WatchState {
 };
 struct Invocation {
   std::shared_ptr<Invocation> transport;
-  std::shared_ptr<Invocation> caller;
   std::set<std::uint64_t> owned;
   std::set<std::uint64_t> retired;
-  std::set<std::uint64_t> guards;
   std::vector<std::thread> workers;
-  bool background = false;
   std::atomic<bool> wind_down_requested = false;
   std::mutex mutex;
   std::condition_variable changed;
@@ -59,7 +56,6 @@ struct Invocation {
   std::function<void(plugin::v1::InstanceInvokeResponse)> emit;
   std::function<void()> read;
   std::once_flag reading;
-  std::map<std::string, OperationDefinition> local;
   ::harmos::plugin::v1::Request request;
   std::string plugin;
   std::optional<std::string> cancelled;
@@ -97,10 +93,9 @@ struct Invocation {
     if (child.has_item() || found == pending.end() || child.result_case() == ::harmos::plugin::v1::ChildResponse::RESULT_NOT_SET)
       return false;
     if (child.has_failure())
-      found->second.set_exception(std::make_exception_ptr(Failure(child.failure())));
+      found->second.set_exception(std::make_exception_ptr(OperationError(child.failure())));
     else
       found->second.set_value(child.payload());
-    guards.erase(child.call());
     pending.erase(found);
     changed.notify_all();
     return true;

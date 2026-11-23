@@ -33,6 +33,7 @@ pub use crate::stream::{Collection, CollectionOutput, Observer, Publisher, Strea
 // Standard Library Imports
 use std::{
     collections::{HashMap, HashSet},
+    error,
     sync::Arc,
 };
 
@@ -42,11 +43,10 @@ use prost_types::FileDescriptorSet;
 use semver::Version;
 
 // Local Imports
-use crate::{Error, Message, Result, message::merge_types, stream::StreamDefinition};
+use crate::{Error, Result, message::merge_types, stream::StreamDefinition};
 use harmos_protocol::model::Protobuf;
 use harmos_protocol::model::Requirement;
 use harmos_protocol::model::Section;
-use harmos_protocol::model::SettingsDeclarations;
 use harmos_protocol::model::StorageTransferSettings;
 use harmos_protocol::model::Visibility;
 use harmos_protocol::model::{Declarations, LaneDeclaration, lane_declaration};
@@ -79,6 +79,7 @@ pub struct Plugin {
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
     pub(crate) transfer: StorageTransferSettings,
+    pub(crate) failure_mapper: Option<crate::error::FailureMapper>,
 }
 
 pub(crate) struct Required {
@@ -143,7 +144,14 @@ impl Plugin {
             cleanup: Vec::new(),
             remote: false,
             transfer: Default::default(),
+            failure_mapper: None,
         }
+    }
+
+    /// Map an Unstructured Handler Error Before the Permanent Fallback.
+    pub fn failure_mapper(mut self, mapper: impl Fn(&(dyn error::Error + 'static)) -> Option<Error> + Send + Sync + 'static) -> Self {
+        self.failure_mapper = Some(Arc::new(mapper));
+        self
     }
 
     pub fn transfer(mut self, settings: StorageTransferSettings) -> Self {
@@ -220,9 +228,6 @@ impl Plugin {
             let mut contract = operation.contract.clone();
             contract.fingerprint = schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
                 .map_err(|error| Error::Invalid(error.to_string()))?;
-            if contract.visibility == Visibility::Private as i32 {
-                continue;
-            }
             schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
             declarations.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
@@ -230,13 +235,6 @@ impl Plugin {
         let mut requires = HashSet::new();
         for requirement in &self.requirements {
             schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;
-            if self
-                .operations
-                .iter()
-                .any(|operation| operation.contract.id == requirement.id && operation.contract.visibility == Visibility::Private as i32)
-            {
-                return Err(Error::Invalid(format!("Require {}: Private Calls Are Local", requirement.id)));
-            }
             if !requires.insert(&requirement.id) {
                 return Err(Error::Invalid(format!("Duplicate Requirement: {}", requirement.id)));
             }
@@ -298,20 +296,6 @@ impl Plugin {
             if !sections.insert(&section.r#type) {
                 return Err(Error::Invalid(format!("Duplicate Section: {}", section.r#type)));
             }
-            if section.r#type == SettingsDeclarations::name() {
-                let declarations = <SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
-                    .map_err(|error| Error::Invalid(format!("Declare Settings: {error}")))?;
-                let mut names = HashSet::new();
-                for declaration in declarations.values {
-                    if declaration.name.is_empty() || !names.insert(declaration.name.clone()) {
-                        return Err(Error::Invalid(format!("Declare Setting {}: Duplicate or Empty Name", declaration.name)));
-                    }
-                    declaration
-                        .default
-                        .and_then(|value| value.value)
-                        .ok_or_else(|| Error::Invalid(format!("Declare Setting {}: Typed Default Required", declaration.name)))?;
-                }
-            }
             declarations.sections.push(section.clone());
             merge_types(&mut types, definitions.clone())?;
         }
@@ -360,7 +344,7 @@ impl Plugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Context, SettingDeclaration, SettingValue, setting_value};
+    use crate::{Context, SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
     use prost_types::Duration;
 
     async fn empty(_: &Context, _: ()) -> Result<()> {
@@ -398,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_settings_preserve_presence_and_reject_invalid_declarations() {
+    fn typed_settings_preserve_presence() {
         let declarations = SettingsDeclarations {
             values: vec![
                 SettingDeclaration {
@@ -442,47 +426,6 @@ mod tests {
             .unwrap();
         let decoded = <SettingsDeclarations as prost::Message>::decode(reported.sections[0].payload.as_slice()).unwrap();
         assert_eq!(decoded, declarations);
-        let mut duplicate = declarations.clone();
-        duplicate.values.push(duplicate.values[0].clone());
-        assert!(
-            Plugin::new("settings", "1.0.0")
-                .register(|ctx| {
-                    ctx.register(duplicate)?;
-                    Ok(())
-                })
-                .expect("Register Plugin Declarations")
-                .declarations()
-                .is_err()
-        );
-        let mut missing = declarations;
-        missing.values[0].default = None;
-        assert!(
-            Plugin::new("settings", "1.0.0")
-                .register(|ctx| {
-                    ctx.register(missing)?;
-                    Ok(())
-                })
-                .expect("Register Plugin Declarations")
-                .declarations()
-                .is_err()
-        );
-        let unset = SettingsDeclarations {
-            values: vec![SettingDeclaration {
-                name: "unset".into(),
-                default: Some(SettingValue { value: None }),
-                ..Default::default()
-            }],
-        };
-        assert!(
-            Plugin::new("settings", "1.0.0")
-                .register(|ctx| {
-                    ctx.register(unset)?;
-                    Ok(())
-                })
-                .expect("Register Plugin Declarations")
-                .declarations()
-                .is_err()
-        );
     }
 
     #[test]
@@ -562,7 +505,8 @@ mod tests {
 #[cfg(test)]
 mod registration_tests {
     use super::{Contribution, Plugin, Registrar, Registration};
-    use crate::{Context, Message, Operation, Result, Visibility};
+    use crate::plugin::Operation;
+    use crate::{Context, Message, Result, Visibility};
 
     mod settings {
         use super::{Contribution, Registrar, Registration};

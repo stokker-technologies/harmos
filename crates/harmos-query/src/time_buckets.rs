@@ -153,13 +153,8 @@ impl Accumulator {
             if row % 256 == 0 {
                 check()?;
             }
-            if identities.is_null(row)
-                || positions.is_null(row)
-                || values.is_null(row)
-                || !values.value(row).is_finite()
-                || positions.value(row) == 0
-            {
-                return Err(columnar::invalid("time buckets require finite values and non-null identities and positions"));
+            if identities.is_null(row) || positions.is_null(row) || positions.value(row) == 0 {
+                return Err(columnar::invalid("time buckets require non-null identities and positions"));
             }
             let time_ns = time(&times, row)?;
             let ordinal = (i128::from(time_ns) - i128::from(self.plan.origin_ns)).div_euclid(i128::from(self.plan.width_ns.get()));
@@ -191,7 +186,7 @@ impl Accumulator {
                 bucket,
                 position: positions.value(row),
                 time_ns,
-                value: values.value(row),
+                value: if values.is_null(row) { f64::NAN } else { values.value(row) },
             });
         }
         Ok(())
@@ -214,6 +209,8 @@ impl Accumulator {
         check()?;
         self.samples.sort_unstable_by(|left, right| left.identity.cmp(&right.identity).then(right.position.cmp(&left.position)));
         self.samples.dedup_by(|left, right| left.identity == right.identity);
+        // A Missing or Nonfinite Latest Value Leaves Its Identity Out of Every Bucket.
+        self.samples.retain(|sample| sample.value.is_finite());
         check()?;
         self.samples
             .sort_unstable_by(|left, right| (&left.key, left.time_ns, left.position).cmp(&(&right.key, right.time_ns, right.position)));
@@ -446,3 +443,36 @@ pub fn fingerprints(batch: &RecordBatch, budget: usize) -> Result<BTreeMap<Vec<u
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::num::{NonZeroU64, NonZeroUsize};
+
+    #[test]
+    fn missing_and_nonfinite_latest_values_leave_their_identity_out() {
+        let batch = |rows: &[(u64, &str, i64, Option<f64>)]| {
+            RecordBatch::try_from_iter(vec![
+                ("_storage.position", Arc::new(UInt64Array::from_iter_values(rows.iter().map(|row| row.0))) as ArrayRef),
+                ("identity", Arc::new(StringArray::from_iter_values(rows.iter().map(|row| row.1))) as ArrayRef),
+                ("time", Arc::new(Int64Array::from_iter_values(rows.iter().map(|row| row.2))) as ArrayRef),
+                ("value", Arc::new(Float64Array::from_iter(rows.iter().map(|row| row.3))) as ArrayRef),
+            ])
+            .unwrap()
+        };
+        let plan = TimeBucketPlan {
+            origin_ns: 0,
+            width_ns: NonZeroU64::new(10).unwrap(),
+            time: "time".into(),
+            value: "value".into(),
+            identity: "identity".into(),
+            group: Vec::new(),
+            max_samples: NonZeroUsize::new(100).unwrap(),
+            max_bytes: NonZeroUsize::new(1 << 20).unwrap(),
+        };
+        // A Correction to a Missing Value Removes the Earlier Measurement.
+        let lost = [(1, "a", 1, Some(1.0)), (2, "b", 2, None), (3, "c", 3, Some(f64::NAN)), (4, "d", 4, Some(3.0)), (5, "a", 5, None)];
+        let kept = apply(&plan, &batch(&[(4, "d", 4, Some(3.0))]), &mut || Ok(())).unwrap();
+        assert_eq!(apply(&plan, &batch(&lost), &mut || Ok(())).unwrap(), kept);
+    }
+}

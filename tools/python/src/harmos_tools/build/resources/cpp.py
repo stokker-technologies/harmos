@@ -358,7 +358,7 @@ def host(
                     ]
                 source += [f"    return {value};", "  });"]
             else:
-                source += [f"  auto response = context.call(operation, request, {options_parameter}.policy).get();"]
+                source += [f"  auto response = context.operation(operation, request, {options_parameter}.policy).get();"]
                 if payload and payload["repeated"]:
                     value = f"{field_type(payload)}(response.{payload['name']}().begin(), response.{payload['name']}().end())"
                 elif payload and payload["kind"] == 11 and not payload["repeated"]:

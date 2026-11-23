@@ -21,7 +21,7 @@ from harmos import (
     CLASSIFICATION_PERMANENT,
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
-    FailureError,
+    OperationError,
     SettingDeclaration,
     SettingValue,
     model,
@@ -57,10 +57,12 @@ class Author:
         try:
             await self.release.wait()
             if self.mode == "failure":
-                raise FailureError(model.Failure(classification=CLASSIFICATION_PERMANENT, code="acquire_failed", message="Acquire Failed"))
+                raise OperationError(
+                    model.Failure(classification=CLASSIFICATION_PERMANENT, code="acquire_failed", message="Acquire Failed")
+                )
             try:
                 await ctx.host.time.get()
-            except FailureError as failure:
+            except OperationError as failure:
                 if self.mode == "host_failure":
                     if failure.value.classification != CLASSIFICATION_REFUSED or "fixture_missing" not in str(failure):
                         raise ValueError("Initialize Plugin: Preserve the Host Failure Classification and Cause") from failure
@@ -88,7 +90,7 @@ class Author:
         if self.active:
             raise ValueError("Finalize Plugin: Settle Active Operations First")
         if self.mode == "finalize_failure":
-            raise FailureError(model.Failure(classification=CLASSIFICATION_PERMANENT, code="release_failed", message="Release Failed"))
+            raise OperationError(model.Failure(classification=CLASSIFICATION_PERMANENT, code="release_failed", message="Release Failed"))
 
     @operation("lifecycle.state", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def state(self, ctx: Context, request: Value) -> Value:

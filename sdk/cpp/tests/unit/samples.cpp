@@ -10,6 +10,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+#include <atomic>
 #include <future>
 
 // Third Party Imports
@@ -33,6 +34,7 @@ using grpc::ServerBidiReactor;
 using grpc::ServerBuilder;
 using grpc::Status;
 using grpc::StatusCode;
+using std::atomic;
 using std::condition_variable;
 using std::int64_t;
 using std::lock_guard;
@@ -71,7 +73,6 @@ const harmos::plugin::Operation<Value, Value> watching =
 class SamplesHost final : public Instance::CallbackService {
 public:
   vector<harmos::plugin::detail::StreamDefinition> streams;
-  vector<harmos::plugin::detail::OperationDefinition> operations;
   map<string, string> requirements;
   size_t message_bytes = 4 * 1024 * 1024;
   unique_ptr<Server> server;
@@ -113,7 +114,7 @@ public:
     });
   }
   ServerBidiReactor<InstanceSamplesRequest, InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
-    auto *call = new harmos::plugin::detail::PublicationCall(streams, operations, requirements, "example", message_bytes);
+    auto *call = new harmos::plugin::detail::PublicationCall(streams, requirements, "example", message_bytes);
     {
       lock_guard lock(samples_mutex);
       ++opened;
@@ -190,6 +191,14 @@ public:
   void send(const InstanceSamplesRequest &request) {
     REQUIRE(stream->Write(request));
   }
+  void demand(bool active) {
+    InstanceSamplesRequest request;
+    auto *demand = request.mutable_demand();
+    if (active)
+      demand->add_streams("example.rows");
+    send(request);
+    REQUIRE(read().has_demand());
+  }
   InstanceSamplesResponse read() {
     InstanceSamplesResponse response;
     REQUIRE(stream->Read(&response));
@@ -242,6 +251,39 @@ public:
 
 /* === Public Functions === */
 
+TEST_CASE("Observer Sampling Hooks Acquire First Release Last and Restart") {
+  atomic<size_t> starts = 0;
+  atomic<size_t> stops = 0;
+  SamplesHost host([](Context &) {
+    Value row;
+    row.set_value("sample");
+    return row;
+  });
+  host.streams[0].sampling->start = [&](Context &) {
+    ++starts;
+  };
+  host.streams[0].sampling->stop = [&](Context &) {
+    ++stops;
+  };
+  Samples first(host);
+  Samples second(host);
+  first.demand(true);
+  second.demand(true);
+  REQUIRE(starts == 1);
+  first.window(1, 1);
+  REQUIRE(first.answer(1, host.message_bytes) == vector<string>{"sample"});
+  first.demand(false);
+  REQUIRE(stops == 0);
+  second.demand(false);
+  REQUIRE(stops == 1);
+  first.demand(true);
+  REQUIRE(starts == 2);
+  first.demand(false);
+  REQUIRE(stops == 2);
+  REQUIRE(first.finish().ok());
+  REQUIRE(second.finish().ok());
+}
+
 Value value(string bytes) {
   Value result;
   result.set_value(std::move(bytes));
@@ -258,8 +300,8 @@ string little_endian(uint64_t number) {
 
 TEST_CASE("Samples Correlate Reverse Replies Across Windows and Streams") {
   SamplesHost host([](Context &context) {
-    auto first = context.call(echo, value("first"));
-    auto second = context.call(echo, value("second"));
+    auto first = context.operation(echo, value("first"));
+    auto second = context.operation(echo, value("second"));
     return value(first.get().value() + second.get().value());
   });
   Samples first(host);
@@ -302,8 +344,8 @@ TEST_CASE("A One-Sample Observer Answers Each Sample of a Window in Order") {
 
 TEST_CASE("Children Stay Open Across a Window's Samples Until It Is Answered") {
   SamplesHost host([](Context &context) {
-    auto open = context.call(echo, value("open"));
-    return context.call(echo, value("done")).get();
+    auto open = context.operation(echo, value("open"));
+    return context.operation(echo, value("done")).get();
   });
   Samples samples(host);
   samples.window(1, 1, 2);
@@ -428,7 +470,7 @@ TEST_CASE("Samples Refuse Invalid Windows") {
 
 TEST_CASE("Samples Refuse a Window While Another Is Unanswered") {
   SamplesHost host([](Context &context) {
-    return context.call(echo, Value{}).get();
+    return context.operation(echo, Value{}).get();
   });
   Samples samples(host);
   samples.window(1, 1);
@@ -501,8 +543,8 @@ TEST_CASE("A Window Calls the Clock Settings and a Demand-Bounded Watch") {
 TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   SamplesHost host([](Context &context) {
     try {
-      context.call(echo, Value{}).get();
-    } catch (const harmos::Failure &failure) {
+      context.operation(echo, Value{}).get();
+    } catch (const harmos::OperationError &failure) {
       return value(harmos::plugin::detail::encode(failure.value));
     }
     throw runtime_error("Call Echo: Expected Failure");
@@ -531,9 +573,9 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
 
 TEST_CASE("Answering a Window Cancels Children and Rejects Late Replies") {
   SamplesHost host([](Context &context) {
-    auto cancelled = context.call(echo, Value{});
+    auto cancelled = context.operation(echo, Value{});
     cancelled.cancel();
-    context.call(echo, Value{});
+    context.operation(echo, Value{});
     return Value{};
   });
   Samples samples(host);
@@ -560,7 +602,7 @@ TEST_CASE("Samples Refuse Outside-Window and Duplicate Child Traffic") {
   SECTION("A Publisher Cannot Call Host Operations") {
     SamplesHost host(
         [](Context &context) {
-          return context.call(echo, Value{}).get();
+          return context.operation(echo, Value{}).get();
         },
         true);
     Samples samples(host);
@@ -568,8 +610,8 @@ TEST_CASE("Samples Refuse Outside-Window and Duplicate Child Traffic") {
   }
   SECTION("A Duplicate Reply Cannot Satisfy Another Child") {
     SamplesHost host([](Context &context) {
-      context.call(echo, Value{}).get();
-      return context.call(echo, Value{}).get();
+      context.operation(echo, Value{}).get();
+      return context.operation(echo, Value{}).get();
     });
     Samples samples(host);
     samples.window(1, 1);
@@ -586,7 +628,7 @@ TEST_CASE("Ending Samples Settles Open Child Calls") {
   auto done = settled.get_future();
   SamplesHost host([&settled](Context &context) {
     try {
-      context.call(echo, Value{}).get();
+      context.operation(echo, Value{}).get();
     } catch (const harmos::TransportError &) {
       settled.set_value();
       throw;

@@ -15,13 +15,14 @@
 
 // Standard Library Imports
 use std::any::TypeId;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::future::{Future, IntoFuture};
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
@@ -35,9 +36,19 @@ use crate::{Application, state::At, state::Position, storage::Batch, storage::Cu
 
 /* === Type Aliases === */
 
+type CaptureResolver = dyn Fn(&str, Option<&str>) -> Vec<String> + Send + Sync;
+
 /* === Structs === */
 
+#[derive(Clone)]
+pub(crate) struct Captures(Arc<Mutex<Arc<CaptureResolver>>>);
+
+/// Opaque Host Execution IDs Capturing the Observer Window That Originated This Call.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CapturingExecutions(pub Vec<String>);
+
 pub struct StreamManager<A: Application> {
+    pub(crate) captures: Captures,
     pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(super) windows: Arc<Table>,
     pub(super) applied: watch::Receiver<Position>,
@@ -69,6 +80,19 @@ pub struct Query<S> {
 
 /* === Implementations === */
 
+impl Default for Captures {
+    fn default() -> Self {
+        Self(Arc::new(Mutex::new(Arc::new(|_, _| Vec::new()))))
+    }
+}
+
+impl Captures {
+    pub(crate) fn executions(&self, streams: &BTreeSet<String>, scope: Option<&str>) -> Vec<String> {
+        let resolve = self.0.lock().expect("stream capture resolver lock is healthy").clone();
+        streams.iter().flat_map(|stream| resolve(stream, scope)).collect::<BTreeSet<_>>().into_iter().collect()
+    }
+}
+
 impl<A: Application> StreamFeed<A> {
     pub async fn next(&mut self) -> Option<Batch<A>> {
         self.intake.took(self.cursor.0);
@@ -93,11 +117,18 @@ impl<A: Application> StreamManager<A> {
     pub(crate) fn wired(windows: Table, applied: watch::Receiver<Position>, schema_settings: Arc<crate::config::SchemaSettings>) -> Self {
         Self {
             schema_settings,
+            captures: Captures::default(),
             windows: Arc::new(windows),
             applied,
             closed: Arc::new(AtomicBool::new(false)),
             marker: PhantomData,
         }
+    }
+
+    /// Supply the Host's Current Capturing Executions for a Stream and Optional Scope.
+    /// The Resolver Runs Once per Window Without Holding a Harmos Lock.
+    pub fn capture_resolver(&self, resolver: impl Fn(&str, Option<&str>) -> Vec<String> + Send + Sync + 'static) {
+        *self.captures.0.lock().expect("stream capture resolver lock is healthy") = Arc::new(resolver);
     }
 
     pub fn follow(&self, resume: Cursor) -> StreamFeed<A> {
@@ -185,6 +216,7 @@ impl<A: Application> Clone for StreamManager<A> {
     fn clone(&self) -> Self {
         Self {
             schema_settings: Arc::clone(&self.schema_settings),
+            captures: self.captures.clone(),
             windows: Arc::clone(&self.windows),
             applied: self.applied.clone(),
             closed: Arc::clone(&self.closed),

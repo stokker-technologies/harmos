@@ -50,12 +50,12 @@ from harmos._wire.plugin.v1.instance_pb2 import (
 from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.launches_pb2 import LaunchesAnnounceRequest
 from harmos._wire.plugin.v1.launches_pb2_grpc import LaunchesStub
-from harmos._wire.plugin.v1.stream_pb2 import Sample
+from harmos._wire.plugin.v1.stream_pb2 import CollectionDemandResponse, Sample
 
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Lane, Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
-from ._invocation import Context, FailureError, Handler, ProtocolError, Publisher, validate_timestamp
+from ._invocation import Context, Handler, OperationError, ProtocolError, Publisher, validate_timestamp
 from ._transfer import message_bytes
 from ._wire.model.v1.transfer_pb2 import StorageTransferSettings
 
@@ -163,8 +163,10 @@ class Plugin:
         register: Callable[[Registrar], None],
         lanes: Sequence[Lane] = (),
         transfer: StorageTransferSettings | None = None,
+        failure_mapper: Callable[[Exception], OperationError | None] | None = None,
     ) -> None:
         self.id = id
+        self.failure_mapper = failure_mapper
         self.lanes = tuple(lanes)
         self.version = version
         registrar = Registrar()
@@ -218,13 +220,9 @@ class Plugin:
                 raise ValueError(f"Register {definition.id}: Plugin Operations Are Unary")
             if definition.visibility not in (VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC):
                 raise ValueError(f"Invalid Visibility: {definition.id}")
-            if definition.visibility == VISIBILITY_PRIVATE:
-                continue
             declarations.operations.add().CopyFrom(definition.contract())
             _merge(files, definition.request, definition.response)
         for definition in self.requires:
-            if definition.visibility == VISIBILITY_PRIVATE:
-                raise ValueError(f"Require {definition.id}: Private Calls Are Local")
             declarations.requires.add(id=definition.id, fingerprint=definition.fingerprint)
             _merge(files, definition.request, definition.response)
         for definition, _, observing in streams:
@@ -238,18 +236,6 @@ class Plugin:
                     raise ValueError("Positive Observer Interval Required")
             declarations.streams.add().CopyFrom(definition.declaration())
             _merge(files, definition.row)
-        names = [setting.name for setting in self.settings]
-        if any(not name for name in names) or len(set(names)) != len(names):
-            raise ValueError("Declare Settings: Duplicate or Empty Name")
-        for setting in self.settings:
-            if not setting.HasField("default") or setting.default.WhichOneof("value") is None:
-                raise ValueError(f"Declare Setting {setting.name}: Typed Default Required")
-            if setting.default.WhichOneof("value") == "duration":
-                duration = setting.default.duration
-                if abs(duration.seconds) > 315_576_000_000 or abs(duration.nanos) >= 1_000_000_000:
-                    raise ValueError(f"Declare Setting {setting.name}: Invalid Duration")
-                if duration.seconds * duration.nanos < 0:
-                    raise ValueError(f"Declare Setting {setting.name}: Invalid Duration Sign")
         sections = list(self.sections)
         if self.settings:
             sections.append(SettingsDeclarations(values=self.settings))
@@ -384,24 +370,61 @@ class _SamplesScope:
         scope: str,
         plugin: str,
         requires: dict[str, bytes],
-        local: dict[str, tuple[Operation[Message, Message], Handler]],
         instance: object | None,
     ) -> None:
         self.stream = stream
         self.scope = scope
         self.plugin = plugin
         self.requires = requires
-        self.local = local
         self.instance = instance
         self.context: Context | None = None
         self.next = [0]
         self.retired: set[int] = set()
         self.wind_down = asyncio.Event()
+        self.active = False
+
+
+class _Sampling:
+    def __init__(self, definition: Stream) -> None:
+        self.definition = definition
+        self.active = 0
+        self.lock = asyncio.Lock()
+
+    async def change(self, scope: _SamplesScope, start: bool) -> None:
+        if scope.active == start:
+            return
+        # The Shared Count Covers All Scopes Sampling This Observer.
+        async with self.lock:
+            hook = None
+            cancelled = False
+            if start and self.active == 0:
+                hook = self.definition.on_start
+            if not start:
+                scope.active = False
+                self.active -= 1
+                if self.active == 0:
+                    hook = self.definition.on_stop
+            if hook is not None:
+                context = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
+                context._instance = scope.instance
+                running = asyncio.ensure_future(hook(context))
+                try:
+                    await asyncio.shield(running)
+                except asyncio.CancelledError:
+                    # Settle Acquisition or Cleanup Before Releasing Its Shared Ownership.
+                    await running
+                    cancelled = True
+            if start:
+                self.active += 1
+                scope.active = True
+            if cancelled:
+                raise asyncio.CancelledError
 
 
 class _Service:
     def __init__(self, plugin: Plugin, declarations: Declarations, stopped: asyncio.Event) -> None:
         self.stopped = stopped
+        self.failure_mapper = plugin.failure_mapper
         self.description = InstanceGetResponse(
             id=plugin.id,
             version=plugin.version,
@@ -413,13 +436,9 @@ class _Service:
             message_bytes=message_bytes(plugin.transfer),
         )
         operations, streams = plugin._registrations()
-        self.local = {
-            definition.id: (definition, handler) for definition, handler in operations if definition.visibility == VISIBILITY_PRIVATE
-        }
-        self.operations = {
-            definition.id: (definition, handler) for definition, handler in operations if definition.visibility != VISIBILITY_PRIVATE
-        }
+        self.operations = {definition.id: (definition, handler) for definition, handler in operations}
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
+        self.sampling = {definition.id: _Sampling(definition) for definition, _, observing in streams if observing}
         self.requires = {requirement.id: requirement.fingerprint for requirement in declarations.requires}
 
     async def get(self, request: InstanceGetRequest, context: ServicerContext) -> InstanceGetResponse:
@@ -452,9 +471,8 @@ class _Service:
         await context.send_initial_metadata(())
         output = Queue(maxsize=1)
         execution = Context(request, self.description.id, self.requires, output)
-        execution._local = self.local
         execution._instance = getattr(handler, "__self__", None)
-        running = asyncio.create_task(_execute(handler, execution, value, definition.response, output))
+        running = asyncio.create_task(_execute(handler, execution, value, definition.response, output, self.failure_mapper))
         reading = asyncio.create_task(_read_invoke(request_iterator, execution, output))
         try:
             while True:
@@ -480,10 +498,9 @@ class _Service:
         await context.send_initial_metadata(())
         output: Queue[Sample | InstanceSamplesResponse | _FaultError | None] = Queue(maxsize=1)
         windows: Queue[tuple[Window, Context]] = Queue(maxsize=1)
-        scope = _SamplesScope(
-            first.open.stream, first.open.scope, self.description.id, self.requires, self.local, getattr(handler, "__self__", None)
-        )
-        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output))
+        scope = _SamplesScope(first.open.stream, first.open.scope, self.description.id, self.requires, getattr(handler, "__self__", None))
+        sampling = self.sampling.get(definition.id)
+        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output, sampling))
         running = asyncio.create_task(_produce(handler, scope, definition, observing, windows, output, self.description.message_bytes))
         sequence = 0
         try:
@@ -502,6 +519,8 @@ class _Service:
                 await context.write(InstanceSamplesResponse(samples=[frame]))
         finally:
             await _release(scope.context, running, reading)
+            if sampling is not None:
+                await sampling.change(scope, False)
 
 
 # === Public Functions === #
@@ -578,20 +597,30 @@ async def _execute(
     request: Message,
     response: type[Message],
     output: Queue[InstanceInvokeResponse | _FaultError],
+    failure_mapper: Callable[[Exception], OperationError | None] | None,
 ) -> None:
     try:
         value = await handler(execution, request)
         if not isinstance(value, response):
             raise TypeError("Handler Returned the Wrong Protobuf Type")
         result = Response(payload=value.SerializeToString())
-    except FailureError as failure:
+    except OperationError as failure:
         result = Response(failure=failure.value)
-    except (ProtocolError, DecodeError) as error:
-        await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
-        return
     except Exception as error:
-        await output.put(_FaultError(StatusCode.INTERNAL, str(error)))
-        return
+        mapped = failure_mapper(error) if failure_mapper is not None else None
+        failure = mapped or OperationError(
+            "permanent",
+            code="handler_failed",
+            message=str(error),
+            action="Inspect Plugin Diagnostics",
+            operation=execution._operation,
+        )
+        result = Response(failure=failure.value)
+    if result.HasField("failure"):
+        if not result.failure.operation:
+            result.failure.operation = execution._operation
+        if not result.failure.plugin:
+            result.failure.plugin = execution._plugin
     await output.put(InstanceInvokeResponse(response=result))
 
 
@@ -623,12 +652,21 @@ async def _read_publish(
     scope: _SamplesScope,
     windows: Queue[tuple[Window, Context]],
     output: Queue[Sample | InstanceSamplesResponse | _FaultError | None],
+    sampling: _Sampling | None,
 ) -> None:
     try:
         async for frame in input:
             kind = frame.WhichOneof("frame")
             if kind == "wind_down" and frame.wind_down:
                 scope.wind_down.set()
+                continue
+            if kind == "demand":
+                if sampling is None or frame.demand.streams not in ([], [scope.stream]):
+                    raise ProtocolError("Change Sampling Demand: Select This Observer's Stream Once or Release It")
+                if scope.context is not None:
+                    raise ProtocolError("Change Sampling Demand: Wait Until the Window Is Answered")
+                await sampling.change(scope, bool(frame.demand.streams))
+                await output.put(InstanceSamplesResponse(demand=CollectionDemandResponse()))
                 continue
             if kind == "child":
                 if scope.context is None:
@@ -643,17 +681,19 @@ async def _read_publish(
                 raise ProtocolError("Read Samples: Previous Window Is Unanswered")
             window = _window(frame.window)
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires, _SamplesOutput(output))
+            execution.capturing_executions = tuple(frame.window.capturing_executions)
             execution.sequence = window.sequence
             execution._wind_down = scope.wind_down
             execution._next = scope.next
             execution._retired = scope.retired
-            execution._local = scope.local
             execution._instance = scope.instance
             scope.context = execution
             await windows.put((window, execution))
         await output.put(None)
     except ProtocolError as error:
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
+    except Exception as error:
+        await output.put(_FaultError(StatusCode.INTERNAL, str(error)))
 
 
 def _window(window: stream_pb2.Window) -> Window:
@@ -691,7 +731,6 @@ async def _produce(
         if not observing:
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
             execution._wind_down = scope.wind_down
-            execution._local = scope.local
             execution._instance = scope.instance
             scope.context = execution
             await cast(Producer, handler)(execution, Publisher(definition.row, output))

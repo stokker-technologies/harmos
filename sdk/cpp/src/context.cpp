@@ -17,7 +17,7 @@
 #include "harmos/host/v1/time.pb.h"
 #include "harmos/plugin/v1/subscriptions.pb.h"
 #include "invocation.hpp"
-#include <absl/numeric/int128.h>
+#include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/time_util.h>
 
 using google::protobuf::Duration;
@@ -49,10 +49,6 @@ using std::vector;
 /* === Public Functions === */
 
 namespace harmos::plugin {
-namespace {
-const Operation<::harmos::host::v1::TimeSleepRequest, ::harmos::host::v1::TimeSleepResponse> SLEEP("harmos.plugin.v1.Time/Sleep",
-                                                                                                   VISIBILITY_PUBLIC);
-}
 namespace {
 class ChildWatch final : public detail::Watch {
 public:
@@ -93,7 +89,7 @@ public:
     state->watches.erase(call);
     if (watch->terminal) {
       if (watch->terminal->has_failure())
-        throw Failure(watch->terminal->failure());
+        throw OperationError(watch->terminal->failure());
       return {};
     }
     throw TransportError(14, "Watch: Invocation Closed");
@@ -181,6 +177,7 @@ std::variant<detail::SubscriptionRow, Gap> detail::subscription_item(const strin
 
 Context::Context(shared_ptr<detail::Invocation> state) : state_(std::move(state)) {
   invocation = state_->request.invocation();
+  capturing_executions.assign(state_->request.capturing_executions().begin(), state_->request.capturing_executions().end());
   scope_ = state_->request.scope();
   attempt = state_->request.attempt();
 }
@@ -191,7 +188,7 @@ const string &Context::scope() const {
     failure.set_classification(::harmos::model::v1::CLASSIFICATION_REFUSED);
     failure.set_code("scope_required");
     failure.set_message("Invocation Scope Is Required: the caller must bind a scope");
-    throw Failure(std::move(failure));
+    throw OperationError(std::move(failure));
   }
   return scope_;
 }
@@ -200,17 +197,11 @@ namespace {
 shared_ptr<detail::Invocation> transport(const shared_ptr<detail::Invocation> &state) {
   return state->transport ? state->transport : state;
 }
-optional<string> cancellation(shared_ptr<detail::Invocation> state) {
-  while (state) {
-    if (state->cancelled)
-      return state->cancelled;
-    auto caller = state->caller;
-    if (!caller && state->transport && state->transport != state)
-      caller = state->transport;
-    if (caller == state)
-      break;
-    state = std::move(caller);
-  }
+optional<string> cancellation(const shared_ptr<detail::Invocation> &state) {
+  if (state->cancelled)
+    return state->cancelled;
+  if (state->transport)
+    return state->transport->cancelled;
   return {};
 }
 ::harmos::model::v1::Failure interrupted(const shared_ptr<detail::Invocation> &state, ::harmos::model::v1::Classification kind,
@@ -234,9 +225,9 @@ void cancel_owned(const shared_ptr<detail::Invocation> &state, const string &rea
       auto found = root->pending.find(id);
       if (found == root->pending.end())
         continue;
-      found->second.set_exception(std::make_exception_ptr(Failure(interrupted(state, kind, reason))));
+      found->second.set_exception(std::make_exception_ptr(OperationError(interrupted(state, kind, reason))));
       root->pending.erase(found);
-      root->guards.erase(id);
+
       root->retired.insert(id);
       cancelled.push_back(id);
     }
@@ -264,205 +255,16 @@ void cancel_owned(const shared_ptr<detail::Invocation> &state, const string &rea
     }
   }
 }
-void validate_duration(const Duration &value, const string &operation, bool zero = false) {
-  if (value.seconds() < 0 || value.seconds() > 315576000000LL || value.nanos() < 0 || value.nanos() >= 1000000000 ||
-      (!zero && !value.seconds() && !value.nanos()))
-    throw invalid_argument("Invoke " + operation + ": Invalid Policy Duration");
-}
-Duration retry_delay(const ::harmos::model::v1::RetryPolicy &retry, uint64_t failed_attempt) {
-  auto delay = retry.initial();
-  if (retry.has_maximum()) {
-    for (uint64_t step = 0; step < failed_attempt && delay < retry.maximum(); ++step) {
-      delay *= 2;
-      if (delay > retry.maximum())
-        delay = retry.maximum();
-    }
-  }
-  if (retry.deterministic_jitter()) {
-    const auto nanos = absl::uint128(delay.seconds()) * 1000000000 + delay.nanos();
-    const auto extra = (absl::uint128(failed_attempt) * 17 + 11) % (nanos / 4 + 1);
-    Duration jitter;
-    jitter.set_seconds(static_cast<int64_t>(absl::Uint128Low64(extra / 1000000000)));
-    jitter.set_nanos(static_cast<int32_t>(absl::Uint128Low64(extra % 1000000000)));
-    delay += jitter;
-    if (retry.has_maximum() && delay > retry.maximum())
-      delay = retry.maximum();
-  }
-  return delay;
-}
 } // namespace
 
-optional<shared_future<string>> Context::local(const detail::OperationDefinition &requested, const string &payload,
-                                               optional<::harmos::model::v1::OperationPolicy> override_policy,
-                                               std::function<void()> *cancel) {
-  auto root = transport(state_);
-  if (!root->emit || (root->window_scoped && (!root->window_active || !root->accepting_children)))
-    throw TransportError(3, "Invoke " + requested.contract.id() + ": Child Scope Is Closed");
-  auto found = state_->local.find(requested.contract.id());
-  if (found == state_->local.end())
-    return {};
-  auto operation = found->second;
-  const auto id = operation.contract.id();
-  if (operation.contract.fingerprint() != requested.contract.fingerprint())
-    throw invalid_argument("Invoke " + id + ": Local Contract Differs");
-  auto policy = override_policy.value_or(operation.contract.policy());
-  if (policy.has_timeout())
-    validate_duration(policy.timeout(), id);
-  if (policy.has_attempt_timeout())
-    validate_duration(policy.attempt_timeout(), id);
-  if (policy.has_cancellation_timeout())
-    validate_duration(policy.cancellation_timeout(), id, true);
-  const auto attempts = policy.has_retries() ? policy.retries().total_attempts() : 1;
-  if (!attempts || (attempts > 1 && !operation.contract.replay_safe()))
-    throw invalid_argument("Invoke " + id + ": Invalid Retry or Replay Safety");
-  if (attempts > 1) {
-    validate_duration(policy.retries().initial(), id);
-    if (policy.retries().has_maximum()) {
-      validate_duration(policy.retries().maximum(), id);
-      if (policy.retries().maximum() < policy.retries().initial())
-        throw invalid_argument("Invoke " + id + ": Invalid Retry Maximum");
-    }
-  }
-  auto completion = std::make_shared<promise<string>>();
-  auto result = completion->get_future().share();
-  auto caller = std::make_shared<detail::Invocation>();
-  caller->transport = root;
-  caller->caller = state_;
-  caller->request = state_->request;
-  caller->requirements = state_->requirements;
-  caller->local = state_->local;
-  caller->plugin = state_->plugin;
-  *cancel = [caller] {
-    cancel_owned(caller, "Local Call Cancelled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-  };
-  root->start_worker([root, caller, completion, operation, policy, attempts, payload] {
-    try {
-      Context parent(caller);
-      auto started = policy.has_timeout() ? parent.now() : Timestamp{};
-      for (uint64_t attempt_index = 0; attempt_index < attempts; ++attempt_index) {
-        if (attempt_index >= UINT32_MAX)
-          throw invalid_argument("Invoke " + operation.contract.id() + ": Attempt Identity Exhausted");
-        auto local = std::make_shared<detail::Invocation>();
-        local->transport = root;
-        local->caller = caller;
-        local->request = caller->request;
-        local->request.set_operation(operation.contract.id());
-        local->request.set_attempt(static_cast<uint32_t>(attempt_index + 1));
-        local->plugin = caller->plugin;
-        local->requirements = caller->requirements;
-        local->local = caller->local;
-        auto guard = std::make_shared<detail::Invocation>();
-        guard->transport = root;
-        guard->request = local->request;
-        guard->plugin = local->plugin;
-        guard->requirements = caller->requirements;
-        guard->background = true;
-        Context timer(guard);
-        auto alarm = [&](const Duration &duration) {
-          ::harmos::host::v1::TimeSleepRequest sleep;
-          *sleep.mutable_duration() = duration;
-          return timer.send(SLEEP.definition, detail::encode(sleep), {});
-        };
-        try {
-          {
-            lock_guard lock(root->mutex);
-            if (auto reason = cancellation(caller))
-              throw Failure(interrupted(local, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
-          }
-          optional<Duration> bound;
-          if (policy.has_timeout())
-            bound = policy.timeout() - (parent.now() - started);
-          if (policy.has_attempt_timeout() && (!bound || policy.attempt_timeout() < *bound))
-            bound = policy.attempt_timeout();
-          if (bound && *bound <= Duration{})
-            throw Failure(interrupted(local, ::harmos::model::v1::CLASSIFICATION_TIMED_OUT, "Deadline Reached"));
-          optional<shared_future<string>> deadline;
-          if (bound)
-            deadline = alarm(*bound);
-          auto done = std::make_shared<promise<string>>();
-          auto executing = done->get_future().share();
-          auto context = std::make_shared<Context>(local);
-          root->start_worker([root, context, done, operation, payload] {
-            try {
-              auto value = operation.handler(*context, payload);
-              lock_guard lock(root->mutex);
-              done->set_value(std::move(value));
-              root->changed.notify_all();
-            } catch (...) {
-              lock_guard lock(root->mutex);
-              done->set_exception(std::current_exception());
-              root->changed.notify_all();
-            }
-          });
-          auto ready = [](const shared_future<string> &future) {
-            return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-          };
-          optional<string> reason;
-          bool timed_out = false;
-          {
-            unique_lock lock(root->mutex);
-            root->changed.wait(lock, [&] {
-              return ready(executing) || root->closed || cancellation(caller) || (deadline && ready(*deadline));
-            });
-            reason = cancellation(caller);
-            timed_out = !reason && deadline && ready(*deadline);
-          }
-          if (!ready(executing)) {
-            if (timed_out)
-              deadline->get();
-            const auto message = reason.value_or("Deadline Reached");
-            const auto kind = timed_out ? ::harmos::model::v1::CLASSIFICATION_TIMED_OUT : ::harmos::model::v1::CLASSIFICATION_CANCELLED;
-            cancel_owned(local, message, kind);
-            if (!timed_out && policy.has_cancellation_timeout() && policy.cancellation_timeout() > Duration{}) {
-              auto settling = alarm(policy.cancellation_timeout());
-              unique_lock lock(root->mutex);
-              root->changed.wait(lock, [&] {
-                return ready(executing) || root->closed || ready(settling) || (deadline && ready(*deadline));
-              });
-              timed_out = deadline && ready(*deadline);
-            }
-            if (timed_out || !policy.has_cancellation_timeout() || policy.cancellation_timeout() == Duration{} || !ready(executing))
-              throw Failure(interrupted(local, kind, message));
-          }
-          auto value = executing.get();
-          cancel_owned(local, "Local Attempt Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-          cancel_owned(guard, "Policy Guard Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-          completion->set_value(std::move(value));
-          return;
-        } catch (const Failure &failure) {
-          cancel_owned(local, "Local Attempt Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-          cancel_owned(guard, "Policy Guard Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-          if (failure.value.classification() != ::harmos::model::v1::CLASSIFICATION_TRANSIENT || attempt_index + 1 == attempts)
-            throw;
-          auto delay = retry_delay(policy.retries(), attempt_index);
-          if (policy.has_timeout()) {
-            auto remaining = policy.timeout() - (parent.now() - started);
-            if (remaining < Duration{})
-              remaining = Duration{};
-            if (delay > remaining)
-              delay = remaining;
-          }
-          if (delay > Duration{})
-            parent.sleep(delay);
-        } catch (...) {
-          cancel_owned(local, "Local Attempt Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-          cancel_owned(guard, "Policy Guard Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
-          throw;
-        }
-      }
-    } catch (...) {
-      completion->set_exception(std::current_exception());
-    }
-  });
-  return result;
-}
-
 shared_future<string> Context::send(const detail::OperationDefinition &operation, const string &payload,
-                                    std::optional<OperationPolicy> policy, std::function<void()> *cancel) {
+                                    std::optional<OperationPolicy> policy, std::function<void()> *cancel, optional<string> json) {
   plugin::v1::ChildRequest request;
   request.set_operation(operation.contract.id());
   request.set_fingerprint(operation.contract.fingerprint());
   request.set_payload(payload);
+  if (json)
+    request.set_json(std::move(*json));
   if (policy)
     *request.mutable_policy() = std::move(*policy);
   auto root = transport(state_);
@@ -473,21 +275,14 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
       throw TransportError(3, "Invoke " + request.operation() + ": Child Scope Is Closed");
     if (root->closed)
       throw TransportError(14, "Invoke: Invocation Closed");
-    if (!state_->background)
-      if (auto reason = cancellation(state_))
-        throw Failure(interrupted(state_, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
-    auto requirement = state_->requirements.find(request.operation());
-    if (requirement == state_->requirements.end() || requirement->second != request.fingerprint())
-      throw invalid_argument("Invoke " + request.operation() + ": Undeclared Requirement");
+    if (auto reason = cancellation(state_))
+      throw OperationError(interrupted(state_, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
     if (root->next == UINT64_MAX)
       throw TransportError(8, "Invoke " + request.operation() + ": Child Identity Exhausted");
     request.set_call(++root->next);
-    request.set_background(state_->background);
     auto &pending = root->pending[request.call()];
     result = pending.get_future().share();
     state_->owned.insert(request.call());
-    if (state_->background)
-      root->guards.insert(request.call());
     if (cancel)
       *cancel = [root, owner = state_, id = request.call()] {
         {
@@ -495,10 +290,10 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
           auto found = root->pending.find(id);
           if (found == root->pending.end())
             return;
-          found->second.set_exception(
-              std::make_exception_ptr(Failure(interrupted(owner, ::harmos::model::v1::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
+          found->second.set_exception(std::make_exception_ptr(
+              OperationError(interrupted(owner, ::harmos::model::v1::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
           root->pending.erase(found);
-          root->guards.erase(id);
+
           root->retired.insert(id);
           root->changed.notify_all();
         }
@@ -511,6 +306,22 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
   *frame.mutable_child() = std::move(request);
   root->emit(std::move(frame));
   root->start_reading();
+  return result;
+}
+
+google::protobuf::Struct Context::operation(const string &operation, const google::protobuf::Struct &payload,
+                                            optional<OperationPolicy> policy) {
+  string text;
+  auto status = google::protobuf::util::MessageToJsonString(payload, &text);
+  if (!status.ok())
+    throw invalid_argument("Call " + operation + ": Encode a JSON Object: " + status.ToString());
+  detail::OperationDefinition definition;
+  definition.contract.set_id(operation);
+  auto reply = send(definition, {}, std::move(policy), nullptr, std::move(text)).get();
+  google::protobuf::Struct result;
+  status = google::protobuf::util::JsonStringToMessage(reply, &result);
+  if (!status.ok())
+    throw TransportError(3, "Call " + operation + ": Host Must Return a JSON Object: " + status.ToString());
   return result;
 }
 
@@ -554,12 +365,13 @@ void cancel_children(const shared_ptr<Invocation> &state, const string &reason) 
   {
     lock_guard lock(root->mutex);
     for (auto &[id, promise] : root->pending) {
-      promise.set_exception(std::make_exception_ptr(Failure(interrupted(state, ::harmos::model::v1::CLASSIFICATION_CANCELLED, reason))));
+      promise.set_exception(
+          std::make_exception_ptr(OperationError(interrupted(state, ::harmos::model::v1::CLASSIFICATION_CANCELLED, reason))));
       root->retired.insert(id);
       cancelled.push_back(id);
     }
     root->pending.clear();
-    root->guards.clear();
+
     for (auto &[id, watch] : root->watches) {
       plugin::v1::ChildResponse terminal;
       terminal.set_call(id);
@@ -585,3 +397,13 @@ void cancel_children(const shared_ptr<Invocation> &state, const string &reason) 
 /* === Private Functions === */
 
 /* === Entry Point === */
+
+namespace harmos {
+google::protobuf::Struct json(const std::string &text) {
+  google::protobuf::Struct value;
+  auto status = google::protobuf::util::JsonStringToMessage(text, &value);
+  if (!status.ok())
+    throw std::invalid_argument("Parse Operation Payload: Supply a JSON Object: " + status.ToString());
+  return value;
+}
+} // namespace harmos

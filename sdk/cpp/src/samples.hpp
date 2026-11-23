@@ -34,15 +34,12 @@ namespace harmos::plugin::detail {
 class PublicationCall final : public Duplex<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse> {
 public:
   // `message_bytes` Bounds Every Encoded Response, So Window Answers Split to Fit It.
-  PublicationCall(const std::vector<StreamDefinition> &streams, const std::vector<OperationDefinition> &operations,
-                  const std::map<std::string, std::string> &requirements, const std::string &plugin, std::size_t message_bytes)
+  PublicationCall(const std::vector<StreamDefinition> &streams, const std::map<std::string, std::string> &requirements,
+                  const std::string &plugin, std::size_t message_bytes)
       : streams_(streams), state_(std::make_shared<Invocation>()), message_bytes_(message_bytes) {
     state_->window_scoped = true;
     state_->requirements = requirements;
     state_->plugin = plugin;
-    for (const auto &operation : operations)
-      if (operation.contract.visibility() == ::harmos::VISIBILITY_PRIVATE)
-        state_->local.emplace(operation.contract.id(), operation);
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
       std::lock_guard lock(window_mutex_);
       if (!state_->window_active)
@@ -65,6 +62,15 @@ public:
 
   void settle_children() override {
     state_->settle_workers();
+    if (sampling_) {
+      sampling_ = false;
+      Context context(state_);
+      try {
+        stream_->sampling->change(context, false);
+      } catch (const std::exception &error) {
+        end({grpc::StatusCode::INTERNAL, error.what()});
+      }
+    }
   }
   void closed() override {
     state_->close(std::make_exception_ptr(TransportError(1, "Sample: Demand Closed")));
@@ -121,6 +127,42 @@ public:
       read_next();
       return;
     }
+    if (input.has_demand()) {
+      const auto &selected = input.demand().streams();
+      if (stream_->producer || selected.size() > 1 || (selected.size() == 1 && selected[0] != stream_->declaration.id())) {
+        refuse("Select This Observer's Stream Once or Release It");
+        return;
+      }
+      {
+        std::lock_guard lock(state_->mutex);
+        if (state_->window_active) {
+          refuse("Change Sampling Demand After the Window Is Answered");
+          return;
+        }
+      }
+      if (worker.joinable())
+        worker.join();
+      const bool wanted = !selected.empty();
+      worker = std::thread([this, wanted] {
+        try {
+          if (sampling_ != wanted) {
+            if (!wanted)
+              sampling_ = false;
+            Context context(state_);
+            stream_->sampling->change(context, wanted);
+            sampling_ = wanted;
+          }
+          plugin::v1::InstanceSamplesResponse response;
+          response.mutable_demand();
+          write(std::move(response));
+          read_next();
+        } catch (const std::exception &error) {
+          end({grpc::StatusCode::INTERNAL, error.what()});
+          closed();
+        }
+      });
+      return;
+    }
     if (input.has_child()) {
       // Retired IDs Belong Only to the Current Window's Cancelled Children.
       if (!state_->receive(input.child())) {
@@ -170,8 +212,8 @@ public:
     auto window_state = std::make_shared<Invocation>();
     window_state->transport = state_;
     window_state->request = state_->request;
+    *window_state->request.mutable_capturing_executions() = grant.capturing_executions();
     window_state->requirements = state_->requirements;
-    window_state->local = state_->local;
     window_state->plugin = state_->plugin;
     const Window window{grant.start(), grant.period(), grant.count(), grant.sequence()};
     worker = std::thread([this, window_state, window] {
@@ -195,6 +237,7 @@ private:
   std::size_t message_bytes_;
   std::recursive_mutex window_mutex_;
   std::uint64_t sequence_ = 0;
+  bool sampling_ = false;
 
   void answer(const std::shared_ptr<Invocation> &window_state, const Window &window) {
     // Run the Observer, Then Close the Window's Children Before Any Part Is Sent.

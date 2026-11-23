@@ -182,15 +182,15 @@ impl Client {
     }
 
     /// Call an Operation With Its Typed Request Value.
-    pub async fn call<Q, R>(&self, method: &Method<Q, R>, request: Q) -> Result<R, Status>
+    pub async fn operation<Q, R>(&self, method: &Method<Q, R>, request: Q) -> Result<R, Status>
     where
         Q: Message + Default + Send + 'static,
         R: Message + Default + Send + 'static,
     {
-        self.call_with(method, request, CallOptions::default()).await
+        self.operation_with(method, request, CallOptions::default()).await
     }
 
-    pub async fn call_with<Q, R>(&self, method: &Method<Q, R>, request: Q, context: CallOptions) -> Result<R, Status>
+    pub async fn operation_with<Q, R>(&self, method: &Method<Q, R>, request: Q, context: CallOptions) -> Result<R, Status>
     where
         Q: Message + Default + Send + 'static,
         R: Message + Default + Send + 'static,

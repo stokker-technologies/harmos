@@ -1060,6 +1060,7 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "semver",
+ "serde_json",
  "thiserror",
  "tokio",
  "tonic",

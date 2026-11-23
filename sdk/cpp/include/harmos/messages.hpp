@@ -40,6 +40,7 @@ using ::harmos::detail::payloads::model::Failure;
 }
 using ::harmos::detail::payloads::Classification;
 using ::harmos::detail::payloads::CLASSIFICATION_CANCELLED;
+using ::harmos::detail::payloads::CLASSIFICATION_INVALID;
 using ::harmos::detail::payloads::CLASSIFICATION_PERMANENT;
 using ::harmos::detail::payloads::CLASSIFICATION_REFUSED;
 using ::harmos::detail::payloads::CLASSIFICATION_TIMED_OUT;
@@ -51,6 +52,7 @@ using ::harmos::detail::payloads::FileReference;
 using ::harmos::detail::payloads::ListFileProductionsRequest;
 using ::harmos::detail::payloads::ListFileProductionsResponse;
 using ::harmos::detail::payloads::MessageSettings;
+using ::harmos::detail::payloads::OperationRetry;
 using ::harmos::detail::payloads::PageRequest;
 using ::harmos::detail::payloads::StorageTransferSettings;
 using ::harmos::detail::payloads::TRANSFER_FRAMING_BYTES;

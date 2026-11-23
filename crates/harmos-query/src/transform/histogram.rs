@@ -96,11 +96,7 @@ impl Bins {
             if matches!(value, ScalarValue::Null | ScalarValue::Missing) {
                 continue;
             }
-            let value = number(&value)?;
-            if !value.is_finite() {
-                continue;
-            }
-            self.kernel.push(value)?;
+            self.kernel.push(number(&value)?)?;
         }
         Ok(())
     }

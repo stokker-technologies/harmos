@@ -4,6 +4,7 @@ from ._generated.shared import (
     ALL,
     CALLERS_UNSPECIFIED,
     CLASSIFICATION_CANCELLED,
+    CLASSIFICATION_INVALID,
     CLASSIFICATION_PERMANENT,
     CLASSIFICATION_REFUSED,
     CLASSIFICATION_TIMED_OUT,
@@ -39,6 +40,7 @@ from ._generated.shared import (
     MessageSettings,
     OperationContract,
     OperationPolicy,
+    OperationRetry,
     PageRequest,
     Position,
     Protobuf,
@@ -60,12 +62,13 @@ from ._generated.shared import (
     Visibility,
     model,
 )
-from ._invocation import FailureError, ProtocolError
+from ._invocation import OperationError, ProtocolError
 
 __all__ = [
     "ALL",
     "CALLERS_UNSPECIFIED",
     "CLASSIFICATION_CANCELLED",
+    "CLASSIFICATION_INVALID",
     "CLASSIFICATION_PERMANENT",
     "CLASSIFICATION_REFUSED",
     "CLASSIFICATION_TIMED_OUT",
@@ -78,7 +81,6 @@ __all__ = [
     "Declarations",
     "DiscoveredContract",
     "DiscoveredOperation",
-    "FailureError",
     "File",
     "FileMetadata",
     "FileReference",
@@ -91,7 +93,9 @@ __all__ = [
     "ListFileProductionsResponse",
     "MessageSettings",
     "OperationContract",
+    "OperationError",
     "OperationPolicy",
+    "OperationRetry",
     "PLUGINS",
     "PageRequest",
     "Position",

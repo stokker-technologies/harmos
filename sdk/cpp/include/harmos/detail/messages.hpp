@@ -69,12 +69,14 @@ namespace model {
 using ::harmos::model::v1::Failure;
 }
 using ::harmos::model::v1::Classification;
+using ::harmos::model::v1::OperationRetry;
 inline constexpr auto CLASSIFICATION_UNSPECIFIED = static_cast<::harmos::model::v1::Classification>(0);
 inline constexpr auto CLASSIFICATION_PERMANENT = static_cast<::harmos::model::v1::Classification>(1);
 inline constexpr auto CLASSIFICATION_TRANSIENT = static_cast<::harmos::model::v1::Classification>(2);
 inline constexpr auto CLASSIFICATION_CANCELLED = static_cast<::harmos::model::v1::Classification>(3);
 inline constexpr auto CLASSIFICATION_TIMED_OUT = static_cast<::harmos::model::v1::Classification>(4);
 inline constexpr auto CLASSIFICATION_REFUSED = static_cast<::harmos::model::v1::Classification>(5);
+inline constexpr auto CLASSIFICATION_INVALID = static_cast<::harmos::model::v1::Classification>(6);
 using ::harmos::model::v1::File;
 using ::harmos::model::v1::FileMetadata;
 using ::harmos::model::v1::FileReference;

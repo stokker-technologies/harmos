@@ -22,7 +22,7 @@ from grpc.aio import EOF
 # Local Imports
 from harmos import CLASSIFICATION_CANCELLED, VISIBILITY_PUBLIC
 from harmos._generated.host import _SUBSCRIPTIONS_SUBSCRIBE
-from harmos._invocation import Context, FailureError
+from harmos._invocation import Context, OperationError
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
@@ -94,7 +94,7 @@ class Subscriptions(IsolatedAsyncioTestCase):
         await self.output.get()
         await self.context._cancel("Fixture Scope Ended")
         self.assertEqual((await self.output.get()).child_cancel.call, call)
-        with self.assertRaises(FailureError):
+        with self.assertRaises(OperationError):
             await reading
         self.assertNotIn(call, self.context._watches)
         await subscription.close()
@@ -172,7 +172,7 @@ class Subscriptions(IsolatedAsyncioTestCase):
                     call.cancel()
                 await reader.stopped.wait()
                 assert reader.reading is not None
-                with self.assertRaises(FailureError) as failure:
+                with self.assertRaises(OperationError) as failure:
                     await reader.reading
                 self.assertEqual(failure.exception.value.classification, CLASSIFICATION_CANCELLED)
                 assert reader.context is not None

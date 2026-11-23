@@ -15,15 +15,17 @@ class Classification(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CLASSIFICATION_CANCELLED: _ClassVar[Classification]
     CLASSIFICATION_TIMED_OUT: _ClassVar[Classification]
     CLASSIFICATION_REFUSED: _ClassVar[Classification]
+    CLASSIFICATION_INVALID: _ClassVar[Classification]
 CLASSIFICATION_UNSPECIFIED: Classification
 CLASSIFICATION_PERMANENT: Classification
 CLASSIFICATION_TRANSIENT: Classification
 CLASSIFICATION_CANCELLED: Classification
 CLASSIFICATION_TIMED_OUT: Classification
 CLASSIFICATION_REFUSED: Classification
+CLASSIFICATION_INVALID: Classification
 
 class Failure(_message.Message):
-    __slots__ = ("classification", "code", "message", "action", "operation", "plugin", "cause", "details", "diagnostics")
+    __slots__ = ("classification", "code", "message", "action", "operation", "plugin", "cause", "details", "diagnostics", "retry")
     class DetailsEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -40,6 +42,7 @@ class Failure(_message.Message):
     CAUSE_FIELD_NUMBER: _ClassVar[int]
     DETAILS_FIELD_NUMBER: _ClassVar[int]
     DIAGNOSTICS_FIELD_NUMBER: _ClassVar[int]
+    RETRY_FIELD_NUMBER: _ClassVar[int]
     classification: Classification
     code: str
     message: str
@@ -49,4 +52,17 @@ class Failure(_message.Message):
     cause: Failure
     details: _containers.ScalarMap[str, str]
     diagnostics: str
-    def __init__(self, classification: _Optional[_Union[Classification, str]] = ..., code: _Optional[str] = ..., message: _Optional[str] = ..., action: _Optional[str] = ..., operation: _Optional[str] = ..., plugin: _Optional[str] = ..., cause: _Optional[_Union[Failure, _Mapping]] = ..., details: _Optional[_Mapping[str, str]] = ..., diagnostics: _Optional[str] = ...) -> None: ...
+    retry: OperationRetry
+    def __init__(self, classification: _Optional[_Union[Classification, str]] = ..., code: _Optional[str] = ..., message: _Optional[str] = ..., action: _Optional[str] = ..., operation: _Optional[str] = ..., plugin: _Optional[str] = ..., cause: _Optional[_Union[Failure, _Mapping]] = ..., details: _Optional[_Mapping[str, str]] = ..., diagnostics: _Optional[str] = ..., retry: _Optional[_Union[OperationRetry, _Mapping]] = ...) -> None: ...
+
+class OperationRetry(_message.Message):
+    __slots__ = ("retryable", "attempts", "max_attempts", "next_after_s")
+    RETRYABLE_FIELD_NUMBER: _ClassVar[int]
+    ATTEMPTS_FIELD_NUMBER: _ClassVar[int]
+    MAX_ATTEMPTS_FIELD_NUMBER: _ClassVar[int]
+    NEXT_AFTER_S_FIELD_NUMBER: _ClassVar[int]
+    retryable: bool
+    attempts: int
+    max_attempts: int
+    next_after_s: float
+    def __init__(self, retryable: _Optional[bool] = ..., attempts: _Optional[int] = ..., max_attempts: _Optional[int] = ..., next_after_s: _Optional[float] = ...) -> None: ...

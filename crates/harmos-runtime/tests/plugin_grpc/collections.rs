@@ -30,7 +30,7 @@ use futures_util::{StreamExt, stream};
 use prost::Message;
 use prost_types::Timestamp;
 use serde_json::Value;
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tonic::{Code, Status};
 
 // Local Imports
@@ -211,6 +211,90 @@ fn settings() -> PlacementSettings {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn ordinary_observer_demand_starts_stops_and_starts_a_fresh_period() {
+    // Declare One Ordinary Interval Observer.
+    let remote = Remote::start().await;
+    let mut declarations = model::Declarations {
+        types: Some(support::clock_types()),
+        streams: vec![model::StreamDeclaration {
+            id: "fixture.lifecycle".into(),
+            row: "fixture.ClockRow".into(),
+            interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    declarations.digest = schema::declarations_digest(&declarations);
+    remote.declarations(declarations);
+    let (events, mut observed) = mpsc::unbounded_channel();
+    let cleanup = Arc::new(Notify::new());
+    let released = cleanup.clone();
+    remote.samples(move |mut input| {
+        let (output, receiver) = mpsc::channel(1);
+        let events = events.clone();
+        let released = released.clone();
+        tokio::spawn(async move {
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            let mut active = false;
+            let mut generation = 0;
+            while let Some(request) = input.message().await.unwrap() {
+                let frame = match request.frame.unwrap() {
+                    instance_samples_request::Frame::Demand(demand) => {
+                        active = !demand.streams.is_empty();
+                        if active {
+                            generation += 1;
+                            assert_eq!(demand.streams, ["fixture.lifecycle"]);
+                        }
+                        events.send((active, generation)).unwrap();
+                        if !active {
+                            released.notified().await;
+                        }
+                        instance_samples_response::Frame::Demand(plugin::CollectionDemandResponse {})
+                    }
+                    instance_samples_request::Frame::Window(window) => {
+                        assert!(active);
+                        assert_eq!(window.count, 1);
+                        let row = support::ClockRow { now: window.start };
+                        instance_samples_response::Frame::Batch(plugin::SampleBatch {
+                            count: 1,
+                            columns: row.encode_to_vec(),
+                            last: true,
+                            ..Default::default()
+                        })
+                    }
+                    _ => panic!("Expected Sampling Demand or Window"),
+                };
+                if output.send(Ok(plugin::InstanceSamplesResponse { samples: vec![], frame: Some(frame) })).await.is_err() {
+                    return;
+                }
+            }
+        });
+        Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
+    });
+
+    // Sample Under a Controlled Host Clock, Then Release the Last Demand.
+    let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let host = HostFixture::with_clock(Some(clock)).await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
+    let watching = host.watch("fixture.lifecycle");
+    assert_eq!(observed.recv().await, Some((true, 1)));
+    controller.advance_until(Duration::from_secs(2), || !host.rows().is_empty()).await.unwrap();
+    drop(watching);
+    assert_eq!(observed.recv().await, Some((false, 1)));
+
+    // Reacquiring During Cleanup Still Starts a New Period Before Sampling.
+    let watching = host.watch("fixture.lifecycle");
+    cleanup.notify_one();
+    assert_eq!(observed.recv().await, Some((true, 2)));
+    controller.advance_until(Duration::from_secs(2), || host.rows().len() == 2).await.unwrap();
+    drop(watching);
+    assert_eq!(observed.recv().await, Some((false, 2)));
+    cleanup.notify_one();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.stop().await.unwrap();
+}
 
 #[tokio::test]
 async fn collection_lag_recovery() {

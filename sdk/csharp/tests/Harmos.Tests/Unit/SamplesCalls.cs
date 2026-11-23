@@ -25,13 +25,52 @@ public sealed class SamplesCalls
   private static readonly Operation<StringValue, StringValue> Watch = new("fixture.watch", Visibility.Public, watch: true);
 
   [Fact]
+  public async Task SamplingHooksAcquireOnceReleaseLastAndRestart()
+  {
+    var starts = 0;
+    var stops = 0;
+    var plugin = new Harmos.Plugins.Plugin("google", "1.0.0").Register(ctx => ctx.Register(
+        "google.fixture", new Duration { Seconds = 1 }, context => Task.FromResult(new StringValue { Value = "sample" }),
+        onStart: context =>
+        {
+          starts++;
+          return Task.CompletedTask;
+        },
+        onStop: context =>
+        {
+          stops++;
+          return Task.CompletedTask;
+        }));
+    var service = Serve(plugin);
+    var first = new Call();
+    var second = new Call();
+    var firstServing = service.Samples(first, first, first.Context);
+    var secondServing = service.Samples(second, second, second.Context);
+    await first.Demand(true);
+    await second.Demand(true);
+    Assert.Equal(1, starts);
+    await first.Grant(1);
+    Assert.Equal(1UL, (await first.ReadBatch()).Count);
+    await first.Demand(false);
+    Assert.Equal(0, stops);
+    await second.Demand(false);
+    Assert.Equal(1, stops);
+    await first.Demand(true);
+    Assert.Equal(2, starts);
+    first.Close();
+    second.Close();
+    await Task.WhenAll(firstServing, secondServing);
+    Assert.Equal(2, stops);
+  }
+
+  [Fact]
   public async Task ReverseRepliesCorrelateAcrossWindowsAndIndependentStreams()
   {
     // Open Two Independent Demand Calls.
     var service = Service(async context =>
     {
-      var first = context.CallAsync(Echo, new StringValue { Value = "first" });
-      var second = context.CallAsync(Echo, new StringValue { Value = "second" });
+      var first = context.Operation(Echo, new StringValue { Value = "first" });
+      var second = context.Operation(Echo, new StringValue { Value = "second" });
       var replies = await Task.WhenAll(first, second);
       return new StringValue { Value = string.Concat(replies.Select(reply => reply.Value)) };
     });
@@ -157,7 +196,7 @@ public sealed class SamplesCalls
     };
     var service = Service(async context =>
     {
-      var error = await Assert.ThrowsAsync<PluginFailureException>(() => context.CallAsync(Echo, new StringValue()));
+      var error = await Assert.ThrowsAsync<OperationException>(() => context.Operation(Echo, new StringValue()));
       Assert.Equal(failure, error.Failure);
       return new StringValue { Value = "handled" };
     });
@@ -177,7 +216,7 @@ public sealed class SamplesCalls
     var pending = new List<Task<StringValue>>();
     var service = Service(context =>
     {
-      pending.Add(context.CallAsync(Echo, new StringValue()));
+      pending.Add(context.Operation(Echo, new StringValue()));
       return Task.FromResult(new StringValue());
     });
     var call = new Call();
@@ -191,7 +230,7 @@ public sealed class SamplesCalls
     Assert.Equal(second.Call, (await call.Read()).ChildCancel.Call);
     Assert.Equal(2UL, (await call.ReadBatch()).Count);
     foreach (var child in pending)
-      await Assert.ThrowsAsync<PluginFailureException>(async () => await child);
+      await Assert.ThrowsAsync<OperationException>(async () => await child);
     await call.Reply(first.Call, new StringValue());
     var refusal = await Assert.ThrowsAsync<RpcException>(() => serving);
     Assert.Equal(StatusCode.InvalidArgument, refusal.StatusCode);
@@ -201,7 +240,7 @@ public sealed class SamplesCalls
   public async Task StreamEndCancelsTheUnansweredWindow()
   {
     Task<StringValue>? pending = null;
-    var service = Service(context => pending = context.CallAsync(Echo, new StringValue()));
+    var service = Service(context => pending = context.Operation(Echo, new StringValue()));
     var call = new Call();
     var serving = service.Samples(call, call, call.Context);
     await call.Grant(1);
@@ -257,7 +296,7 @@ public sealed class SamplesCalls
   [InlineData("unanswered window")]
   public async Task InvalidWindowsAreRefused(string invalid)
   {
-    var service = Service(context => context.CallAsync(Echo, new StringValue()), invalid == "device window");
+    var service = Service(context => context.Operation(Echo, new StringValue()), invalid == "device window");
     var call = new Call();
     var serving = service.Samples(call, call, call.Context);
     var window = new Harmos.Internal.Plugin.Window { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = 1, Sequence = 1 };
@@ -428,6 +467,14 @@ public sealed class SamplesCalls
     }
     public Task WriteAsync(InstanceSamplesResponse message) => output.Writer.WriteAsync(message).AsTask();
     public ValueTask Send(InstanceSamplesRequest message) => input.Writer.WriteAsync(message);
+    public async Task Demand(bool active)
+    {
+      var request = new InstanceSamplesRequest { Demand = new CollectionDemand() };
+      if (active)
+        request.Demand.Streams.Add("google.fixture");
+      await Send(request);
+      Assert.Equal(InstanceSamplesResponse.FrameOneofCase.Demand, (await Read()).FrameCase);
+    }
     public ValueTask Grant(ulong sequence, ulong count = 1) => Send(new InstanceSamplesRequest
     {
       Window = new Harmos.Internal.Plugin.Window { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = count, Sequence = sequence }

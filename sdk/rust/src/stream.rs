@@ -279,6 +279,30 @@ impl Observer {
         self.window_setting = setting.into();
         self
     }
+
+    pub fn on_start<H>(mut self, hook: H) -> Self
+    where
+        H: for<'a> AsyncFn(&'a Context) -> Result<()> + Send + Sync + 'static,
+    {
+        let lifecycle = Arc::get_mut(&mut self.lifecycle).expect("unregistered observer");
+        lifecycle.start = Some(Arc::new(Hook {
+            handler: hook,
+            completed: lifecycle.completed.clone(),
+        }));
+        self
+    }
+
+    pub fn on_stop<H>(mut self, hook: H) -> Self
+    where
+        H: for<'a> AsyncFn(&'a Context) -> Result<()> + Send + Sync + 'static,
+    {
+        let lifecycle = Arc::get_mut(&mut self.lifecycle).expect("unregistered observer");
+        lifecycle.stop = Some(Arc::new(Hook {
+            handler: hook,
+            completed: lifecycle.completed.clone(),
+        }));
+        self
+    }
 }
 
 impl Collection {
@@ -326,11 +350,7 @@ impl Collection {
     where
         H: for<'a> AsyncFn(&'a Context) -> Result<()> + Send + Sync + 'static,
     {
-        let lifecycle = Arc::get_mut(&mut self.observer.lifecycle).expect("unregistered collection");
-        lifecycle.start = Some(Arc::new(Hook {
-            handler: hook,
-            completed: lifecycle.completed.clone(),
-        }));
+        self.observer = self.observer.on_start(hook);
         self
     }
 
@@ -338,11 +358,7 @@ impl Collection {
     where
         H: for<'a> AsyncFn(&'a Context) -> Result<()> + Send + Sync + 'static,
     {
-        let lifecycle = Arc::get_mut(&mut self.observer.lifecycle).expect("unregistered collection");
-        lifecycle.stop = Some(Arc::new(Hook {
-            handler: hook,
-            completed: lifecycle.completed.clone(),
-        }));
+        self.observer = self.observer.on_stop(hook);
         self
     }
 }

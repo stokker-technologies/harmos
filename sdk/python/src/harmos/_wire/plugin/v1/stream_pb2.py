@@ -26,27 +26,27 @@ from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dharmos/plugin/v1/stream.proto\x12\x10harmos.plugin.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x7f\n\x06Window\x12)\n\x05start\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\x06period\x18\x02 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\r\n\x05\x63ount\x18\x03 \x01(\x04\x12\x10\n\x08sequence\x18\x04 \x01(\x04\"K\n\x0bSampleBatch\x12\x0e\n\x06offset\x18\x01 \x01(\x04\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\x12\x0f\n\x07\x63olumns\x18\x03 \x01(\x0c\x12\x0c\n\x04last\x18\x04 \x01(\x08\"#\n\x10\x43ollectionDemand\x12\x0f\n\x07streams\x18\x01 \x03(\t\"\x1a\n\x18\x43ollectionDemandResponse\"b\n\x0f\x43ollectionBatch\x12\x0e\n\x06offset\x18\x01 \x01(\x04\x12\x31\n\x07streams\x18\x02 \x03(\x0b\x32 .harmos.plugin.v1.CollectionRows\x12\x0c\n\x04last\x18\x03 \x01(\x08\".\n\x0e\x43ollectionRows\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\x0c\n\x04rows\x18\x02 \x03(\x0c\"1\n\x10SamplesSelection\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\r\n\x05scope\x18\x02 \x01(\t\"O\n\x06Sample\x12&\n\x02\x61t\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0b\n\x03row\x18\x02 \x01(\x0c\x12\x10\n\x08sequence\x18\x03 \x01(\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dharmos/plugin/v1/stream.proto\x12\x10harmos.plugin.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9d\x01\n\x06Window\x12)\n\x05start\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\x06period\x18\x02 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\r\n\x05\x63ount\x18\x03 \x01(\x04\x12\x10\n\x08sequence\x18\x04 \x01(\x04\x12\x1c\n\x14\x63\x61pturing_executions\x18\x05 \x03(\t\"K\n\x0bSampleBatch\x12\x0e\n\x06offset\x18\x01 \x01(\x04\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\x12\x0f\n\x07\x63olumns\x18\x03 \x01(\x0c\x12\x0c\n\x04last\x18\x04 \x01(\x08\"#\n\x10\x43ollectionDemand\x12\x0f\n\x07streams\x18\x01 \x03(\t\"\x1a\n\x18\x43ollectionDemandResponse\"b\n\x0f\x43ollectionBatch\x12\x0e\n\x06offset\x18\x01 \x01(\x04\x12\x31\n\x07streams\x18\x02 \x03(\x0b\x32 .harmos.plugin.v1.CollectionRows\x12\x0c\n\x04last\x18\x03 \x01(\x08\".\n\x0e\x43ollectionRows\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\x0c\n\x04rows\x18\x02 \x03(\x0c\"1\n\x10SamplesSelection\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\r\n\x05scope\x18\x02 \x01(\t\"O\n\x06Sample\x12&\n\x02\x61t\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0b\n\x03row\x18\x02 \x01(\x0c\x12\x10\n\x08sequence\x18\x03 \x01(\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.plugin.v1.stream_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_WINDOW']._serialized_start=116
-  _globals['_WINDOW']._serialized_end=243
-  _globals['_SAMPLEBATCH']._serialized_start=245
-  _globals['_SAMPLEBATCH']._serialized_end=320
-  _globals['_COLLECTIONDEMAND']._serialized_start=322
-  _globals['_COLLECTIONDEMAND']._serialized_end=357
-  _globals['_COLLECTIONDEMANDRESPONSE']._serialized_start=359
-  _globals['_COLLECTIONDEMANDRESPONSE']._serialized_end=385
-  _globals['_COLLECTIONBATCH']._serialized_start=387
-  _globals['_COLLECTIONBATCH']._serialized_end=485
-  _globals['_COLLECTIONROWS']._serialized_start=487
-  _globals['_COLLECTIONROWS']._serialized_end=533
-  _globals['_SAMPLESSELECTION']._serialized_start=535
-  _globals['_SAMPLESSELECTION']._serialized_end=584
-  _globals['_SAMPLE']._serialized_start=586
-  _globals['_SAMPLE']._serialized_end=665
+  _globals['_WINDOW']._serialized_start=117
+  _globals['_WINDOW']._serialized_end=274
+  _globals['_SAMPLEBATCH']._serialized_start=276
+  _globals['_SAMPLEBATCH']._serialized_end=351
+  _globals['_COLLECTIONDEMAND']._serialized_start=353
+  _globals['_COLLECTIONDEMAND']._serialized_end=388
+  _globals['_COLLECTIONDEMANDRESPONSE']._serialized_start=390
+  _globals['_COLLECTIONDEMANDRESPONSE']._serialized_end=416
+  _globals['_COLLECTIONBATCH']._serialized_start=418
+  _globals['_COLLECTIONBATCH']._serialized_end=516
+  _globals['_COLLECTIONROWS']._serialized_start=518
+  _globals['_COLLECTIONROWS']._serialized_end=564
+  _globals['_SAMPLESSELECTION']._serialized_start=566
+  _globals['_SAMPLESSELECTION']._serialized_end=615
+  _globals['_SAMPLE']._serialized_start=617
+  _globals['_SAMPLE']._serialized_end=696
 # @@protoc_insertion_point(module_scope)

@@ -69,10 +69,7 @@ impl SortExecution for Sort {
             for key in &self.keys {
                 let left = key.field.value(input, left as usize)?;
                 let right = key.field.value(input, right as usize)?;
-                let absent = |value: &ScalarValue| {
-                    matches!(value, ScalarValue::Null | ScalarValue::Missing)
-                        || matches!(value, ScalarValue::Float(value) if !value.is_finite())
-                };
+                let absent = |value: &ScalarValue| matches!(value, ScalarValue::Null | ScalarValue::Missing);
                 let null_order = match (absent(&left), absent(&right)) {
                     (true, true) => Ordering::Equal,
                     (true, false) => {

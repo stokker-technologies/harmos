@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -25,32 +27,32 @@ public sealed class Context
   private readonly CancellationTokenSource cancellation;
   private readonly TaskCompletionSource<string> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
   private readonly Dictionary<System.Type, object> resources = [];
-  private readonly IReadOnlyDictionary<string, Handler> local;
   private Context root;
   private volatile bool windDownRequested;
   private readonly HashSet<ulong> owned = [];
   private readonly List<Context> children = [];
   private ulong nextCall;
   private readonly Dictionary<ulong, (Channel<ChildResponse> Channel, ulong Limit, Context Owner)> watches = [];
-  private bool background;
   private readonly HashSet<ulong> retired = [];
   private readonly List<Task> cancellationWrites = [];
   private string? cancelReason;
 
   internal Context(Request request, string plugin, IReadOnlyDictionary<string, ByteString> requires,
-      CancellationTokenSource cancellation, ChannelWriter<InstanceInvokeResponse>? output = null, IReadOnlyDictionary<string, Handler>? local = null)
+      CancellationTokenSource cancellation, ChannelWriter<InstanceInvokeResponse>? output = null)
   {
-    Operation = request.Operation;
+    OperationId = request.Operation;
     Invocation = request.Invocation;
+    CapturingExecutions = request.CapturingExecutions.ToArray();
     Attempt = request.Attempt;
     scope = request.Scope;
     Plugin = plugin;
     this.requires = requires;
     this.cancellation = cancellation;
     this.output = output;
-    this.local = local ?? new Dictionary<string, Handler>();
     root = this;
   }
+
+  public IReadOnlyList<string> CapturingExecutions { get; internal set; } = [];
 
   public HostRoot Host => new(this);
   public HostPluginsStateResource State => Host.Plugins.State;
@@ -63,7 +65,7 @@ public sealed class Context
     return subscription;
   }
 
-  public string Operation
+  public string OperationId
   {
     get;
   }
@@ -80,7 +82,7 @@ public sealed class Context
   public string Scope()
   {
     if (scope.Length == 0)
-      throw new PluginFailureException(new Failure
+      throw new OperationException(new Failure
       {
         Classification = Classification.Refused,
         Code = "scope_required",
@@ -121,7 +123,7 @@ public sealed class Context
           : throw new InvalidOperationException($"Missing Invocation Resource: {typeof(T).Name}");
   }
 
-  public async Task<TResponse> CallAsync<TRequest, TResponse>(Operation<TRequest, TResponse> operation, TRequest request,
+  public async Task<TResponse> Operation<TRequest, TResponse>(Operation<TRequest, TResponse> operation, TRequest request,
       OperationPolicy? policy = null, CancellationToken cancellationToken = default)
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
@@ -131,15 +133,30 @@ public sealed class Context
     var contract = operation.Contract;
     if (operation.IsWatch)
       throw new InvalidOperationException($"Call {contract.Id}: Use Watch for a Streaming Contract");
-    if (local.TryGetValue(contract.Id, out var handler) && handler.Contract.Visibility == Visibility.Private)
+    var child = new ChildRequest { Operation = contract.Id, Payload = request.ToByteString(), Fingerprint = contract.Fingerprint, Policy = policy?.Clone() };
+    var payload = await SendAsync(child, cancellationToken);
+    try
     {
-      if (handler.Contract.Fingerprint != contract.Fingerprint)
-        throw new InvalidOperationException($"Invoke {contract.Id}: Local Contract Differs");
-      return Operation<TRequest, TResponse>.DecodeResponse(await InvokeLocal(handler, request, policy));
+      return global::Harmos.Plugins.Operation<TRequest, TResponse>.DecodeResponse(payload);
     }
-    if (!requires.TryGetValue(contract.Id, out var fingerprint) || fingerprint != contract.Fingerprint)
-      throw new InvalidOperationException($"Undeclared Requirement: {contract.Id}");
+    catch (InvalidProtocolBufferException error)
+    {
+      throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, error.Message));
+    }
+  }
 
+  /// <summary>Call any visible served operation using JSON; the host owns Protobuf conversion.</summary>
+  public async Task<JsonNode?> Operation(string operation, object? payload = null, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  {
+    var child = new ChildRequest { Operation = operation, Json = JsonSerializer.Serialize(payload ?? new { }), Policy = policy?.Clone() };
+    var reply = await SendAsync(child, cancellationToken);
+    return JsonNode.Parse(reply.ToStringUtf8());
+  }
+
+  private async Task<ByteString> SendAsync(ChildRequest child, CancellationToken cancellationToken)
+  {
+    if (output is null)
+      throw new InvalidOperationException($"Call {child.Operation}: Call Only While a Window or Invocation Is Unanswered");
     TaskCompletionSource<ByteString> completion;
     ulong call;
     lock (pending)
@@ -150,18 +167,8 @@ public sealed class Context
       owned.Add(call);
       completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
       pending.Add(call, completion);
-      if (!output.TryWrite(new InstanceInvokeResponse
-      {
-        Child = new ChildRequest
-        {
-          Call = call,
-          Operation = contract.Id,
-          Payload = request.ToByteString(),
-          Fingerprint = fingerprint,
-          Policy = policy?.Clone(),
-          Background = background
-        }
-      }))
+      child.Call = call;
+      if (!output.TryWrite(new InstanceInvokeResponse { Child = child }))
         throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unavailable, "Host Closed"));
     }
     using var registration = cancellationToken.Register(() =>
@@ -182,14 +189,7 @@ public sealed class Context
       payload = await completion.Task;
     }
     finally { lock (pending) owned.Remove(call); }
-    try
-    {
-      return Operation<TRequest, TResponse>.DecodeResponse(payload);
-    }
-    catch (InvalidProtocolBufferException error)
-    {
-      throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, error.Message));
-    }
+    return payload;
   }
 
   public async IAsyncEnumerable<TResponse> WatchAsync<TRequest, TResponse>(Operation<TRequest, TResponse> operation,
@@ -234,15 +234,15 @@ public sealed class Context
         {
           reply = await channel.Reader.ReadAsync(cancellationToken);
         }
-        catch (ChannelClosedException error) when (error.InnerException is PluginFailureException failure)
+        catch (ChannelClosedException error) when (error.InnerException is OperationException failure)
         {
           throw failure;
         }
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Failure)
-          throw new PluginFailureException(reply.Failure);
+          throw new OperationException(reply.Failure);
         if (reply.ResultCase == ChildResponse.ResultOneofCase.Payload)
           yield break;
-        yield return Operation<TRequest, TResponse>.DecodeResponse(reply.Item);
+        yield return global::Harmos.Plugins.Operation<TRequest, TResponse>.DecodeResponse(reply.Item);
       }
     }
     finally
@@ -258,137 +258,6 @@ public sealed class Context
       if (removed)
         await output.WriteAsync(new InstanceInvokeResponse { ChildCancel = new ChildCancel { Call = call } });
     }
-  }
-
-  private async Task<ByteString> InvokeLocal(Handler handler, IMessage request, OperationPolicy? overridePolicy)
-  {
-    var contract = handler.Contract;
-    var policy = overridePolicy ?? contract.Policy ?? new OperationPolicy();
-    Int128? timeout = policy.Timeout is null ? null : Nanos(policy.Timeout, contract.Id);
-    Int128? attemptTimeout = policy.AttemptTimeout is null ? null : Nanos(policy.AttemptTimeout, contract.Id);
-    var grace = policy.CancellationTimeout is null ? 0 : Nanos(policy.CancellationTimeout, contract.Id);
-    var attempts = policy.Retries?.TotalAttempts ?? 1;
-    if (timeout <= 0 || attemptTimeout <= 0 || grace < 0 || attempts == 0 || attempts > 1 && !contract.ReplaySafe)
-      throw new InvalidOperationException($"Invoke {contract.Id}: Invalid Policy or Replay Safety");
-    Context? active = null;
-    if (attempts > 1)
-    {
-      var initial = policy.Retries!.Initial is null ? 0 : Nanos(policy.Retries.Initial, contract.Id);
-      var maximum = policy.Retries.Maximum is null ? initial : Nanos(policy.Retries.Maximum, contract.Id);
-      if (initial <= 0 || maximum < initial)
-        throw new InvalidOperationException($"Invoke {contract.Id}: Invalid Retry Delay");
-    }
-    var guard = new Context(new Request { Operation = Operation, Invocation = Invocation, Scope = scope, Attempt = Attempt },
-        Plugin, requires, cancellation, output, local)
-    {
-      pending = pending,
-      root = root,
-      background = true
-    };
-    var started = timeout.HasValue ? TimestampNanos(await NowAsync()) : 0;
-    try
-    {
-      for (ulong attempt = 0; attempt < attempts; ++attempt)
-      {
-        if (cancelReason is not null)
-          throw CancelFailure(cancelReason);
-        var remaining = timeout.HasValue ? timeout.Value - (TimestampNanos(await NowAsync()) - started) : (Int128?)null;
-        var bound = remaining.HasValue && attemptTimeout.HasValue ? (remaining.Value < attemptTimeout.Value ? remaining : attemptTimeout) : remaining ?? attemptTimeout;
-        if (bound <= 0)
-          throw Interrupted(Classification.TimedOut, contract.Id, "Deadline Reached");
-        using var stopped = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
-        var context = new Context(new Request { Operation = contract.Id, Invocation = Invocation, Scope = scope, Attempt = checked((uint)attempt + 1) },
-            Plugin, requires, stopped, output, local)
-        {
-          pending = pending,
-          root = root
-        };
-        active = context;
-        lock (pending)
-          children.Add(context);
-        using var timerStopped = new CancellationTokenSource();
-        var executing = handler.Execute(context, request);
-        var timer = bound.HasValue ? guard.CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = DurationNanos(bound.Value) }, cancellationToken: timerStopped.Token) : Task.Delay(Timeout.Infinite, timerStopped.Token);
-        try
-        {
-          var completed = await Task.WhenAny(executing, timer, CancelledAsync());
-          if (completed != executing)
-          {
-            var reason = completed == timer ? "Deadline Reached" : await CancelledAsync();
-            if (completed == timer)
-              await timer;
-            await context.Cancel(reason);
-            var deadlineReached = completed == timer;
-            if (grace > 0 && !deadlineReached)
-            {
-              var settling = guard.CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = DurationNanos(grace) }, cancellationToken: timerStopped.Token);
-              deadlineReached = await Task.WhenAny(executing, settling, timer) == timer;
-            }
-            if (grace == 0 || deadlineReached || !executing.IsCompleted)
-              throw Interrupted(completed == timer ? Classification.TimedOut : Classification.Cancelled, contract.Id, reason);
-          }
-          return await executing;
-        }
-        catch (PluginFailureException error) when (error.Failure.Classification == Classification.Transient && attempt + 1 < attempts)
-        {
-          await timerStopped.CancelAsync();
-          await context.Cancel("Local Attempt Settled");
-          var retry = policy.Retries!;
-          var initial = retry.Initial is null ? 0 : Nanos(retry.Initial, contract.Id);
-          Int128? maximum = retry.Maximum is null ? null : Nanos(retry.Maximum, contract.Id);
-          if (initial <= 0 || maximum < initial)
-            throw new InvalidOperationException($"Invoke {contract.Id}: Invalid Retry Delay");
-          var nanos = (UInt128)initial;
-          var cap = maximum.HasValue ? (UInt128)maximum.Value : nanos + nanos / 4;
-          if (maximum.HasValue)
-            for (ulong step = 0; step < attempt && nanos < cap; ++step)
-              nanos = UInt128.Min(nanos * 2, cap);
-          if (retry.DeterministicJitter)
-            nanos = UInt128.Min(nanos + ((UInt128)attempt * 17 + 11) % (nanos / 4 + 1), cap);
-          if (timeout.HasValue)
-            nanos = UInt128.Min(nanos, (UInt128)Int128.Max(0, timeout.Value - (TimestampNanos(await NowAsync()) - started)));
-          if (nanos > 0)
-            await SleepAsync(new Duration { Seconds = checked((long)(nanos / 1_000_000_000)), Nanos = checked((int)(nanos % 1_000_000_000)) });
-        }
-        finally
-        {
-          await timerStopped.CancelAsync();
-          await context.Cancel("Local Attempt Settled");
-          lock (pending)
-            children.Remove(context);
-          active = null;
-          await FlushCancellations();
-        }
-      }
-      throw new InvalidOperationException($"Invoke {contract.Id}: No Attempt Admitted");
-    }
-    finally { if (active is not null) { await active.Cancel("Local Attempt Settled"); lock (pending) children.Remove(active); } }
-  }
-
-  private static Int128 Nanos(Duration value, string operation)
-  {
-    if (value.Seconds < 0 || value.Seconds > 315_576_000_000L || value.Nanos < 0 || value.Nanos >= 1_000_000_000)
-      throw new InvalidOperationException($"Invoke {operation}: Invalid Policy Duration");
-    return (Int128)value.Seconds * 1_000_000_000 + value.Nanos;
-  }
-  private static Int128 TimestampNanos(Timestamp value) => (Int128)value.Seconds * 1_000_000_000 + value.Nanos;
-  private static Duration DurationNanos(Int128 value) => new() { Seconds = checked((long)(value / 1_000_000_000)), Nanos = checked((int)(value % 1_000_000_000)) };
-
-  private static PluginFailureException Interrupted(Classification classification, string operation, string reason) => new(new Failure
-  {
-    Classification = classification,
-    Operation = operation,
-    Code = "interrupted",
-    Message = $"Invoke {operation}: {reason}",
-    Action = "Invoke Again If Safe"
-  });
-
-  internal async Task SleepAsync(Duration duration) => await CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = duration });
-
-  internal async Task<Timestamp> NowAsync()
-  {
-    var time = await CallAsync(HostContracts.TimeGet, new TimeGetRequest());
-    return time.Now;
   }
 
   internal async Task Reply(ChildResponse child)
@@ -416,7 +285,7 @@ public sealed class Context
       if (child.ResultCase is ChildResponse.ResultOneofCase.None or ChildResponse.ResultOneofCase.Item || !pending.Remove(child.Call, out var completion))
         throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, "Unknown, Duplicate or Empty Child Response"));
       if (child.ResultCase == ChildResponse.ResultOneofCase.Failure)
-        completion.SetException(new PluginFailureException(child.Failure));
+        completion.SetException(new OperationException(child.Failure));
       else
         completion.SetResult(child.Payload);
     }
@@ -480,11 +349,12 @@ public sealed class Context
   /// <summary>One sample of the unanswered window; its children share the window's call IDs and lifetime.</summary>
   internal Context Sample(ulong sequence, Timestamp at)
   {
-    var context = new Context(new Request { Operation = Operation, Invocation = Invocation, Scope = scope, Attempt = Attempt },
-        Plugin, requires, cancellation, output, local)
+    var context = new Context(new Request { Operation = OperationId, Invocation = Invocation, Scope = scope, Attempt = Attempt },
+        Plugin, requires, cancellation, output)
     {
       pending = pending,
       root = root,
+      CapturingExecutions = CapturingExecutions,
       Sequence = sequence,
       At = at
     };
@@ -546,15 +416,15 @@ public sealed class Context
     get => root.nextCall; set => root.nextCall = value;
   }
 
-  internal PluginFailureException CancelFailure(string reason) => new(new Failure
+  internal OperationException CancelFailure(string reason) => new(new Failure
   {
     Classification = Classification.Cancelled,
     Code = "cancelled",
     Message = reason,
     Action = "Retry If Needed",
-    Operation = Operation,
+    Operation = OperationId,
     Plugin = Plugin
   });
 
-  internal PluginFailureException CancellationFailure() => CancelFailure(cancelReason ?? "Demand Closed");
+  internal OperationException CancellationFailure() => CancelFailure(cancelReason ?? "Demand Closed");
 }

@@ -18,6 +18,9 @@ pub struct Request {
     /// Opaque to Harmos. The product names what the invocation belongs to.
     #[prost(string, tag = "5")]
     pub scope: ::prost::alloc::string::String,
+    /// Capturing Executions Inherited From an Observer Window, Empty for Other Calls.
+    #[prost(string, repeated, tag = "6")]
+    pub capturing_executions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Asks an active attempt to cancel cooperatively; the handler may still return a typed final result.
 #[allow(clippy::all)]
@@ -75,6 +78,10 @@ pub struct ChildRequest {
     /// Policy guard timers do not make the executing handler idle.
     #[prost(bool, tag = "8")]
     pub background: bool,
+    /// Standard Protobuf JSON request. When present, payload and fingerprint must be empty;
+    /// the host resolves the served contract and returns UTF-8 JSON in ChildResponse.payload.
+    #[prost(string, optional, tag = "9")]
+    pub json: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Permits one further item from a streaming child; demand is not a second child invocation.
 #[allow(clippy::all)]
@@ -375,7 +382,7 @@ impl GuestChildAction {
 }
 /// Grants one interval window: `count` consecutive samples, the first at `start`, each one `period` later.
 #[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Window {
     /// Host time of the window's first sample.
     #[prost(message, optional, tag = "1")]
@@ -389,6 +396,9 @@ pub struct Window {
     /// One-based sequence of the window's first sample within the Samples call.
     #[prost(uint64, tag = "4")]
     pub sequence: u64,
+    /// Host-Supplied Opaque Execution IDs Capturing This Window.
+    #[prost(string, repeated, tag = "5")]
+    pub capturing_executions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Answers part of the unanswered window with consecutive samples as columns.
 #[allow(clippy::all)]
@@ -411,14 +421,15 @@ pub struct SampleBatch {
     #[prost(bool, tag = "4")]
     pub last: bool,
 }
-/// Changes the listened members of a collection between windows. Empty releases demand.
+/// Changes sampling demand between windows. Ordinary observers select their stream;
+/// collections select their listened members. Empty releases demand and awaits cleanup.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CollectionDemand {
     #[prost(string, repeated, tag = "1")]
     pub streams: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
-/// Acknowledges completed first-listener acquisition or last-listener cleanup.
+/// Acknowledges completed first-demand acquisition or last-demand cleanup.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CollectionDemandResponse {}
@@ -584,7 +595,7 @@ pub mod instance_samples_request {
         /// Grants one window of an interval stream; never while another is unanswered.
         #[prost(message, tag = "4")]
         Window(super::Window),
-        /// Collection listeners, changed only between windows; await acknowledgement.
+        /// Observer sampling demand, changed between windows; await acquisition or cleanup acknowledgement.
         #[prost(message, tag = "5")]
         Demand(super::CollectionDemand),
         /// Sticky scope wind-down for this demand and its current and later windows.
@@ -786,8 +797,9 @@ pub mod instance_client {
             self.inner.streaming(req, path, codec).await
         }
         /// One declared stream or collection, selected by its lexicographically first member.
-        /// The host opens with SamplesSelection. Ordinary streams take demand from open/close;
-        /// collections take listened members from CollectionDemand, acknowledged after listener hooks.
+        /// The host opens with SamplesSelection. Device streams take demand from open/close;
+        /// interval observers take sampling demand from CollectionDemand, acknowledged after
+        /// first-demand start or last-demand stop hooks. Collections select their listened members.
         /// For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
         /// the plugin answers with SampleBatch column parts or one CollectionBatch per tick;
         /// the final part or tick is marked last. Only one window may be unanswered.
@@ -900,8 +912,9 @@ pub mod instance_server {
             + std::marker::Send
             + 'static;
         /// One declared stream or collection, selected by its lexicographically first member.
-        /// The host opens with SamplesSelection. Ordinary streams take demand from open/close;
-        /// collections take listened members from CollectionDemand, acknowledged after listener hooks.
+        /// The host opens with SamplesSelection. Device streams take demand from open/close;
+        /// interval observers take sampling demand from CollectionDemand, acknowledged after
+        /// first-demand start or last-demand stop hooks. Collections select their listened members.
         /// For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
         /// the plugin answers with SampleBatch column parts or one CollectionBatch per tick;
         /// the final part or tick is marked last. Only one window may be unanswered.

@@ -40,6 +40,7 @@ use tonic::{Request, Response, Status, Streaming};
 use harmos_protocol::model;
 use harmos_protocol::plugin::instance_client::InstanceClient;
 use harmos_protocol::plugin::instance_server::{Instance, InstanceServer};
+use harmos_protocol::plugin::{CollectionDemandResponse, instance_samples_request, instance_samples_response};
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse,
@@ -384,6 +385,20 @@ impl Instance for Fixture {
 }
 
 /* === Public Functions === */
+
+pub async fn acknowledge_demand(
+    input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<Result<InstanceSamplesResponse, Status>>,
+) {
+    let request = input.message().await.unwrap().unwrap();
+    assert!(matches!(request.frame, Some(instance_samples_request::Frame::Demand(_))));
+    output
+        .send(Ok(InstanceSamplesResponse {
+            samples: vec![],
+            frame: Some(instance_samples_response::Frame::Demand(CollectionDemandResponse {})),
+        }))
+        .await
+        .unwrap();
+}
 
 pub fn clock_types() -> prost_types::FileDescriptorSet {
     let descriptor = model::SettingsDeclarations::default().descriptor();

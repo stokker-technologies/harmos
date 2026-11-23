@@ -30,12 +30,16 @@ message SettingDeclaration {
   string name = 1;
   string title = 2;
   string description = 3;
-  // Required typed default; the value discriminator must be selected.
+  // Required typed default; its discriminator declares text, flag, integer, number or duration.
   SettingValue default = 4;
   // Inclusive lower bound, using the default's numeric or duration variant.
   SettingValue minimum = 5;
   // Inclusive upper bound, using the default's numeric or duration variant.
   SettingValue maximum = 6;
+  // Allowed values, using the default's variant. Empty means unrestricted.
+  repeated SettingValue choices = 7;
+  // Saving a complete value must explicitly include this setting.
+  bool required = 8;
 }
 
 // Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.

@@ -312,7 +312,7 @@ pub async fn run(rule: usize, address: &str) -> Result<()> {
     require(counter.load(Ordering::SeqCst) == 1, "Call Probe: Missing Invocation")?;
 
     let outcome =
-        if rule == 33 { client_refusal(&runtime, &counter).await } else { plugin_refusal(&runtime, &counter, &controller, address).await };
+        if rule == 30 { client_refusal(&runtime, &counter).await } else { plugin_refusal(&runtime, &counter, &controller, address).await };
     runtime.stop().await.map_err(invalid)?;
     outcome
 }
@@ -544,6 +544,6 @@ fn invalid(error: impl Display) -> Error {
 mod tests {
     #[tokio::test]
     async fn harmos_host_operations_are_unreachable_on_the_wire() {
-        super::run(33, "").await.unwrap();
+        super::run(30, "").await.unwrap();
     }
 }

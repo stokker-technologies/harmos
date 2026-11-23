@@ -36,6 +36,18 @@ message Failure {
   map<string, string> details = 8;
   // Stack or source chain for support. Never shown as the message.
   string diagnostics = 9;
+  // Host-Owned Retry Evidence for This Invocation.
+  OperationRetry retry = 10;
+}
+
+// Retry Eligibility and Attempt Counts Reported by the Host Scheduler.
+message OperationRetry {
+  bool retryable = 1;
+  // Attempts Already Run; Zero Means Admission Failed Before Execution.
+  uint64 attempts = 2;
+  uint64 max_attempts = 3;
+  // Delay Before Another Attempt, in Seconds; Zero When No Attempt Is Scheduled.
+  double next_after_s = 4;
 }
 
 // === Enums === //
@@ -51,4 +63,6 @@ enum Classification {
   CLASSIFICATION_TIMED_OUT = 4;
   // Not admitted: visibility, fingerprint mismatch or absent provider.
   CLASSIFICATION_REFUSED = 5;
+  // The Request Does Not Match the Served Operation Contract.
+  CLASSIFICATION_INVALID = 6;
 }

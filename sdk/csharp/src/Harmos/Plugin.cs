@@ -53,11 +53,8 @@ public sealed class Registrar
         payload => operation.Decode(payload),
         async (context, request) => (await handler(context, (TRequest)request)).ToByteString(), contract)))
       throw new ArgumentException($"Duplicate Operation: {contract.Id}");
-    if (contract.Visibility != Visibility.Private)
-    {
-      declarations.Operations.Add(contract);
-      Descriptors.Merge(declarations.Types_, operation.Types);
-    }
+    declarations.Operations.Add(contract);
+    Descriptors.Merge(declarations.Types_, operation.Types);
     return this;
   }
 
@@ -72,8 +69,6 @@ public sealed class Registrar
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
   {
-    if (operation.Contract.Visibility == Visibility.Private)
-      throw new ArgumentException($"Require {operation.Contract.Id}: Private Calls Are Local");
     if (declarations.Requires.Any(item => item.Id == operation.Contract.Id))
       throw new ArgumentException($"Duplicate Requirement: {operation.Contract.Id}");
     declarations.Requires.Add(new Requirement { Id = operation.Contract.Id, Fingerprint = operation.Contract.Fingerprint });
@@ -83,7 +78,8 @@ public sealed class Registrar
 
   /// <summary>Declare an interval stream answered one sample at a time, in order, for every sample of each host window.</summary>
   public Registrar Register<TRow>(string stream, Duration? interval, Func<Context, Task<TRow>> observer,
-      string description = "", string intervalSetting = "", string windowSetting = "") where TRow : IMessage<TRow>, new()
+      string description = "", string intervalSetting = "", string windowSetting = "",
+      Func<Context, Task>? onStart = null, Func<Context, Task>? onStop = null) where TRow : IMessage<TRow>, new()
   {
     var row = new TRow().Descriptor;
     var fields = Columns.RowFields(row, stream);
@@ -98,13 +94,14 @@ public sealed class Registrar
             ?? throw Columns.Failed($"Observe {stream}: Return a Row for Every Sample");
       }
       return Columns.FromRows(row, fields, rows);
-    });
+    }, onStart, onStop);
   }
 
   /// <summary>Declare an interval stream whose observer answers each host window with its columns message.</summary>
   /// <remarks>TColumns repeats every TRow field with the same number and type and holds one value per sample.</remarks>
   public Registrar Register<TRow, TColumns>(string stream, Duration? interval, Func<Context, Window, Task<TColumns>> observer,
-      string description = "", string intervalSetting = "", string windowSetting = "")
+      string description = "", string intervalSetting = "", string windowSetting = "",
+      Func<Context, Task>? onStart = null, Func<Context, Task>? onStop = null)
       where TRow : IMessage<TRow>, new()
       where TColumns : IMessage<TColumns>, new()
   {
@@ -112,7 +109,7 @@ public sealed class Registrar
     var fields = Columns.Mirror(row, new TColumns().Descriptor, stream);
     return AddInterval<TRow>(stream, interval, description, intervalSetting, windowSetting, async (context, window) =>
         Columns.FromColumns(row, fields, await observer(context, window)
-            ?? throw Columns.Failed($"Observe {stream}: Return the Window's Columns"), window, stream));
+            ?? throw Columns.Failed($"Observe {stream}: Return the Window's Columns"), window, stream), onStart, onStop);
   }
 
   public Registrar Register<TRow>(string stream, Func<Context, Publisher<TRow>, Task> producer, string description = "")
@@ -134,25 +131,23 @@ public sealed class Registrar
 
   /// <summary>Declare a library-stored setting with an explicit typed default.</summary>
   public Registrar Register(string name, SettingValue defaultValue, string title = "", string description = "",
-      SettingValue? minimum = null, SettingValue? maximum = null)
+      SettingValue? minimum = null, SettingValue? maximum = null, IEnumerable<SettingValue>? choices = null, bool required = false)
   {
-    ArgumentException.ThrowIfNullOrWhiteSpace(name);
-    ArgumentNullException.ThrowIfNull(defaultValue);
-    if (defaultValue.ValueCase == SettingValue.ValueOneofCase.None)
-      throw new ArgumentException($"Declare Setting {name}: Select a Typed Default", nameof(defaultValue));
     var section = declarations.Sections.SingleOrDefault(item => item.Type == SettingsDeclarations.Descriptor.FullName);
     var settings = section is null ? new SettingsDeclarations() : SettingsDeclarations.Parser.ParseFrom(section.Payload);
-    if (settings.Values.Any(item => item.Name == name))
-      throw new ArgumentException($"Declare Setting {name}: Duplicate Name", nameof(name));
-    settings.Values.Add(new SettingDeclaration
+    var declaration = new SettingDeclaration
     {
       Name = name,
       Title = title,
       Description = description,
       Default = defaultValue.Clone(),
       Minimum = minimum?.Clone(),
-      Maximum = maximum?.Clone()
-    });
+      Maximum = maximum?.Clone(),
+      Required = required
+    };
+    if (choices is not null)
+      declaration.Choices.AddRange(choices.Select(value => value.Clone()));
+    settings.Values.Add(declaration);
     if (section is null)
       return Register(settings);
     section.Payload = settings.ToByteString();
@@ -160,7 +155,7 @@ public sealed class Registrar
   }
 
   private Registrar AddInterval<TRow>(string stream, Duration? interval, string description, string intervalSetting, string windowSetting,
-      Func<Context, Window, Task<Columns>> observer) where TRow : IMessage<TRow>, new()
+      Func<Context, Window, Task<Columns>> observer, Func<Context, Task>? onStart, Func<Context, Task>? onStop) where TRow : IMessage<TRow>, new()
   {
     if (interval is null && string.IsNullOrEmpty(intervalSetting))
       throw new ArgumentException($"Declare {stream}: Give an Interval or Interval Setting");
@@ -174,7 +169,7 @@ public sealed class Registrar
       Description = description,
       IntervalSetting = intervalSetting,
       WindowSetting = windowSetting
-    }, new Publication(observer, null));
+    }, new Publication(observer, null, onStart, onStop));
   }
 
   private Registrar AddStream<TRow>(StreamDeclaration declaration, Publication publication) where TRow : IMessage<TRow>, new()
@@ -195,6 +190,13 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   private readonly StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
   private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
   private readonly Registrar registrar = new();
+  private Func<Exception, OperationException?>? failureMapper;
+
+  public Plugin FailureMapper(Func<Exception, OperationException?> mapper)
+  {
+    failureMapper = mapper;
+    return this;
+  }
   private readonly List<Func<Task>> cleanup = [];
 
   public Plugin Register(Registration catalog)
@@ -305,7 +307,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     Sdk = "harmos_csharp",
     SdkVersion = "0.1.0",
     MessageBytes = messageBytes
-  }, new(registrar.operations), new(registrar.streams), cleanup.ToArray(), remote, lifetime);
+  }, new(registrar.operations), new(registrar.streams), cleanup.ToArray(), remote, lifetime, failureMapper);
 
 
 }
@@ -344,4 +346,31 @@ public sealed class Listener : IAsyncDisposable
 internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);
 
 internal sealed record Publication(Func<Context, Window, Task<Columns>>? Observer,
-    Func<Context, ChannelWriter<Sample>, Task>? Producer);
+    Func<Context, ChannelWriter<Sample>, Task>? Producer,
+    Func<Context, Task>? OnStart = null, Func<Context, Task>? OnStop = null)
+{
+  private readonly SemaphoreSlim gate = new(1);
+  private int active;
+
+  internal async Task Change(Context context, bool start)
+  {
+    await gate.WaitAsync();
+    try
+    {
+      if (start)
+      {
+        if (active == 0 && OnStart is not null)
+          await OnStart(context);
+        active++;
+        return;
+      }
+      active--;
+      if (active == 0 && OnStop is not null)
+        await OnStop(context);
+    }
+    finally
+    {
+      gate.Release();
+    }
+  }
+}

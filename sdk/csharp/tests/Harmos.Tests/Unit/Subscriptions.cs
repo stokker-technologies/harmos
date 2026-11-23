@@ -50,7 +50,7 @@ public sealed class Subscriptions
     reading = second.Subscription.NextAsync();
     await output.Reader.ReadAsync();
     await context.Cancel("Fixture Scope Ended");
-    await Assert.ThrowsAsync<PluginFailureException>(() => reading);
+    await Assert.ThrowsAsync<OperationException>(() => reading);
     await second.Subscription.CloseAsync();
   }
 

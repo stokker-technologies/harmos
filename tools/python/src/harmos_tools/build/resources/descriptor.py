@@ -307,7 +307,7 @@ def public_paths(descriptors: FileDescriptorSet, *, namespace: str = "harmos", r
     names: dict[str, set[str]] = {}
     for file, definition in definitions:
         names.setdefault(definition.name, set()).add(file.package)
-    reserved = {"Call", "Client", "ClientRoot", "Context", "Failure", "FailureError", "HostOperation", "HostRoot", "Plugin", "Window"}
+    reserved = {"Call", "Client", "ClientRoot", "Context", "Failure", "OperationError", "HostOperation", "HostRoot", "Plugin", "Window"}
     reserved.update(reserved_names or ())
     paths = {}
     for file, definition in definitions:

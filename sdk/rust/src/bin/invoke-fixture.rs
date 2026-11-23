@@ -18,7 +18,7 @@
 // Standard Library Imports
 use std::result;
 use std::{
-    env, fs,
+    env, fs, io,
     num::NonZeroUsize,
     sync::{
         OnceLock,
@@ -304,6 +304,24 @@ impl OperationRequest for MissingInput {
     const ID: &'static str = "fixture.missing";
 }
 
+#[derive(prost::Message)]
+struct PrivateInput {
+    #[prost(bytes = "vec", tag = "1")]
+    value: Vec<u8>,
+}
+impl harmos::Message for PrivateInput {
+    fn name() -> String {
+        Value::name()
+    }
+    fn types() -> FileDescriptorSet {
+        Value::types()
+    }
+}
+impl OperationRequest for PrivateInput {
+    type Response = Value;
+    const ID: &'static str = "fixture.private";
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -455,11 +473,106 @@ fn main() -> Result<()> {
                         }),
                         minimum: None,
                         maximum: None,
+                        choices: Vec::new(),
+                        required: false,
                     }],
                 })?;
                 ctx.register(stream)?;
                 ctx.register(observer)?;
                 ctx.register(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+    } else if mode == "error-kinds" {
+        Plugin::new("fixture", "1.0.0")
+            .failure_mapper(|error| {
+                error
+                    .downcast_ref::<io::Error>()
+                    .filter(|error| error.to_string() == "Source Unavailable")
+                    .map(|_| harmos::Error::failure(Classification::Refused, "source_missing", "Source Unavailable", "Select a Source"))
+            })
+            .register(|ctx| {
+                ctx.register(
+                    Operation::new("fixture.private", async |_: &Context, request: Value| -> Result<Value> {
+                        let classification = match request.value.as_slice() {
+                            b"transient" => Classification::Transient,
+                            b"refused" => Classification::Refused,
+                            b"invalid" => Classification::Invalid,
+                            b"cancelled" => Classification::Cancelled,
+                            b"mapped" => return Err(harmos::Error::other(io::Error::other("Source Unavailable"))),
+                            b"unmapped" => return Err(harmos::Error::other(io::Error::other("Unmapped Failure"))),
+                            _ => Classification::Permanent,
+                        };
+                        Err(harmos::Error::failure(classification, "fixture_failure", "Apply Failed", "Choose Another Input"))
+                    })
+                    .visibility(Visibility::Private)
+                    .replay_safe()
+                    .policy(OperationPolicy {
+                        retries: Some(RetryPolicy {
+                            total_attempts: 3,
+                            initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                )?;
+                ctx.register(
+                    Operation::new("fixture.error_report", async |context: &Context, request: Value| {
+                        let error = match context.operation(PrivateInput { value: request.value }).await {
+                            Err(error) => error,
+                            Ok(_) => panic!("Expected an Operation Failure"),
+                        };
+                        let retry = error.retry();
+                        let value = serde_json::json!({
+                            "kind": error.kind(), "code": error.code(), "message": error.message(), "action": error.action(),
+                            "operation": error.operation(), "retry": {"retryable": retry.retryable, "attempts": retry.attempts,
+                            "max_attempts": retry.max_attempts, "next_after_s": retry.next_after_s},
+                        });
+                        Ok(Value {
+                            value: serde_json::to_vec(&value).unwrap(),
+                        })
+                    })
+                    .visibility(Visibility::Protected),
+                )?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+    } else if mode == "captures" {
+        let stream = Stream::<Value>::new("fixture.captures");
+        let observer = Observer::new(&stream, async |context: &Context| {
+            let mut value = b"captures:".to_vec();
+            value.extend(serde_json::to_vec(&context.capturing_executions).unwrap());
+            let response = context.operation(HostInput { value }).await?;
+            Ok(Value { value: response.value })
+        })
+        .every(prost_types::Duration { seconds: 1, nanos: 0 });
+        Plugin::new("fixture", "1.0.0")
+            .register(|ctx| {
+                ctx.register(Dependency::<HostInput>::new())?;
+                ctx.register(stream)?;
+                ctx.register(observer)?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+    } else if mode == "private" {
+        Plugin::new("fixture", "1.0.0")
+            .register(|ctx| {
+                ctx.register(
+                    Operation::new("fixture.own", async |context: &Context, request: Value| {
+                        context.operation(PrivateInput { value: request.value }).await
+                    })
+                    .visibility(Visibility::Protected),
+                )?;
+                ctx.register(Operation::new("fixture.private", retry).visibility(Visibility::Private).replay_safe().policy(
+                    OperationPolicy {
+                        retries: Some(RetryPolicy {
+                            total_attempts: 3,
+                            initial: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ))?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
@@ -553,6 +666,8 @@ fn main() -> Result<()> {
                         }),
                         minimum: None,
                         maximum: None,
+                        choices: Vec::new(),
+                        required: false,
                     }],
                 }))?;
                 ctx.register(Operation::new("fixture.value", setting_value).visibility(Visibility::Protected))?;
@@ -575,7 +690,7 @@ fn main() -> Result<()> {
                 ctx.register(Dependency::<ProtectedInput>::new())?;
                 ctx.register(
                     Operation::new("fixture.self", async |context: &Context, input: Value| {
-                        context.call(ProtectedInput { value: input.value }).await
+                        context.operation(ProtectedInput { value: input.value }).await
                     })
                     .visibility(Visibility::Protected),
                 )?;
@@ -668,6 +783,8 @@ fn duration_setting(name: &str, title: &str, seconds: i64, nanos: i32) -> Settin
             }),
             minimum: None,
             maximum: None,
+            choices: Vec::new(),
+            required: false,
         }],
     }
 }
@@ -748,8 +865,8 @@ async fn scoped(context: &Context, input: Value) -> Result<Value> {
     if input.value != scope.as_bytes() {
         return Err(harmos::Error::Invalid("Payload Differs From Invocation Scope".into()));
     }
-    let host = context.call(HostInput { value: b"scope".to_vec() }).await?;
-    let plugin = context.call(PublicInput { value: Vec::new() }).await?;
+    let host = context.operation(HostInput { value: b"scope".to_vec() }).await?;
+    let plugin = context.operation(PublicInput { value: Vec::new() }).await?;
     let mut value = scope.as_bytes().to_vec();
     value.push(0);
     value.extend_from_slice(&host.value);
@@ -790,39 +907,39 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
 
 async fn forward(context: &Context, input: Value) -> Result<Value> {
     if input.value == b"client-only" {
-        context.call(CallerProbe(StatusGetRequest {})).await?;
+        context.operation(CallerProbe(StatusGetRequest {})).await?;
         return Ok(input);
     }
     if input.value == b"control" {
-        context.call(HostControl {}).await?;
+        context.operation(HostControl {}).await?;
         return Ok(input);
     }
     if input.value == b"application-context" {
-        let response = context.call(ApplicationContext {}).await?;
+        let response = context.operation(ApplicationContext {}).await?;
         return Ok(Value {
             value: response.now.unwrap().seconds.to_le_bytes().to_vec(),
         });
     }
     if input.value == b"application-client" {
-        context.call(ApplicationClient {}).await?;
+        context.operation(ApplicationClient {}).await?;
         return Ok(input);
     }
     if input.value == b"application-instance" {
-        context.call(ApplicationInstance {}).await?;
+        context.operation(ApplicationInstance {}).await?;
         return Ok(input);
     }
     match input.value.first() {
         Some(b'h') => Ok(Value {
-            value: context.call(HostInput { value: input.value }).await?.value,
+            value: context.operation(HostInput { value: input.value }).await?.value,
         }),
-        Some(b'p') => context.call(PublicInput { value: input.value }).await,
-        Some(b's') => context.call(ProtectedInput { value: input.value }).await,
-        _ => context.call(MissingInput { value: input.value }).await,
+        Some(b'p') => context.operation(PublicInput { value: input.value }).await,
+        Some(b's') => context.operation(ProtectedInput { value: input.value }).await,
+        _ => context.operation(MissingInput { value: input.value }).await,
     }
 }
 
 async fn wait(context: &Context, input: Value) -> Result<Value> {
-    context.call(HostInput { value: input.value.clone() }).await?;
+    context.operation(HostInput { value: input.value.clone() }).await?;
     context.cancelled().await;
     Ok(input)
 }
@@ -852,7 +969,7 @@ async fn setting_value(context: &Context, request: Value) -> Result<Value> {
 }
 
 async fn peer_forward(context: &Context, input: Value) -> Result<Value> {
-    match context.call(PeerInput { value: input.value.clone() }).await {
+    match context.operation(PeerInput { value: input.value.clone() }).await {
         Err(harmos::Error::Failure(failure)) if failure.classification() == Classification::Cancelled => Ok(input),
         result => result,
     }

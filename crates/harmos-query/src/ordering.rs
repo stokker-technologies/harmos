@@ -151,9 +151,7 @@ fn current_key<K>(cursor: &Cursor, key: &mut impl FnMut(&RecordBatch, usize) -> 
 
 fn compare(plan: &Sort, left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering> {
     for ((key, left), right) in plan.keys.iter().zip(left).zip(right) {
-        let absent = |value: &ScalarValue| {
-            matches!(value, ScalarValue::Null | ScalarValue::Missing) || matches!(value, ScalarValue::Float(value) if !value.is_finite())
-        };
+        let absent = |value: &ScalarValue| matches!(value, ScalarValue::Null | ScalarValue::Missing);
         let order = match (absent(left), absent(right)) {
             (true, true) => Ordering::Equal,
             (true, false) => {

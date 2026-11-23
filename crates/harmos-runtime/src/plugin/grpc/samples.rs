@@ -92,7 +92,15 @@ impl Drop for Children {
 impl MemorySize for Request {
     fn memory_size(&self) -> usize {
         let members = message::btree_map_memory::<String, ()>(self.collection.len()).saturating_sub(mem::size_of::<BTreeSet<String>>());
-        let bytes = mem::size_of::<Self>().saturating_add(self.caller.description.encoded_len()).saturating_add(members);
+        let captures = self
+            .window
+            .capturing_executions
+            .iter()
+            .fold(self.window.capturing_executions.capacity().saturating_mul(mem::size_of::<String>()), |bytes, execution| {
+                bytes.saturating_add(execution.capacity())
+            });
+        let bytes =
+            mem::size_of::<Self>().saturating_add(self.caller.description.encoded_len()).saturating_add(members).saturating_add(captures);
         self.collection.iter().fold(bytes, |bytes, member| bytes.saturating_add(member.capacity()))
     }
 }

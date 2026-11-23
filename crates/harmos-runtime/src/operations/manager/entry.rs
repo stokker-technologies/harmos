@@ -21,7 +21,7 @@
 use super::*;
 use crate::operations::Visibility;
 use crate::plugin::grpc::{CallingPlugin, invoke::Binding};
-use harmos_protocol::model::{Callers, Requirement};
+use harmos_protocol::model::Callers;
 
 /* === Constants === */
 
@@ -203,7 +203,11 @@ impl Entry {
 
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
         if let Some(caller) = &_origin.grpc {
-            self.authorize_grpc_plugin(caller)?;
+            if _origin.untyped {
+                self.authorize_grpc_plugin(caller)?;
+            } else {
+                self.require_grpc_plugin(caller)?;
+            }
         }
         if _origin.is_plugin() && !self.plugin_visible() {
             return Err(Error::OperationUnauthorized {
@@ -245,7 +249,7 @@ impl Entry {
         Ok(())
     }
 
-    pub(super) fn authorize_grpc_plugin<'a>(&self, caller: &'a CallingPlugin) -> Result<&'a Requirement> {
+    pub(super) fn authorize_grpc_plugin(&self, caller: &CallingPlugin) -> Result<()> {
         let denied = || Error::OperationUnauthorized {
             caller: caller.owner().to_owned(),
             owner: self.owner.to_string(),
@@ -255,15 +259,28 @@ impl Entry {
         if (!own && self.definition.visibility != Visibility::Public) || !self.plugin_visible() {
             return Err(denied());
         }
+        Ok(())
+    }
+
+    pub(super) fn require_grpc_plugin(&self, caller: &CallingPlugin) -> Result<Vec<u8>> {
+        self.authorize_grpc_plugin(caller)?;
+        let own = self.binding.downcast_ref::<Binding>().is_some_and(|binding| caller.same_activation(&binding.caller));
+        if own {
+            return super::plugin_grpc::fingerprint(self);
+        }
         let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
-        let required = requires.iter().find(|required| required.id == self.id()).ok_or_else(denied)?;
+        let required = requires.iter().find(|required| required.id == self.id()).ok_or_else(|| Error::OperationUnauthorized {
+            caller: caller.owner().to_owned(),
+            owner: self.owner.to_string(),
+            operation: self.id().to_owned(),
+        })?;
         if super::plugin_grpc::fingerprint(self)? != required.fingerprint {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
                 reason: "callee differs from the declared requirement; refresh the plugin declarations",
             });
         }
-        Ok(required)
+        Ok(required.fingerprint.clone())
     }
 
     pub(in crate::operations) fn settled(&self) -> bool {

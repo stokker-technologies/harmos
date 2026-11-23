@@ -20,7 +20,7 @@ pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
+use std::{collections::HashMap, future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
 // Third Party Imports
 use prost::Message;
@@ -192,6 +192,10 @@ impl OperationRequest for HostFail {
 
 pub fn plugin() -> Plugin {
     Plugin::new("conformance", "1.0.0")
+        .failure_mapper(|error| match error.downcast_ref::<harmos::Error>() {
+            Some(harmos::Error::Io(error)) if error.to_string() == "Fixture Failure" => Some(fixture_failure().into()),
+            _ => None,
+        })
         .lane(Lane::serial("instrument"))
         .lane(Lane::concurrent("parallel", 2))
         .lane(Lane::unbounded("open"))
@@ -237,6 +241,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "count".into(),
@@ -247,6 +253,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "gain".into(),
@@ -257,6 +265,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "label".into(),
@@ -267,6 +277,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
                 SettingDeclaration {
                     name: "interval".into(),
@@ -277,6 +289,8 @@ pub fn catalog() -> impl Registration {
                     }),
                     minimum: None,
                     maximum: None,
+                    choices: Vec::new(),
+                    required: false,
                 },
             ],
         })?;
@@ -289,6 +303,7 @@ pub fn catalog() -> impl Registration {
         ctx.register(Operation::new("conformance.failure", failure).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.child_failure", child_failure).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.policy", policy).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.untyped", untyped_call).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.schema", schema).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.nested", nested).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.projected", projected).visibility(Visibility::Public))?;
@@ -353,7 +368,7 @@ pub fn catalog() -> impl Registration {
 async fn caller_refusal(ctx: &Context, value: Value) -> Result<Value> {
     let request = <CreateInvocation as prost::Message>::decode(include_bytes!("caller-request.bin").as_slice())
         .map_err(|error| harmos::Error::Invalid(format!("Create Invocation: {error}")))?;
-    match ctx.call(request).await {
+    match ctx.operation(request).await {
         Err(harmos::Error::Failure(failure)) if value.value != b"propagate" => Ok(Value { value: failure.encode_to_vec() }),
         Err(error) => Err(error),
         Ok(_) => Err(harmos::Error::Invalid("Create Invocation: Client-Only Operation Was Admitted".into())),
@@ -365,42 +380,7 @@ async fn window_caller_refusal(ctx: &Context) -> Result<Value> {
 }
 
 async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
-    let policy = match request.value.as_slice() {
-        b"retry" => Some(harmos::OperationPolicy {
-            retries: Some(harmos::RetryPolicy {
-                total_attempts: 2,
-                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
-                deterministic_jitter: true,
-            }),
-            ..Default::default()
-        }),
-        b"deadline" => Some(harmos::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
-            attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
-            ..Default::default()
-        }),
-        b"overall" => Some(harmos::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
-            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            ..Default::default()
-        }),
-        b"retry-bound" => Some(harmos::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            retries: Some(harmos::RetryPolicy {
-                total_attempts: 2,
-                initial: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }),
-        b"cancel" => Some(harmos::OperationPolicy {
-            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            ..Default::default()
-        }),
-        _ => None,
-    };
-    ctx.call_with(LocalInput { value: request.value }, policy).await
+    ctx.operation(LocalInput { value: request.value }).await
 }
 
 async fn clock(ctx: &Context, request: Value) -> Result<Value> {
@@ -422,20 +402,15 @@ async fn clock(ctx: &Context, request: Value) -> Result<Value> {
 
 async fn policy(ctx: &Context, request: Value) -> Result<Value> {
     let first = ctx
-        .call_with(
+        .operation_with(
             HostEcho { value: request.value },
             Some(harmos::OperationPolicy {
-                retries: Some(harmos::RetryPolicy {
-                    total_attempts: 3,
-                    initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                    maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
-                    deterministic_jitter: true,
-                }),
+                retries: Some(harmos::RetryPolicy { total_attempts: 3, ..Default::default() }),
                 ..Default::default()
             }),
         )
         .await?;
-    ctx.call(HostEcho { value: first.value }).await
+    ctx.operation(HostEcho { value: first.value }).await
 }
 
 async fn projected(_: &Context, request: Graph) -> Result<Value> {
@@ -461,8 +436,8 @@ async fn echo(ctx: &Context, request: Value) -> Result<Value> {
 }
 
 async fn children(ctx: &Context, _: Value) -> Result<Value> {
-    let first = ctx.call(HostEcho { value: vec![1] });
-    let second = ctx.call(HostEcho { value: vec![2] });
+    let first = ctx.operation(HostEcho { value: vec![1] });
+    let second = ctx.operation(HostEcho { value: vec![2] });
     let (first, second) = futures_util::future::try_join(first, second).await?;
     Ok(Value {
         value: [first.value, second.value].concat(),
@@ -470,15 +445,19 @@ async fn children(ctx: &Context, _: Value) -> Result<Value> {
 }
 
 async fn cancel(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.call(HostPending { value: request.value }).await
+    ctx.operation(HostPending { value: request.value }).await
 }
 
 async fn child_failure(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.call(HostFail { value: request.value }).await
+    ctx.operation(HostFail { value: request.value }).await
 }
 
 async fn failure(_: &Context, _: Value) -> Result<Value> {
-    Err(Failure {
+    Err(std::io::Error::other("Fixture Failure").into())
+}
+
+fn fixture_failure() -> Failure {
+    Failure {
         classification: Classification::Permanent as i32,
         code: "fixture_failure".into(),
         message: "Fixture Failed".into(),
@@ -494,10 +473,10 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
             plugin: "host".into(),
             ..Default::default()
         })),
-        details: std::collections::HashMap::from([("fixture".into(), "value".into())]),
+        details: HashMap::from([("fixture".into(), "value".into())]),
         diagnostics: "Fixture Diagnostics".into(),
+        retry: None,
     }
-    .into())
 }
 
 async fn sequence(ctx: &Context) -> Result<Value> {
@@ -527,12 +506,12 @@ async fn device(ctx: &Context, publisher: Publisher<Value>) -> Result<()> {
 
 async fn resources(ctx: &Context, request: Value) -> Result<Value> {
     ctx.set(request.clone());
-    ctx.call(HostEcho { value: request.value }).await?;
+    ctx.operation(HostEcho { value: request.value }).await?;
     Ok((*ctx.get::<Value>()?).clone())
 }
 
 async fn cancel_reason(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.call(HostEcho { value: request.value }).await?;
+    ctx.operation(HostEcho { value: request.value }).await?;
     Ok(Value {
         value: ctx.cancelled().await.into_bytes(),
     })
@@ -551,39 +530,22 @@ async fn watch(context: &Context, request: Value) -> Result<Value> {
 }
 
 async fn local(context: &Context, request: Value) -> Result<Value> {
-    if matches!(request.value.as_slice(), b"deadline" | b"overall") {
-        context.sleep(Duration::from_secs(3600)).await?;
-        return Ok(request);
-    }
-    if request.value == b"cancel" {
-        context.call(HostEcho { value: request.value }).await?;
-        return Ok(Value {
-            value: context.cancelled().await.into_bytes(),
-        });
-    }
-    if !matches!(request.value.as_slice(), b"retry" | b"retry-bound") {
-        return Ok(request);
-    }
-    if context.attempt == 1 {
-        return Err(harmos::Error::failure(Classification::Transient, "retry", "Retry", "Invoke Again"));
-    }
-    Ok(Value {
-        value: context.attempt.to_string().into_bytes(),
-    })
+    let _ = context;
+    Ok(request)
 }
 
 async fn peer_call(context: &Context, request: Value) -> Result<Value> {
     match request.value.as_slice() {
         b"public" => {
             context
-                .call(PeerPublic {
+                .operation(PeerPublic {
                     value: context.scope()?.as_bytes().to_vec(),
                 })
                 .await
         }
-        b"protected" => context.call(PeerProtected { value: request.value }).await,
-        b"self" => context.call(OwnProtected { value: request.value }).await,
-        _ => context.call(PeerLocal { value: request.value }).await,
+        b"protected" => context.operation(PeerProtected { value: request.value }).await,
+        b"self" => context.operation(OwnProtected { value: request.value }).await,
+        _ => context.operation(PeerLocal { value: request.value }).await,
     }
 }
 
@@ -616,7 +578,7 @@ async fn discover(context: &Context, _: Value) -> Result<Value> {
 }
 
 async fn window_children(context: &Context) -> Result<Value> {
-    let (first, second) = tokio::join!(context.call(HostEcho { value: vec![1] }), context.call(HostEcho { value: vec![2] }));
+    let (first, second) = tokio::join!(context.operation(HostEcho { value: vec![1] }), context.operation(HostEcho { value: vec![2] }));
     let mut value = first?.value;
     value.extend(second?.value);
     Ok(Value { value })
@@ -624,7 +586,7 @@ async fn window_children(context: &Context) -> Result<Value> {
 
 async fn window_context(context: &Context) -> Result<Value> {
     let echo = context
-        .call(HostEcho {
+        .operation(HostEcho {
             value: context.scope()?.as_bytes().to_vec(),
         })
         .await?
@@ -644,7 +606,7 @@ async fn window_context(context: &Context) -> Result<Value> {
 }
 
 async fn window_failure(context: &Context) -> Result<Value> {
-    match context.call(HostFail { value: Vec::new() }).await {
+    match context.operation(HostFail { value: Vec::new() }).await {
         Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
         Err(error) => Err(error),
         Ok(_) => Err(harmos::Error::Invalid("Call Failure Fixture: Expected Failure".into())),
@@ -669,8 +631,8 @@ async fn window_watch(context: &Context) -> Result<Value> {
 
 async fn window_cancel(context: &Context) -> Result<Value> {
     {
-        let pending = context.call(HostPending { value: Vec::new() });
-        let release = context.call(HostEcho { value: b"release".to_vec() });
+        let pending = context.operation(HostPending { value: Vec::new() });
+        let release = context.operation(HostEcho { value: b"release".to_vec() });
         tokio::pin!(pending, release);
         tokio::select! {
             biased;
@@ -678,7 +640,7 @@ async fn window_cancel(context: &Context) -> Result<Value> {
             result = &mut release => { result?; },
         }
     }
-    let pending = context.call(HostPending { value: Vec::new() });
+    let pending = context.operation(HostPending { value: Vec::new() });
     tokio::pin!(pending);
     futures_util::future::poll_fn(|cx| match pending.as_mut().poll(cx) {
         Poll::Ready(result) => Poll::Ready(result.map(|_| ())),
@@ -686,4 +648,16 @@ async fn window_cancel(context: &Context) -> Result<Value> {
     })
     .await?;
     Ok(Value { value: b"cancelled".to_vec() })
+}
+
+async fn untyped_call(context: &Context, request: Value) -> Result<Value> {
+    let request: serde_json::Value = serde_json::from_slice(&request.value).expect("Conformance JSON Request");
+    let operation = request["operation"].as_str().expect("Conformance Operation Identifier");
+    match context.operation(harmos::untyped(operation, request["payload"].clone())).await {
+        Ok(reply) => Ok(Value {
+            value: serde_json::to_vec(&reply).expect("Conformance JSON Reply"),
+        }),
+        Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
+        Err(error) => Err(error),
+    }
 }

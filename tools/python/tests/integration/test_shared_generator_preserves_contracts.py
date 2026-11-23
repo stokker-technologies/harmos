@@ -168,7 +168,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         ):
             sdk.generate(root=root, descriptors=descriptors, configuration=configuration)
         source = (root / "sdk/python/src/example/__init__.py").read_text()
-        self.assertIn("from harmos._invocation import FailureError", source)
+        self.assertIn("from harmos._invocation import OperationError", source)
 
     def test_rust_composed_payloads_use_protocol_owner(self) -> None:
         schema = FileDescriptorSet()
@@ -307,7 +307,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         self.assertIn("request.Modes.Add(modes)", host_source)
         self.assertNotIn("Modes = modes", host_source)
         self.assertIn("request.Count = count.Value", host_source)
-        self.assertIn("context.CallAsync(HostContracts.NestedJobsDelete", host_source)
+        self.assertIn("context.Operation(HostContracts.NestedJobsDelete", host_source)
         inventory = {path: (source / path).read_bytes() for path in sdk.inventory(source, full)}
 
         # Separate the Python Import Package From the Protocol Namespace.

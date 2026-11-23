@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::error::Error as StdError;
+use std::error;
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -50,7 +50,7 @@ use harmos_protocol::plugin::response;
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest, InstanceSamplesResponse,
 };
-use prost::Message as ProstMessage;
+use prost::Message;
 use tonic::Status;
 
 use harmos_protocol::plugin::{instance_client::InstanceClient, instance_invoke_request, instance_invoke_response};
@@ -89,7 +89,7 @@ struct Launches {
 /* === Implementations === */
 
 impl Process {
-    pub async fn start(cleanup: &Path) -> Result<Self, Box<dyn StdError>> {
+    pub async fn start(cleanup: &Path) -> Result<Self, Box<dyn error::Error>> {
         let mut bootstrap = Bootstrap::start(None).await?;
         let mut child = bootstrap
             .command("harmos-sdk-diagnostics-plugin")
@@ -110,11 +110,11 @@ impl Process {
         })
     }
 
-    pub async fn event(&mut self) -> Result<String, Box<dyn StdError>> {
+    pub async fn event(&mut self) -> Result<String, Box<dyn error::Error>> {
         self.events.next_line().await?.ok_or_else(|| "Plugin Closed Before Event".into())
     }
 
-    pub async fn close(mut self) -> Result<(), Box<dyn StdError>> {
+    pub async fn close(mut self) -> Result<(), Box<dyn error::Error>> {
         self.child.kill().await?;
         self.child.wait().await?;
         Ok(())
@@ -125,7 +125,7 @@ impl Bootstrap {
     pub const TOKEN: &str = "story-launch-token";
 
     /// Serve Announce on a Loopback Port; a Refusal Answers Every Call With `UNAUTHENTICATED`.
-    pub async fn start(refusal: Option<&'static str>) -> Result<Self, Box<dyn StdError>> {
+    pub async fn start(refusal: Option<&'static str>) -> Result<Self, Box<dyn error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0").await?;
         let endpoint = socket.local_addr()?;
         let (record, announces) = mpsc::unbounded_channel();
@@ -152,7 +152,7 @@ impl Bootstrap {
         command
     }
 
-    pub async fn announced(&mut self) -> Result<LaunchesAnnounceRequest, Box<dyn StdError>> {
+    pub async fn announced(&mut self) -> Result<LaunchesAnnounceRequest, Box<dyn error::Error>> {
         self.announces.recv().await.ok_or_else(|| "Bootstrap Closed Before Announce".into())
     }
 
@@ -216,7 +216,7 @@ pub async fn describe(client: &mut InstanceClient<Channel>) -> Result<InstanceGe
 
 pub async fn invoke(
     client: &mut InstanceClient<Channel>, operation: &str,
-) -> Result<(mpsc::Sender<InstanceInvokeRequest>, Streaming<InstanceInvokeResponse>), Box<dyn StdError>> {
+) -> Result<(mpsc::Sender<InstanceInvokeRequest>, Streaming<InstanceInvokeResponse>), Box<dyn error::Error>> {
     let (send, receive) = mpsc::channel(1);
     send.send(InstanceInvokeRequest {
         frame: Some(instance_invoke_request::Frame::Request(Request {
@@ -224,6 +224,7 @@ pub async fn invoke(
             invocation: "execution-story".into(),
             attempt: 1,
             scope: "scope".into(),
+            capturing_executions: Vec::new(),
             payload: Vec::new(),
         })),
     })
@@ -233,14 +234,14 @@ pub async fn invoke(
     Ok((send, output))
 }
 
-pub async fn child(input: &mut Streaming<InstanceInvokeResponse>) -> Result<ChildRequest, Box<dyn StdError>> {
+pub async fn child(input: &mut Streaming<InstanceInvokeResponse>) -> Result<ChildRequest, Box<dyn error::Error>> {
     match input.message().await?.and_then(|frame| frame.frame) {
         Some(instance_invoke_response::Frame::Child(child)) => Ok(child),
         _ => Err("Expected Host Child Call".into()),
     }
 }
 
-pub async fn reply<T: ProstMessage>(send: &mpsc::Sender<InstanceInvokeRequest>, call: u64, reply: T) -> Result<(), Box<dyn StdError>> {
+pub async fn reply<T: Message>(send: &mpsc::Sender<InstanceInvokeRequest>, call: u64, reply: T) -> Result<(), Box<dyn error::Error>> {
     send.send(InstanceInvokeRequest {
         frame: Some(instance_invoke_request::Frame::Child(ChildResponse {
             call,
@@ -251,7 +252,7 @@ pub async fn reply<T: ProstMessage>(send: &mpsc::Sender<InstanceInvokeRequest>, 
     Ok(())
 }
 
-pub async fn terminal<T: ProstMessage + Default>(input: &mut Streaming<InstanceInvokeResponse>) -> Result<T, Box<dyn StdError>> {
+pub async fn terminal<T: Message + Default>(input: &mut Streaming<InstanceInvokeResponse>) -> Result<T, Box<dyn error::Error>> {
     match input.message().await?.and_then(|frame| frame.frame) {
         Some(instance_invoke_response::Frame::Response(Response {
             result: Some(response::Result::Payload(payload)),
@@ -264,7 +265,7 @@ pub async fn terminal<T: ProstMessage + Default>(input: &mut Streaming<InstanceI
 
 pub async fn publish(
     client: &mut InstanceClient<Channel>, id: &str,
-) -> Result<(mpsc::Sender<InstanceSamplesRequest>, Streaming<InstanceSamplesResponse>), Box<dyn StdError>> {
+) -> Result<(mpsc::Sender<InstanceSamplesRequest>, Streaming<InstanceSamplesResponse>), Box<dyn error::Error>> {
     let (send, receive) = mpsc::channel(1);
     send.send(InstanceSamplesRequest {
         frame: Some(instance_samples_request::Frame::Open(SamplesSelection { stream: id.into(), scope: "scope".into() })),

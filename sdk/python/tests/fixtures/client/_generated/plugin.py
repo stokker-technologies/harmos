@@ -120,14 +120,14 @@ class HostInvocationsResource:
 
     async def get(self, instance: int, *, policy: OperationPolicy | None = None) -> InstanceState:
         request = InvocationsGetRequest(instance=instance)
-        response = await self._context.call(_INVOCATIONS_GET, request, policy=policy)
+        response = await self._context._call(_INVOCATIONS_GET, request, policy=policy)
         if not response.HasField("invocation"):
             raise ValueError("Read INVOCATIONS_GET: Missing Payload")
         return response.invocation
 
     async def cancel(self, instance: int, reason: str, *, policy: OperationPolicy | None = None) -> InstanceState:
         request = InvocationsCancelRequest(instance=instance, reason=reason)
-        response = await self._context.call(_INVOCATIONS_CANCEL, request, policy=policy)
+        response = await self._context._call(_INVOCATIONS_CANCEL, request, policy=policy)
         if not response.HasField("invocation"):
             raise ValueError("Read INVOCATIONS_CANCEL: Missing Payload")
         return response.invocation
@@ -150,12 +150,12 @@ class HostOperationsResource:
 
     async def list(self, *, policy: OperationPolicy | None = None) -> list[DiscoveredOperation]:
         request = OperationsListRequest()
-        response = await self._context.call(_OPERATIONS_LIST, request, policy=policy)
+        response = await self._context._call(_OPERATIONS_LIST, request, policy=policy)
         return list(response.operations)
 
     async def get(self, id: str, *, policy: OperationPolicy | None = None) -> DiscoveredOperation:
         request = OperationsGetRequest(id=id)
-        response = await self._context.call(_OPERATIONS_GET, request, policy=policy)
+        response = await self._context._call(_OPERATIONS_GET, request, policy=policy)
         if not response.HasField("operation"):
             raise ValueError("Read OPERATIONS_GET: Missing Payload")
         return response.operation
@@ -176,7 +176,7 @@ class HostPluginsSettingsResource:
         self, *, name: str | None = None, at: ReadCut | None = None, policy: OperationPolicy | None = None
     ) -> SettingsListResponse:
         request = SettingsListRequest(name=name, at=at)
-        response = await self._context.call(_PLUGINS_SETTINGS_LIST, request, policy=policy)
+        response = await self._context._call(_PLUGINS_SETTINGS_LIST, request, policy=policy)
         return response
 
 
@@ -186,12 +186,12 @@ class HostPluginsStateResource:
 
     async def get(self, *, policy: OperationPolicy | None = None) -> StateGetResponse:
         request = StateGetRequest()
-        response = await self._context.call(_PLUGINS_STATE_GET, request, policy=policy)
+        response = await self._context._call(_PLUGINS_STATE_GET, request, policy=policy)
         return response
 
     async def put(self, expected_revision: int, value: bytes, *, policy: OperationPolicy | None = None) -> int:
         request = StatePutRequest(expected_revision=expected_revision, value=value)
-        response = await self._context.call(_PLUGINS_STATE_PUT, request, policy=policy)
+        response = await self._context._call(_PLUGINS_STATE_PUT, request, policy=policy)
         return response.revision
 
 
@@ -201,14 +201,14 @@ class HostTimeResource:
 
     async def get(self, *, policy: OperationPolicy | None = None) -> Timestamp:
         request = TimeGetRequest()
-        response = await self._context.call(_TIME_GET, request, policy=policy)
+        response = await self._context._call(_TIME_GET, request, policy=policy)
         if not response.HasField("now"):
             raise ValueError("Read TIME_GET: Missing Payload")
         return response.now
 
     async def sleep(self, duration: Duration, *, policy: OperationPolicy | None = None) -> TimeSleepResponse:
         request = TimeSleepRequest(duration=duration)
-        response = await self._context.call(_TIME_SLEEP, request, policy=policy)
+        response = await self._context._call(_TIME_SLEEP, request, policy=policy)
         return response
 
 

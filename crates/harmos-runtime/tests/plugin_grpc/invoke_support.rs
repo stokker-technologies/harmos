@@ -64,6 +64,7 @@ pub struct Reply {
 #[derive(Default)]
 pub struct Signals {
     pub entered: Notify,
+    pub captures: Mutex<Vec<Vec<String>>>,
     pub publications: Mutex<Option<Vec<(streams::Definition, streams::ManagedPublication)>>>,
     pub gaps: Mutex<Vec<(streams::Definition, streams::Gap)>>,
     pub incomplete: Mutex<Vec<streams::Definition>>,
@@ -147,6 +148,12 @@ const HOST_OPERATION: OperationSpec<Host> = OperationSpec::<Host>::new(&HOST_DES
 
 pub(crate) async fn host_handler(request: Host, context: operations::FunctionContext<Host>) -> Result<Response<Reply>, Infallible> {
     context.resource::<Signals>().expect("declared resource is registered").entered.notify_one();
+    if let Some(json) = request.value.strip_prefix(b"captures:") {
+        let sdk: Vec<String> = serde_json::from_slice(json).unwrap();
+        let captures = context.call().get::<streams::CapturingExecutions>().unwrap().0.clone();
+        assert_eq!(sdk, captures, "Observer and Child Share the Host Capture Snapshot");
+        context.resource::<Signals>().unwrap().captures.lock().unwrap().push(captures);
+    }
     let value = if request.value == b"scope" { context.call().get::<Scope>().unwrap().as_str().as_bytes().to_vec() } else { request.value };
     Ok(Reply { value }.into())
 }

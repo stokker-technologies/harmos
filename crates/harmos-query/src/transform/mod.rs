@@ -223,14 +223,23 @@ pub(super) fn scalar(array: &dyn Array, row: usize) -> Result<ScalarValue> {
     read!(UInt16Array, Unsigned, u64::from);
     read!(UInt32Array, Unsigned, u64::from);
     read!(UInt64Array, Unsigned, |value| value);
-    read!(Float32Array, Float, f64::from);
-    read!(Float64Array, Float, |value| value);
+    if let Some(array) = array.as_any().downcast_ref::<Float32Array>() {
+        return Ok(sample(f64::from(array.value(row))));
+    }
+    if let Some(array) = array.as_any().downcast_ref::<Float64Array>() {
+        return Ok(sample(array.value(row)));
+    }
     read!(StringArray, Text, str::to_owned);
     read!(TimestampNanosecondArray, Datetime, i128::from);
     if let Some(exact) = array.as_any().downcast_ref::<StructArray>() {
         return exact_value(exact, row);
     }
     Err(invalid("field is not a supported scalar"))
+}
+
+// A Nonfinite Sample Is a Missing Measurement.
+fn sample(value: f64) -> ScalarValue {
+    if value.is_finite() { ScalarValue::Float(value) } else { ScalarValue::Null }
 }
 
 pub(super) fn exact_type() -> DataType {

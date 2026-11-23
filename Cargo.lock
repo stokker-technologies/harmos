@@ -1157,6 +1157,7 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "protoc-bin-vendored",
+ "serde_json",
  "thiserror",
  "tokio",
  "tonic",

@@ -19,11 +19,12 @@
 use std::sync::{Arc, Weak};
 
 // Third Party Imports
+use prost_reflect::{DescriptorPool, MessageDescriptor};
 
 // Local Imports
 use super::*;
-use crate::operations::lane;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
+use crate::operations::{json, lane};
 use crate::plugin::grpc::{self, Activation, invoke::Binding};
 use harmos_operations::clock::WindDown;
 use harmos_protocol::host::InvocationsCreateRequest;
@@ -287,6 +288,7 @@ impl Manager {
                 id: Identifier::new(&contract.id).map_err(|error| grpc::Error::Invalid(error.to_string()))?,
                 description: contract.description.clone(),
                 visibility: match contract.visibility() {
+                    model::Visibility::Private => Visibility::Private,
                     model::Visibility::Protected => Visibility::Protected,
                     model::Visibility::Public => Visibility::Public,
                     _ => return Err(grpc::Error::Invalid(format!("Invalid Visibility for {}", contract.id))),
@@ -365,23 +367,40 @@ impl crate::operations::Context<'_> {
         self.submit_encoded(&request.operation, request.payload)?.await
     }
 
-    pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
+    pub(crate) fn submit_grpc_child(
+        &self, caller: &crate::plugin::grpc::CallingPlugin, mut child: ChildRequest,
+    ) -> Result<ChildInvocation> {
         if child.background && child.operation != "harmos.plugin.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
                 reason: "Call Plugin Child permits background waits only for Time.Sleep",
             });
         }
-        let entry = self.operations.capture_entry(&child.operation)?;
-        entry.available()?;
-        let required = entry.authorize_grpc_plugin(caller)?;
+        let entry = self.operations.capture_entry(&child.operation).map_err(|error| {
+            if child.json.is_some() && matches!(error, Error::NotRegistered { .. }) { json::unserved(&child.operation) } else { error }
+        })?;
+        entry.available().map_err(|error| if child.json.is_some() { json::unserved(&child.operation) } else { error })?;
+        entry.authorize_grpc_plugin(caller)?;
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if required.fingerprint != child.fingerprint {
+        if child.json.is_none() && entry.require_grpc_plugin(caller)? != child.fingerprint {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
                 reason: "callee differs from the declared requirement; refresh the plugin declarations",
             });
         }
+        let response = if let Some(text) = &child.json {
+            if !child.payload.is_empty() || !child.fingerprint.is_empty() || child.watch {
+                return Err(Error::InvalidInput {
+                    field: "JSON operation call",
+                    reason: "Send JSON Only, Without Protobuf Payload, Fingerprint or Watch",
+                });
+            }
+            let (request, response) = json_descriptors(&entry)?;
+            child.payload = json::decode(&child.operation, request, text)?;
+            Some(response)
+        } else {
+            None
+        };
         let output = entry.contract.as_ref().is_some_and(|contract| contract.output().is_some());
         let input = entry.contract.as_ref().is_some_and(|contract| contract.input().is_some());
         if input || output != child.watch || (child.watch && child.max_response_bytes == 0) {
@@ -447,8 +466,16 @@ impl crate::operations::Context<'_> {
                 })?
         };
         let streams = prepared.streams.clone();
-        let override_policy = child.policy.as_ref().map(|value| policy(Some(value))).transpose()?;
-        let invocation = self.operations.dispatch_grpc_prepared(entry, prepared, self, caller, override_policy)?;
+        let override_policy = child.policy.as_ref().map(|value| child_policy(entry.declared().policy, value)).transpose()?;
+        let mut invocation =
+            self.operations.dispatch_grpc_prepared(entry, prepared, self, caller, override_policy, child.json.is_some())?;
+        if let Some(response) = response {
+            let outcome = invocation.outcome;
+            invocation.outcome = Box::pin(async move {
+                let payload = outcome.await?;
+                json::encode(&child.operation, response, &payload)
+            });
+        }
         Ok(ChildInvocation { invocation, streams })
     }
 }
@@ -457,6 +484,7 @@ impl Manager {
     fn dispatch_grpc_prepared(
         &self, entry: Arc<Entry>, prepared: harmos_operations::execution::__private::PreparedNative,
         context: &crate::operations::Context<'_>, caller: &crate::plugin::grpc::CallingPlugin, override_policy: Option<OperationPolicy>,
+        untyped: bool,
     ) -> Result<crate::operations::EncodedInvocation> {
         let mut request = crate::operations::binding::Request::from(Vec::new());
         request.policy = override_policy;
@@ -468,7 +496,10 @@ impl Manager {
                 cause: None,
                 preparation: None,
             },
-            Source::GrpcPlugin(Arc::new(caller.clone())),
+            Source::GrpcPlugin {
+                caller: Arc::new(caller.clone()),
+                untyped,
+            },
             Some(crate::operations::wire::Parent {
                 scope: &context.scope,
                 ancestors: context.admission.held(),
@@ -482,6 +513,85 @@ impl Manager {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn child_policy(declared: OperationPolicy, override_policy: &model::OperationPolicy) -> Result<OperationPolicy> {
+    let mut wire = override_policy.clone();
+    let retry = wire.retries.take();
+    let parsed = policy(Some(&wire))?;
+    let mut applied = declared;
+    if wire.timeout.is_some() {
+        applied.timeout = parsed.timeout;
+    }
+    if wire.attempt_timeout.is_some() {
+        applied.attempt_timeout = parsed.attempt_timeout;
+    }
+    if wire.cancellation_timeout.is_some() {
+        applied.cancellation_timeout = parsed.cancellation_timeout;
+    }
+    if let Some(retry) = retry {
+        applied.retries = match (retry.total_attempts, declared.retries) {
+            (1, _) => crate::RetryPolicy::Never,
+            (attempts, crate::RetryPolicy::OnTransient { backoff, .. }) if attempts > 1 => crate::RetryPolicy::OnTransient {
+                total_attempts: usize::try_from(attempts).map_err(|_| Error::InvalidInput {
+                    field: "child retries",
+                    reason: "Choose an Attempt Count That Fits the Host Address Space",
+                })?,
+                backoff,
+            },
+            _ => {
+                return Err(Error::InvalidInput {
+                    field: "child retries",
+                    reason: "Declare the Callee Backoff Before Enabling Retries and Choose a Positive Attempt Count",
+                });
+            }
+        };
+    }
+    Ok(applied)
+}
+
+fn json_descriptors(entry: &Entry) -> Result<(MessageDescriptor, MessageDescriptor)> {
+    let failure = |reason: &str| Error::OperationFailed {
+        operation: entry.id().into(),
+        source: Arc::new(tonic::Status::invalid_argument(format!("Call {}: {reason}", entry.id()))),
+    };
+    if let Some(binding) = entry.binding.downcast_ref::<Binding>() {
+        let declarations = binding.caller.description.declarations.as_ref().expect("admitted declarations");
+        let pool = DescriptorPool::from_file_descriptor_set(declarations.types.clone().unwrap_or_default())
+            .map_err(|_| failure("Refresh the Plugin's Invalid Protobuf Descriptors"))?;
+        return Ok((
+            pool.get_message_by_name(&binding.contract.request).ok_or_else(|| failure("Declare the Request Descriptor"))?,
+            pool.get_message_by_name(&binding.contract.response).ok_or_else(|| failure("Declare the Response Descriptor"))?,
+        ));
+    }
+    let contract = entry.contract.as_ref().ok_or_else(|| failure("Serve a Protobuf Contract for This Operation"))?;
+    if let Some(protobuf) = contract.protobuf() {
+        let pool =
+            DescriptorPool::decode(protobuf.descriptors.as_slice()).map_err(|_| failure("Refresh the Served Protobuf Descriptors"))?;
+        return Ok((
+            pool.get_message_by_name(&protobuf.request).ok_or_else(|| failure("Declare the Request Descriptor"))?,
+            pool.get_message_by_name(&protobuf.response).ok_or_else(|| failure("Declare the Response Descriptor"))?,
+        ));
+    }
+    json_projected_descriptors(entry, contract)
+}
+
+#[cfg(feature = "grpc")]
+fn json_projected_descriptors(entry: &Entry, contract: &crate::operations::Contract) -> Result<(MessageDescriptor, MessageDescriptor)> {
+    let binding = contract.grpc().ok_or_else(|| json::unserved(entry.id()))?;
+    let service = crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
+        Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        }
+    })?;
+    let method = service.methods().find(|method| method.name() == binding.method.as_ref()).expect("projected method");
+    Ok((method.input(), method.output()))
+}
+
+#[cfg(not(feature = "grpc"))]
+fn json_projected_descriptors(entry: &Entry, _: &crate::operations::Contract) -> Result<(MessageDescriptor, MessageDescriptor)> {
+    Err(json::unserved(entry.id()))
+}
 
 pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     if let Some(binding) = entry.binding.downcast_ref::<Binding>() {
@@ -500,36 +610,19 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     if contract.protobuf().is_some() {
         return Ok(contract.fingerprint().0.to_vec());
     }
-    #[cfg(not(feature = "grpc"))]
-    return Err(Error::InvalidInput {
-        field: "host contract",
-        reason: "native protobuf projections require the grpc feature",
-    });
-    #[cfg(feature = "grpc")]
-    {
-        let binding = contract.grpc().ok_or(Error::InvalidInput {
-            field: "host contract",
-            reason: "child calls require the host operation's protobuf projection",
-        })?;
-        let (package, service, method) = (binding.package.as_ref(), binding.service.as_ref(), binding.method.as_ref());
-        let service = crate::grpc::descriptor(package, service, &[(method, contract)]).map_err(|source| Error::OperationFailed {
-            operation: entry.id().into(),
-            source: Arc::new(source),
-        })?;
-        let method = service.methods().find(|candidate| candidate.name() == method).unwrap();
-        harmos_protocol::schema::fingerprint(
-            entry.id(),
-            &prost_types::FileDescriptorSet {
-                file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
-            },
-            method.input().full_name(),
-            method.output().full_name(),
-        )
-        .map_err(|source| Error::OperationFailed {
-            operation: entry.id().into(),
-            source: Arc::new(source),
-        })
-    }
+    let (request, response) = json_projected_descriptors(entry, contract)?;
+    harmos_protocol::schema::fingerprint(
+        entry.id(),
+        &prost_types::FileDescriptorSet {
+            file: request.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+        },
+        request.full_name(),
+        response.full_name(),
+    )
+    .map_err(|source| Error::OperationFailed {
+        operation: entry.id().into(),
+        source: Arc::new(source),
+    })
 }
 
 fn policy(policy: Option<&model::OperationPolicy>) -> Result<OperationPolicy> {
@@ -540,3 +633,39 @@ fn policy(policy: Option<&model::OperationPolicy>) -> Result<OperationPolicy> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn retry_override_keeps_the_callee_backoff_and_other_policy_fields() {
+        let backoff = crate::operations::Backoff::Fixed {
+            delay: Duration::from_secs(7),
+            jitter: crate::operations::Jitter::None,
+        };
+        let declared = OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_secs(10),
+            cancellation_timeout: Duration::from_secs(2),
+            retries: crate::RetryPolicy::OnTransient { total_attempts: 2, backoff },
+        };
+        let applied = child_policy(
+            declared,
+            &model::OperationPolicy {
+                retries: Some(model::RetryPolicy {
+                    total_attempts: 4,
+                    initial: Some(prost_types::Duration { seconds: 99, nanos: 0 }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.timeout, declared.timeout);
+        assert_eq!(applied.attempt_timeout, declared.attempt_timeout);
+        assert_eq!(applied.cancellation_timeout, declared.cancellation_timeout);
+        assert_eq!(applied.retries, crate::RetryPolicy::OnTransient { total_attempts: 4, backoff });
+    }
+}

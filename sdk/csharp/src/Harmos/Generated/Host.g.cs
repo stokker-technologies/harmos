@@ -69,7 +69,7 @@ public sealed class HostInvocationsResource(Context context)
     {
       Instance = instance,
     };
-    var response = await context.CallAsync(HostContracts.InvocationsGet, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.InvocationsGet, request, policy, cancellationToken);
     return response.Invocation ?? throw new InvalidOperationException("Read InvocationsGet: Missing Payload");
   }
   public async Task<global::Harmos.InstanceState> Cancel(ulong instance, string reason, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
@@ -79,7 +79,7 @@ public sealed class HostInvocationsResource(Context context)
       Instance = instance,
       Reason = reason,
     };
-    var response = await context.CallAsync(HostContracts.InvocationsCancel, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.InvocationsCancel, request, policy, cancellationToken);
     return response.Invocation ?? throw new InvalidOperationException("Read InvocationsCancel: Missing Payload");
   }
   public async IAsyncEnumerable<global::Harmos.InstanceState> Watch(ulong instance, ulong maxItemBytes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -101,7 +101,7 @@ public sealed class HostOperationsResource(Context context)
     var request = new global::Harmos.Clients.OperationsListRequest
     {
     };
-    var response = await context.CallAsync(HostContracts.OperationsList, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.OperationsList, request, policy, cancellationToken);
     return response.Operations;
   }
   public async Task<global::Harmos.DiscoveredOperation> Get(string id, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
@@ -110,7 +110,7 @@ public sealed class HostOperationsResource(Context context)
     {
       Id = id,
     };
-    var response = await context.CallAsync(HostContracts.OperationsGet, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.OperationsGet, request, policy, cancellationToken);
     return response.Operation ?? throw new InvalidOperationException("Read OperationsGet: Missing Payload");
   }
 }
@@ -134,7 +134,7 @@ public sealed class HostPluginsSettingsResource(Context context)
     {
       request.At = at;
     }
-    var response = await context.CallAsync(HostContracts.PluginsSettingsList, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.PluginsSettingsList, request, policy, cancellationToken);
     return response;
   }
 }
@@ -145,7 +145,7 @@ public sealed class HostPluginsStateResource(Context context)
     var request = new global::Harmos.Clients.StateGetRequest
     {
     };
-    var response = await context.CallAsync(HostContracts.PluginsStateGet, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.PluginsStateGet, request, policy, cancellationToken);
     return response;
   }
   public async Task<ulong> Put(ulong expected_revision, ByteString value, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
@@ -155,7 +155,7 @@ public sealed class HostPluginsStateResource(Context context)
       ExpectedRevision = expected_revision,
       Value = value,
     };
-    var response = await context.CallAsync(HostContracts.PluginsStatePut, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.PluginsStatePut, request, policy, cancellationToken);
     return response.Revision;
   }
 }
@@ -166,7 +166,7 @@ public sealed class HostTimeResource(Context context)
     var request = new global::Harmos.Clients.TimeGetRequest
     {
     };
-    var response = await context.CallAsync(HostContracts.TimeGet, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.TimeGet, request, policy, cancellationToken);
     return response.Now ?? throw new InvalidOperationException("Read TimeGet: Missing Payload");
   }
   public async Task<global::Harmos.Clients.TimeSleepResponse> Sleep(global::Google.Protobuf.WellKnownTypes.Duration duration, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
@@ -175,7 +175,7 @@ public sealed class HostTimeResource(Context context)
     {
       Duration = duration,
     };
-    var response = await context.CallAsync(HostContracts.TimeSleep, request, policy, cancellationToken);
+    var response = await context.Operation(HostContracts.TimeSleep, request, policy, cancellationToken);
     return response;
   }
 }

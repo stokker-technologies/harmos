@@ -12,8 +12,8 @@
 
 # Standard Library Imports
 import asyncio
-import copy
-from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
+import json
+from asyncio import CancelledError, Event, Future, Queue
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from typing import TYPE_CHECKING, Protocol
 
@@ -27,12 +27,10 @@ from harmos._wire.model.v1 import failure_pb2
 from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
     CLASSIFICATION_REFUSED,
-    CLASSIFICATION_TIMED_OUT,
-    CLASSIFICATION_TRANSIENT,
 )
-from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
 from harmos._wire.model.v1.position_pb2 import ReadCut
+from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 from harmos._wire.plugin.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 
@@ -46,15 +44,10 @@ from ._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest
 if TYPE_CHECKING:
     from ._authoring import _FaultError
 
-from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 
 # === Public Exports === #
 
 # === Constants === #
-
-SLEEP = Operation("harmos.plugin.v1.Time/Sleep", TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
-GET_TIME = Operation("harmos.plugin.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
 
 
 # === Types === #
@@ -64,13 +57,86 @@ type Handler = Callable[[Context, Message], Coroutine[object, object, Message]]
 # === Classes === #
 
 
-class FailureError(Exception):
-    """An Application FailureError, Preserved Without Reclassification."""
+class OperationError(Exception):
+    """An Operation Failure With the Host Scheduler's Retry Evidence."""
 
-    def __init__(self, value: failure_pb2.Failure) -> None:
-        super().__init__(value.message)
+    def __init__(
+        self,
+        kind: str | failure_pb2.Failure = "permanent",
+        *,
+        code: str = "",
+        message: str = "",
+        action: str = "",
+        operation: str = "",
+        retry: failure_pb2.OperationRetry | None = None,
+    ) -> None:
         self.value = failure_pb2.Failure()
-        self.value.CopyFrom(value)
+        if isinstance(kind, failure_pb2.Failure):
+            self.value.CopyFrom(kind)
+        else:
+            classification = {
+                "transient": failure_pb2.CLASSIFICATION_TRANSIENT,
+                "permanent": failure_pb2.CLASSIFICATION_PERMANENT,
+                "refused": failure_pb2.CLASSIFICATION_REFUSED,
+                "invalid": failure_pb2.CLASSIFICATION_INVALID,
+                "cancelled": failure_pb2.CLASSIFICATION_CANCELLED,
+            }
+            self.value.CopyFrom(
+                failure_pb2.Failure(
+                    classification=classification[kind],
+                    code=code,
+                    message=message,
+                    action=action,
+                    operation=operation,
+                    retry=retry,
+                )
+            )
+        super().__init__(self.value.message)
+
+    @property
+    def kind(self) -> str:
+        return {
+            failure_pb2.CLASSIFICATION_TRANSIENT: "transient",
+            failure_pb2.CLASSIFICATION_REFUSED: "refused",
+            failure_pb2.CLASSIFICATION_INVALID: "invalid",
+            failure_pb2.CLASSIFICATION_CANCELLED: "cancelled",
+            failure_pb2.CLASSIFICATION_TIMED_OUT: "cancelled",
+        }.get(self.value.classification, "permanent")
+
+    @property
+    def code(self) -> str:
+        return self.value.code
+
+    @property
+    def message(self) -> str:
+        return self.value.message
+
+    @property
+    def action(self) -> str:
+        return self.value.action
+
+    @property
+    def operation(self) -> str:
+        return self.value.operation
+
+    @property
+    def retry(self) -> failure_pb2.OperationRetry:
+        return self.value.retry
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "code": self.code,
+            "message": self.message,
+            "action": self.action,
+            "operation": self.operation,
+            "retry": {
+                "retryable": self.retry.retryable,
+                "attempts": self.retry.attempts,
+                "max_attempts": self.retry.max_attempts,
+                "next_after_s": self.retry.next_after_s,
+            },
+        }
 
 
 class ProtocolError(Exception):
@@ -109,7 +175,7 @@ class _Watching[R: Message]:
             kind = reply.WhichOneof("result")
             if kind == "failure":
                 await self.aclose()
-                raise FailureError(reply.failure)
+                raise OperationError(reply.failure)
             if kind == "payload":
                 await self.aclose()
                 raise StopAsyncIteration
@@ -139,6 +205,7 @@ class Context:
         output: "_Output | None" = None,
     ) -> None:
         self.invocation = request.invocation
+        self.capturing_executions = tuple(request.capturing_executions)
         self.attempt = request.attempt
         self._scope = request.scope
         self._wind_down = Event()
@@ -149,11 +216,8 @@ class Context:
         self._output = output
         self._pending: dict[int, Future[ChildResponse]] = {}
         self._next = [0]
-        self._local: dict[str, tuple[Operation[Message, Message], Handler]] = {}
         self._watches: dict[int, tuple[Queue[ChildResponse], int]] = {}
-        self._background = False
         self._retired: set[int] = set()
-        self._children: list[Context] = []
         self._cancelled = Event()
         self._reason = ""
         self._resources: dict[type, object] = {}
@@ -174,7 +238,7 @@ class Context:
     def scope(self) -> str:
         """Require a Caller-Bound Scope for This Invocation."""
         if not self._scope:
-            raise FailureError(
+            raise OperationError(
                 failure_pb2.Failure(
                     classification=CLASSIFICATION_REFUSED,
                     code="scope_required",
@@ -201,38 +265,49 @@ class Context:
             raise TypeError("Invalid Resource Type")
         return value
 
-    async def call[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, policy: OperationPolicy | None = None) -> R:
+    async def _call[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, policy: OperationPolicy | None = None) -> R:
         if self._output is None:
             raise ValueError(f"Call {operation.id}: No Active Invocation or Unanswered Window")
         if operation.watch:
             raise ValueError(f"Call {operation.id}: Use Watch for a Streaming Contract")
         if not isinstance(request, operation.request):
             raise TypeError("Request Does Not Match the Operation")
-        if operation.id in self._local:
-            return await self._invoke_local(operation, request, policy)
-        if self._requires.get(operation.id) != operation.fingerprint:
-            raise ValueError(f"Undeclared or Incompatible Requirement: {operation.id}")
-        if self._cancelled.is_set():
-            raise self._cancel_failure()
-
-        self._next[0] += 1
-        call = self._next[0]
-        complete: Future[ChildResponse] = asyncio.get_running_loop().create_future()
-        self._pending[call] = complete
         child = ChildRequest(
-            call=call,
             operation=operation.id,
             payload=request.SerializeToString(),
             fingerprint=operation.fingerprint,
             policy=policy,
-            background=self._background,
         )
+        reply = await self._send(child)
+        return operation.response.FromString(reply)
+
+    async def operation(
+        self, operation: str, payload: dict[str, object] | None = None, *, policy: OperationPolicy | None = None
+    ) -> dict[str, object]:
+        """Call a Served Operation by Identifier; the Host Converts Its JSON Payload."""
+        child = ChildRequest(operation=operation, json=json.dumps({} if payload is None else payload, allow_nan=False), policy=policy)
+        reply = await self._send(child)
+        value = json.loads(reply)
+        if not isinstance(value, dict):
+            raise ProtocolError(f"Call {operation}: Host Must Return a JSON Object")
+        return value
+
+    async def _send(self, child: ChildRequest) -> bytes:
+        if self._output is None:
+            raise ValueError(f"Call {child.operation}: No Active Invocation or Unanswered Window")
+        if self._cancelled.is_set():
+            raise self._cancel_failure()
+        self._next[0] += 1
+        call = self._next[0]
+        child.call = call
+        complete: Future[ChildResponse] = asyncio.get_running_loop().create_future()
+        self._pending[call] = complete
         try:
             await self._output.put(InstanceInvokeResponse(child=child))
             reply = await complete
             if reply.WhichOneof("result") == "failure":
-                raise FailureError(reply.failure)
-            return operation.response.FromString(reply.payload)
+                raise OperationError(reply.failure)
+            return reply.payload
         except CancelledError:
             if self._pending.pop(call, None) is not None:
                 self._retired.add(call)
@@ -290,155 +365,17 @@ class Context:
 
         return _Watching(self, operation.response, output, call, queue)
 
-    async def _invoke_local[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, override: OperationPolicy | None) -> R:
-        definition, handler = self._local[operation.id]
-        if operation.fingerprint != definition.fingerprint:
-            raise ValueError(f"Invoke {operation.id}: Local Contract Differs")
-        policy = override if override is not None else definition.policy
-        policy = policy if policy is not None else OperationPolicy()
-        context = copy.copy(self)
-        context._operation = operation.id
-        context._cancelled = Event()
-        context._reason = ""
-        context._resources = {}
-        context._pending = {}
-        context._watches = {}
-        context._children = []
-
-        # Replies Stay on the Parent Carrier and Are Forwarded by Correlation.
-        def duration_ns(value: Duration | Timestamp) -> int:
-            if value.seconds < 0 or not 0 <= value.nanos < 1_000_000_000 or value.seconds > 315_576_000_000:
-                raise ValueError(f"Invoke {operation.id}: Invalid Policy Duration")
-            return value.seconds * 1_000_000_000 + value.nanos
-
-        timeout = duration_ns(policy.timeout) if policy.HasField("timeout") else None
-        attempt_timeout = duration_ns(policy.attempt_timeout) if policy.HasField("attempt_timeout") else None
-        grace = duration_ns(policy.cancellation_timeout)
-        if timeout is not None and timeout <= 0 or attempt_timeout is not None and attempt_timeout <= 0 or grace < 0:
-            raise ValueError(f"Invoke {operation.id}: Invalid Deadline")
-        attempts = policy.retries.total_attempts if policy.HasField("retries") else 1
-        if attempts < 1 or attempts > 1 and not definition.replay_safe:
-            raise ValueError(f"Invoke {operation.id}: Retry Requires Replay Safety")
-        if attempts > 1:
-            initial = duration_ns(policy.retries.initial)
-            maximum = duration_ns(policy.retries.maximum) if policy.retries.HasField("maximum") else initial
-            if initial <= 0 or maximum < initial:
-                raise ValueError(f"Invoke {operation.id}: Invalid Retry Delay")
-        guard = copy.copy(self)
-        guard._background = True
-        guard._pending = {}
-        guard._watches = {}
-        guard._children = []
-        guard._cancelled = Event()
-        self._children.extend([context, guard])
-        try:
-            started = duration_ns(await self.now()) if timeout is not None else 0
-            for attempt in range(attempts):
-                if self._cancelled.is_set():
-                    raise self._cancel_failure()
-                context.attempt = attempt + 1
-                context._resources = {}
-                context._cancelled = Event()
-                context._reason = ""
-                remaining = timeout - (duration_ns(await self.now()) - started) if timeout is not None else None
-                bounds = [value for value in (remaining, attempt_timeout) if value is not None]
-                bound = min(bounds) if bounds else None
-                if bound is not None and bound <= 0:
-                    raise FailureError(
-                        failure_pb2.Failure(
-                            classification=CLASSIFICATION_TIMED_OUT,
-                            code="deadline",
-                            message=f"Invoke {operation.id}: Deadline Reached",
-                            action="Invoke Again If Safe",
-                        )
-                    )
-                context._instance = getattr(handler, "__self__", None)
-                running = asyncio.create_task(handler(context, request))
-                cancelled = asyncio.create_task(self.cancelled())
-                timer = (
-                    asyncio.create_task(guard.sleep(Duration(seconds=bound // 1_000_000_000, nanos=bound % 1_000_000_000)))
-                    if bound is not None
-                    else None
-                )
-                tasks = [running, cancelled] + ([timer] if timer else [])
-                try:
-                    done, _ = await asyncio.wait(tasks, return_when=FIRST_COMPLETED)
-                    if running not in done:
-                        reason = cancelled.result() if cancelled in done else "Deadline Reached"
-                        await context._cancel(reason)
-                        deadline_reached = timer in done
-                        if grace and not deadline_reached:
-                            settling = asyncio.create_task(
-                                guard.sleep(Duration(seconds=grace // 1_000_000_000, nanos=grace % 1_000_000_000))
-                            )
-                            try:
-                                settled, _ = await asyncio.wait(
-                                    [running, settling] + ([timer] if timer else []), return_when=FIRST_COMPLETED
-                                )
-                                deadline_reached = timer in settled
-                            finally:
-                                settling.cancel()
-                                await asyncio.gather(settling, return_exceptions=True)
-                        if not grace or deadline_reached or not running.done():
-                            kind = CLASSIFICATION_CANCELLED if cancelled in done else CLASSIFICATION_TIMED_OUT
-                            raise FailureError(
-                                failure_pb2.Failure(
-                                    classification=kind,
-                                    code="interrupted",
-                                    message=f"Invoke {operation.id}: {reason}",
-                                    action="Invoke Again If Safe",
-                                )
-                            )
-                    result = await running
-                    if not isinstance(result, operation.response):
-                        raise TypeError(f"Invoke {operation.id}: Response Does Not Match the Operation")
-                    return result
-                except FailureError as failure:
-                    if failure.value.classification != CLASSIFICATION_TRANSIENT or attempt + 1 >= attempts:
-                        raise
-                    await context._cancel("Local Attempt Settled")
-                    if timer is not None:
-                        timer.cancel()
-                        await asyncio.gather(timer, return_exceptions=True)
-                    delay = duration_ns(policy.retries.initial)
-                    maximum = duration_ns(policy.retries.maximum) if policy.retries.HasField("maximum") else None
-                    if delay <= 0 or maximum is not None and maximum < delay:
-                        raise ValueError(f"Invoke {operation.id}: Invalid Retry Delay") from failure
-                    if maximum is not None:
-                        delay = min(delay * 2**attempt, maximum)
-                    if policy.retries.deterministic_jitter:
-                        delay += (attempt * 17 + 11) % (delay // 4 + 1)
-                        if maximum is not None:
-                            delay = min(delay, maximum)
-                    if timeout is not None:
-                        delay = min(delay, max(0, timeout - (duration_ns(await self.now()) - started)))
-                    if delay:
-                        await self.sleep(Duration(seconds=delay // 1_000_000_000, nanos=delay % 1_000_000_000))
-                finally:
-                    for task in tasks:
-                        if not task.done():
-                            task.cancel()
-                    await asyncio.gather(*tasks, return_exceptions=True)
-            raise ProtocolError(f"Invoke {operation.id}: No Attempt Settled")
-        finally:
-            await context._cancel("Local Attempt Settled")
-            await guard._cancel("Policy Guard Settled")
-            self._children.remove(context)
-            self._children.remove(guard)
-
     async def settings(self, *, at: ReadCut | None = None) -> SettingsListResponse:
         """Read the Calling Plugin's Complete Settings and Revision."""
         return await self.host.plugins.settings.list(at=at)
 
     async def sleep(self, duration: Duration) -> None:
-        await self.call(SLEEP, TimeSleepRequest(duration=duration))
+        await self.host.time.sleep(duration)
 
     async def now(self) -> Timestamp:
-        reply = await self.call(GET_TIME, TimeGetRequest())
-        if not reply.HasField("now"):
-            raise ProtocolError("Read Host Time: Missing Value")
-        validate_timestamp(reply.now)
-        return reply.now
+        now = await self.host.time.get()
+        validate_timestamp(now)
+        return now
 
     async def cancelled(self) -> str:
         await self._cancelled.wait()
@@ -459,31 +396,15 @@ class Context:
             await queue.put(reply)
             return
         complete = self._pending.pop(reply.call, None)
-        if complete is None:
-            for child in self._children:
-                if child._has_pending(reply.call):
-                    await child._reply(reply)
-                    return
         if complete is None or complete.done():
             raise ProtocolError("Reply to Child: Unknown or Duplicate Identity")
         complete.set_result(reply)
-
-    def _has_pending(self, call: int) -> bool:
-        return (
-            call in self._pending
-            or call in self._watches
-            or call in self._retired
-            or any(child._has_pending(call) for child in self._children)
-        )
 
     async def _cancel(self, reason: str) -> None:
         if self._cancelled.is_set():
             return
         self._reason = reason
         self._cancelled.set()
-        for child in tuple(self._children):
-            if not child._background:
-                await child._cancel(reason)
         watches, self._watches = self._watches, {}
         for call, (queue, _) in watches.items():
             self._retired.add(call)
@@ -500,8 +421,8 @@ class Context:
             if not complete.done():
                 complete.set_exception(self._cancel_failure())
 
-    def _cancel_failure(self) -> FailureError:
-        return FailureError(
+    def _cancel_failure(self) -> OperationError:
+        return OperationError(
             failure_pb2.Failure(
                 classification=CLASSIFICATION_CANCELLED,
                 code="cancelled",

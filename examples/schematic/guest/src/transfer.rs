@@ -82,7 +82,7 @@ pub fn catalog() -> impl Registration {
     .policy(super::POLICY);
     let hash = Operation::new("benchmark.hash.file", async |context: &Context, request: Hash| {
         let request = request.request.ok_or_else(|| Error::Invalid("Hash Through Plugin: Missing Request".into()))?;
-        let response = context.call(request).await?;
+        let response = context.operation(request).await?;
         Ok(FileHash {
             read_bytes: response.read_bytes,
             sha256: response.sha256,

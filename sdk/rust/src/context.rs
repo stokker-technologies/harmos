@@ -13,64 +13,62 @@
 
 #[rustfmt::skip]
 mod contracts;
+#[cfg(target_arch = "wasm32")]
+mod guest;
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_output;
 mod state;
 mod subscription;
-#[cfg(target_arch = "wasm32")]
-mod wasm_output;
 
 /* === Re-Exports === */
 
 pub use state::StateHandle;
 pub use subscription::{Subscription, SubscriptionItem, SubscriptionRow};
 
+#[cfg(target_arch = "wasm32")]
+use guest::Queue;
+#[cfg(target_arch = "wasm32")]
+pub use guest::Watching;
+#[cfg(not(target_arch = "wasm32"))]
+use native::Queue;
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::Watching;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use native_output::ChildOutput;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use wasm_output::ChildOutput;
 
 /* === Imports === */
 
 // Standard Library Imports
-use {
-    std::any::Any,
-    std::any::TypeId,
-    std::any::type_name,
-    std::collections::BTreeMap,
-    std::collections::BTreeSet,
-    std::collections::HashMap,
-    std::marker::PhantomData,
-    std::mem,
-    std::num::NonZeroUsize,
-    std::result,
-    std::sync::Arc,
-    std::sync::Mutex,
-    std::sync::atomic::{AtomicBool, Ordering},
-    std::time::Duration,
+use std::{
+    any::{Any, TypeId, type_name},
+    collections::HashMap,
+    future::Future,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
 // Third Party Imports
 use prost::Message;
 use prost_types::Timestamp;
-use tokio::sync::{Notify, mpsc, oneshot, watch};
+use serde_json::Value;
+use tokio::sync::{mpsc, watch};
 use tonic::Status;
 
 // Local Imports
-use crate::message;
 use crate::plugin::HostPluginsSettingsResource;
-use crate::{Error, Operation, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
+use crate::{Error, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
 use harmos_protocol::host::{TimeGetRequest, TimeSleepRequest};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
 use harmos_protocol::model::OperationPolicy;
-use harmos_protocol::plugin::ChildCancel;
-use harmos_protocol::plugin::ChildDemand;
 use harmos_protocol::plugin::ChildRequest;
 use harmos_protocol::plugin::GuestValue;
 use harmos_protocol::plugin::Request;
-use harmos_protocol::plugin::instance_invoke_response;
-use harmos_protocol::policy::RetryPolicy;
 
 /* === Constants === */
 
@@ -78,78 +76,45 @@ use harmos_protocol::policy::RetryPolicy;
 
 /* === Type Aliases === */
 
-type ChildResult = result::Result<Vec<u8>, Error>;
-type WatchResult = Result<Option<Vec<u8>>>;
-pub(crate) type Pending = BTreeMap<u64, PendingCall>;
-pub(crate) struct PendingCall {
-    pub sender: oneshot::Sender<ChildResult>,
-    pub group: Arc<()>,
-    pub background: bool,
-    pub sent: bool,
-}
-#[derive(Clone)]
-pub(crate) struct WatchCall {
-    pub sender: mpsc::Sender<WatchResult>,
-    pub limit: usize,
-    pub group: Arc<()>,
-    pub sent: bool,
-}
-
-struct PendingDrop {
-    context: Context,
-    call: u64,
-}
-impl Drop for PendingDrop {
-    fn drop(&mut self) {
-        let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
-        if let Some(pending) = calls.pending.remove(&self.call)
-            && pending.sent
-        {
-            calls.cancelled.insert(self.call);
-            calls.cancel_queue.insert(self.call);
-            self.context.call_changes.notify_one();
-        }
-    }
-}
-
 /* === Structs === */
+
+/// An operation identifier and JSON payload, resolved against the host's served contract.
+pub struct Untyped {
+    operation: String,
+    payload: Value,
+}
 
 /// Resources belong to this execution, including its child calls; never another invocation.
 /// Virtual time cannot observe background work started independently by a handler.
 #[derive(Clone)]
 pub struct Context {
     pub invocation: String,
+    pub capturing_executions: Vec<String>,
     pub attempt: u32,
     pub(crate) scope: String,
     pub(crate) wind_down: Arc<AtomicBool>,
     pub(crate) operation: String,
     pub(crate) plugin: String,
     resources: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
-    pub(crate) calls: Arc<Mutex<Calls>>,
-    pub(crate) output: Option<ChildOutput>,
+    pub(crate) queue: Queue,
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
-    pub(crate) local: Arc<HashMap<String, Arc<Operation>>>,
     pub(crate) sequence: u64,
-    background: bool,
-    group: Arc<()>,
-    pub(crate) call_changes: Arc<Notify>,
-    pub(crate) child: Option<Arc<dyn ChildTransport>>,
     pub(crate) values: Vec<GuestValue>,
     pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<Timestamp>)>>,
-}
-
-pub(crate) struct Calls {
-    next: u64,
-    pub pending: Pending,
-    pub watches: BTreeMap<u64, WatchCall>,
-    pub cancelled: BTreeSet<u64>,
-    pub cancel_queue: BTreeSet<u64>,
+    pub(crate) failure_mapper: Option<crate::error::FailureMapper>,
 }
 
 /* === Enums === */
 
 /* === Traits === */
+
+/// An Input Accepted by `Context::operation`.
+pub trait OperationInput {
+    type Response;
+
+    fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> impl Future<Output = Result<Self::Response>>;
+}
 
 pub(crate) trait ChildTransport: Send + Sync + Any {
     fn call<'a>(&'a self, request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
@@ -157,34 +122,40 @@ pub(crate) trait ChildTransport: Send + Sync + Any {
 
 /* === Implementations === */
 
+impl<Q: OperationRequest> OperationInput for Q {
+    type Response = Q::Response;
+
+    async fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> Result<Self::Response> {
+        context.typed_operation_with(self, policy).await
+    }
+}
+
+impl OperationInput for Untyped {
+    type Response = Value;
+
+    async fn invoke(self, context: &Context, policy: Option<OperationPolicy>) -> Result<Value> {
+        context.json_operation_with(self, policy).await
+    }
+}
+
 impl Context {
     pub(crate) fn new(request: Request, plugin: String, requires: Arc<HashMap<String, Vec<u8>>>) -> Self {
         Self {
             invocation: request.invocation,
+            capturing_executions: request.capturing_executions,
             attempt: request.attempt,
             scope: request.scope,
             wind_down: Arc::new(AtomicBool::new(false)),
             operation: request.operation,
             plugin,
             resources: Arc::new(Mutex::new(HashMap::new())),
-            calls: Arc::new(Mutex::new(Calls {
-                next: 0,
-                pending: BTreeMap::new(),
-                watches: BTreeMap::new(),
-                cancelled: BTreeSet::new(),
-                cancel_queue: BTreeSet::new(),
-            })),
-            output: None,
-            child: None,
+            queue: Queue::default(),
             values: Vec::new(),
             cancellation: watch::channel(None).0,
             requires,
-            local: Arc::new(HashMap::new()),
             sequence: 0,
-            background: false,
-            group: Arc::new(()),
-            call_changes: Arc::new(Notify::new()),
             samples: None,
+            failure_mapper: None,
         }
     }
 
@@ -205,10 +176,6 @@ impl Context {
     /// The Host Requested Normal Completion of This Scope's Work.
     pub fn wind_down_requested(&self) -> bool {
         self.wind_down.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn request_wind_down(&self) {
-        self.wind_down.store(true, Ordering::Release);
     }
 
     pub fn set<T: Send + Sync + 'static>(&self, value: T) {
@@ -242,400 +209,73 @@ impl Context {
         }
     }
 
-    pub async fn call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
-        self.call_with(request, None).await
+    /// Invoke a Typed Request or an Identifier With a JSON Object Through the Host.
+    pub async fn operation<Q: OperationInput>(&self, request: Q) -> Result<Q::Response> {
+        self.operation_with(request, None).await
     }
 
-    pub async fn call_with<Q: OperationRequest>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
+    pub async fn operation_with<Q: OperationInput>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
+        request.invoke(self, policy).await
+    }
+
+    /// Call a Served Operation With JSON; Conversion Belongs to the Host.
+    async fn json_operation_with(&self, request: Untyped, policy: Option<OperationPolicy>) -> Result<Value> {
+        let json = serde_json::to_string(&request.payload)
+            .map_err(|error| Error::Invalid(format!("Call {}: Encode JSON Payload: {error}", request.operation)))?;
+        let child = ChildRequest {
+            operation: request.operation,
+            json: Some(json),
+            policy,
+            ..Default::default()
+        };
+        let payload = self.send_call(child).await?;
+        serde_json::from_slice(&payload).map_err(|error| Error::Invalid(format!("Read Operation Reply: Host Must Send JSON: {error}")))
+    }
+
+    async fn typed_operation_with<Q: OperationRequest>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
         if Q::WATCH {
             return Err(Error::Invalid(format!("Call {}: Use Watch for a Streaming Contract", Q::ID)));
         }
-        if self.output.is_none() && self.child.is_none() {
-            return Err(Error::Invalid(format!("Call {}: Child Carrier Required", Q::ID)));
-        }
-        if let Some(output) = &self.output {
-            output.check()?;
-        }
-        if let Some(operation) = self.local.get(Q::ID) {
-            if operation.contract.request != Q::name() || operation.contract.response != <Q::Response as message::Message>::name() {
-                return Err(Error::Invalid(format!("Call {}: Local Contract Differs", Q::ID)));
-            }
-            let payload = self.invoke_local(operation, request.encode_to_vec(), policy).await?;
-            return Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into());
-        }
         let fingerprint = request_fingerprint::<Q>()?;
-        if self.requires.get(Q::ID) != Some(&fingerprint) {
-            return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
-        }
-        let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, policy).await?;
-        Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
-    }
-
-    /// Open a declared context Watch with a consumer-owned maximum encoded item size.
-    pub async fn watch<Q: OperationRequest>(&self, request: Q, max_item_bytes: NonZeroUsize) -> Result<Watching<Q::Response>> {
-        if !Q::WATCH {
-            return Err(Error::Invalid(format!("Watch {}: Server-Streaming Contract Required", Q::ID)));
-        }
-        let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Watch {}: Child Carrier Required", Q::ID)))?;
-        output.check()?;
-        let fingerprint = request_fingerprint::<Q>()?;
-        if self.requires.get(Q::ID) != Some(&fingerprint) {
-            return Err(Error::Invalid(format!("Watch {}: Undeclared Requirement", Q::ID)));
-        }
-        let (sender, receiver) = mpsc::channel(1);
-        let call = {
-            let mut calls = self.calls.lock().expect("Child Calls Poisoned");
-            calls.next += 1;
-            let call = calls.next;
-            calls.watches.insert(
-                call,
-                WatchCall {
-                    sender,
-                    limit: max_item_bytes.get(),
-                    group: self.group.clone(),
-                    sent: false,
-                },
-            );
-            call
-        };
-        let watching = Watching {
-            context: self.clone(),
-            call,
-            receiver,
-            closed: false,
-            response: PhantomData,
-        };
-        let limit = self.calls.lock().expect("Child Calls Poisoned").watches[&call].limit;
-        output
-            .send(instance_invoke_response::Frame::Child(ChildRequest {
-                call,
+        let payload = self
+            .send_call(ChildRequest {
                 operation: Q::ID.into(),
                 payload: request.encode_to_vec(),
                 fingerprint,
-                watch: true,
-                max_response_bytes: limit as u64,
+                policy,
                 ..Default::default()
-            }))
-            .await?;
-        if let Some(watch) = self.calls.lock().expect("Child Calls Poisoned").watches.get_mut(&call) {
-            watch.sent = true;
-        }
-        Ok(watching)
-    }
-
-    async fn invoke_local(&self, operation: &Operation, payload: Vec<u8>, override_policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
-        use harmos_protocol::policy::{FailureKind, OperationPolicy, ReplaySafety, UNBOUNDED};
-        let policy = OperationPolicy::try_from(override_policy.as_ref().or(operation.contract.policy.as_ref()))
-            .map_err(|error| Error::Invalid(format!("Invoke {}: {error}", operation.contract.id)))?;
-        let replay = if operation.contract.replay_safe {
-            ReplaySafety::Idempotent
-        } else {
-            ReplaySafety::Unknown
-        };
-        if replay == ReplaySafety::Unknown && !matches!(policy.retries, RetryPolicy::Never) {
-            return Err(Error::Invalid(format!("Invoke {}: Retry Requires Replay Safety", operation.contract.id)));
-        }
-        let mut context = self.clone();
-        context.operation = operation.contract.id.clone();
-        context.group = Arc::new(());
-        context.resources = Arc::new(Mutex::new(HashMap::new()));
-        context.cancellation = watch::channel(None).0;
-        let mut guard = self.clone();
-        guard.background = true;
-        guard.group = Arc::new(());
-        let started = if policy.timeout < UNBOUNDED {
-            Some(self.now().await?)
-        } else {
-            None
-        };
-        let mut attempt = 0;
-        loop {
-            if let Some(reason) = self.cancellation.borrow().clone() {
-                return Err(context.cancel_failure(reason));
-            }
-            context.attempt = attempt + 1;
-            context.resources = Arc::new(Mutex::new(HashMap::new()));
-            context.cancellation = watch::channel(None).0;
-            let remaining = if let Some(started) = &started {
-                let now = self.now().await?;
-                let elapsed = elapsed(started, &now);
-                policy.timeout.saturating_sub(elapsed)
-            } else {
-                UNBOUNDED
-            };
-            if remaining.is_zero() {
-                return Err(Error::failure(
-                    Classification::TimedOut,
-                    "deadline",
-                    format!("Invoke {}: Deadline Reached", operation.contract.id),
-                    "Invoke Again If Safe",
-                ));
-            }
-            let bound = remaining.min(policy.attempt_timeout);
-            let result = Box::pin(async {
-                let executing = operation.handler.execute(&context, payload.clone());
-                tokio::pin!(executing);
-                let deadline = guard.sleep(bound);
-                tokio::pin!(deadline);
-                let (classification, reason) = tokio::select! {
-                    result = &mut executing => return result,
-                    reason = self.cancelled() => (Classification::Cancelled, reason),
-                    result = &mut deadline, if bound < UNBOUNDED => {
-                        result?;
-                        (Classification::TimedOut, "Deadline Reached".into())
-                    }
-                };
-                context.cancellation.send_replace(Some(reason.clone()));
-                context.cancel_calls(true, &reason, false).await?;
-                if classification == Classification::Cancelled && !policy.cancellation_timeout.is_zero() {
-                    tokio::select! {
-                        result = &mut executing => return result,
-                        _ = guard.sleep(policy.cancellation_timeout) => {},
-                        _ = &mut deadline, if bound < UNBOUNDED => {},
-                    }
-                }
-                Err(Error::failure(
-                    classification,
-                    "interrupted",
-                    format!("Invoke {}: {reason}", operation.contract.id),
-                    "Invoke Again If Safe",
-                ))
             })
-            .await;
-            guard.cancel_calls(true, "Policy Guard Settled", false).await?;
-            context.cancel_calls(true, "Local Attempt Settled", false).await?;
-            let kind = match &result {
-                Err(Error::Failure(failure)) if failure.classification() == Classification::Transient => FailureKind::Transient,
-                _ => return result,
-            };
-            let Some(mut delay) = policy.retries.retry_after(attempt as usize, kind, replay, 0) else {
-                return result;
-            };
-            if let Some(started) = &started {
-                let now = self.now().await?;
-                let elapsed = elapsed(started, &now);
-                delay = delay.min(policy.timeout.saturating_sub(elapsed));
-            }
-            if !delay.is_zero() {
-                self.sleep(delay).await?;
-            }
-            attempt += 1;
-        }
+            .await?;
+        Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
     }
 
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
     /// Register `HostOperation::TimeSleep` during the plugin register phase.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
-        self.clock_call(TimeSleepRequest { duration: Some(duration) }).await?;
+        self.operation(TimeSleepRequest { duration: Some(duration) }).await?;
         Ok(())
     }
 
     /// Read evidence time from the host; register `HostOperation::TimeGet`.
     pub async fn now(&self) -> Result<Timestamp> {
-        self.clock_call(TimeGetRequest {}).await?.now.ok_or_else(|| Status::invalid_argument("Get Host Time: Missing Payload").into())
+        self.operation(TimeGetRequest {}).await?.now.ok_or_else(|| Status::invalid_argument("Get Host Time: Missing Payload").into())
     }
 
     /// Access the calling plugin entry's effective settings.
     pub fn settings(&self) -> HostPluginsSettingsResource {
         self.host().plugins.settings
     }
-
-    // Local Operation Policies Depend on the Clock, so Clock Calls Go Straight to the Host.
-    async fn clock_call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
-        let fingerprint = self.requires.get(Q::ID).ok_or_else(|| Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)))?.clone();
-        let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, None).await?;
-        Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
-    }
-
-    async fn send_call(&self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
-        if let Some(child) = &self.child {
-            return child
-                .call(
-                    ChildRequest {
-                        call: 0,
-                        operation: operation.into(),
-                        payload,
-                        fingerprint,
-                        policy,
-                        background: self.background,
-                        ..Default::default()
-                    },
-                    self.values.clone(),
-                    false,
-                )
-                .await;
-        }
-        let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Call {operation}: Child Carrier Required")))?;
-        output.check()?;
-        if !self.background
-            && let Some(reason) = self.cancellation.borrow().clone()
-        {
-            return Err(self.cancel_failure(reason));
-        }
-        self.flush_cancels().await?;
-        let (send, receive) = oneshot::channel();
-        let call = {
-            let mut calls = self.calls.lock().expect("Child Calls Poisoned");
-            calls.next += 1;
-            let call = calls.next;
-            calls.pending.insert(
-                call,
-                PendingCall {
-                    sender: send,
-                    group: self.group.clone(),
-                    background: self.background,
-                    sent: false,
-                },
-            );
-            call
-        };
-        let _pending = PendingDrop { context: self.clone(), call };
-        let child = ChildRequest {
-            call,
-            operation: operation.into(),
-            payload,
-            fingerprint,
-            policy,
-            background: self.background,
-            ..Default::default()
-        };
-        output.send(instance_invoke_response::Frame::Child(child)).await?;
-        if let Some(pending) = self.calls.lock().expect("Child Calls Poisoned").pending.get_mut(&call) {
-            pending.sent = true;
-        }
-        receive.await.map_err(|_| Status::unavailable("Invocation Closed"))?
-    }
-
-    pub(crate) async fn flush_cancels(&self) -> Result<()> {
-        let cancelled = mem::take(&mut self.calls.lock().expect("Child Calls Poisoned").cancel_queue);
-        if let Some(output) = &self.output {
-            for call in cancelled {
-                output.send(instance_invoke_response::Frame::ChildCancel(ChildCancel { call })).await?;
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn cancel_calls(&self, owned: bool, reason: &str, keep_guards: bool) -> Result<()> {
-        let (pending, watches) = {
-            let mut calls = self.calls.lock().expect("Child Calls Poisoned");
-            let ids = calls
-                .pending
-                .iter()
-                .filter(|(_, call)| (!owned || Arc::ptr_eq(&call.group, &self.group)) && !(keep_guards && call.background))
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>();
-            let mut pending = Vec::new();
-            for id in ids {
-                let call = calls.pending.remove(&id).expect("selected child");
-                if call.sent {
-                    calls.cancelled.insert(id);
-                    calls.cancel_queue.insert(id);
-                }
-                pending.push(call);
-            }
-            let ids = calls
-                .watches
-                .iter()
-                .filter(|(_, call)| !owned || Arc::ptr_eq(&call.group, &self.group))
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>();
-            let mut watches = Vec::new();
-            for id in ids {
-                let watch = calls.watches.remove(&id).expect("selected watch");
-                if watch.sent {
-                    calls.cancelled.insert(id);
-                    calls.cancel_queue.insert(id);
-                }
-                watches.push(watch.sender);
-            }
-            (pending, watches)
-        };
-        for call in pending {
-            let _ = call.sender.send(Err(self.cancel_failure(reason.into())));
-        }
-        for watch in watches {
-            let _ = watch.try_send(Err(self.cancel_failure(reason.into())));
-        }
-        self.flush_cancels().await
-    }
-
-    pub(crate) fn cancel_failure(&self, reason: String) -> Error {
-        Failure {
-            classification: Classification::Cancelled as i32,
-            code: "cancelled".into(),
-            message: reason,
-            action: "Retry If Needed".into(),
-            operation: self.operation.clone(),
-            plugin: self.plugin.clone(),
-            ..Default::default()
-        }
-        .into()
-    }
-}
-
-/// A Child Watch Holds at Most One Demanded Item; Dropping It Cancels Its Demand.
-#[must_use]
-pub struct Watching<R: message::Message> {
-    context: Context,
-    call: u64,
-    receiver: mpsc::Receiver<WatchResult>,
-    closed: bool,
-    response: PhantomData<fn() -> R>,
-}
-impl<R: message::Message> Watching<R> {
-    pub fn close(&mut self) {
-        self.closed = true;
-        let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
-        if let Some(watch) = calls.watches.remove(&self.call)
-            && watch.sent
-        {
-            calls.cancelled.insert(self.call);
-            calls.cancel_queue.insert(self.call);
-            self.context.call_changes.notify_one();
-        }
-    }
-
-    pub async fn next(&mut self) -> Result<Option<R>> {
-        if self.closed {
-            return Ok(None);
-        }
-        let output = self.context.output.as_ref().expect("Native Watch");
-        let active = self.context.calls.lock().expect("Child Calls Poisoned").watches.contains_key(&self.call);
-        if active {
-            output.send(instance_invoke_response::Frame::ChildDemand(ChildDemand { call: self.call })).await?;
-        }
-        match self.receiver.recv().await {
-            Some(Ok(Some(bytes))) => R::decode(bytes.as_slice()).map(Some).map_err(|error| Error::Invalid(format!("Watch: {error}"))),
-            Some(Ok(None)) => {
-                self.closed = true;
-                Ok(None)
-            }
-            Some(Err(error)) => {
-                self.closed = true;
-                Err(error)
-            }
-            None => Err(Status::unavailable("Watch: Invocation Closed").into()),
-        }
-    }
-}
-impl<R: message::Message> Drop for Watching<R> {
-    fn drop(&mut self) {
-        self.close();
-    }
 }
 
 /* === Public Functions === */
 
-/* === Private Functions === */
-
-fn elapsed(started: &Timestamp, now: &Timestamp) -> Duration {
-    let nanos = ((i128::from(now.seconds) - i128::from(started.seconds)) * 1_000_000_000 + i128::from(now.nanos)
-        - i128::from(started.nanos))
-    .max(0) as u128;
-    Duration::new((nanos / 1_000_000_000).min(u128::from(u64::MAX)) as u64, (nanos % 1_000_000_000) as u32)
+/// Call an operation by identifier with a standard Protobuf JSON payload.
+pub fn untyped(operation: impl Into<String>, payload: Value) -> Untyped {
+    Untyped { operation: operation.into(), payload }
 }
+
+/* === Private Functions === */
 
 /* === Tests === */
 
@@ -684,7 +324,7 @@ mod tests {
             requests: Mutex::new(Vec::new()),
             response: response.clone(),
         });
-        context.child = Some(transport.clone());
+        context.queue.child = Some(transport.clone());
 
         // Read Through Both Public Paths and Preserve the Full Reply.
         assert_eq!(context.settings().list().await.unwrap(), response);
@@ -744,7 +384,7 @@ mod tests {
             .unwrap();
         let requires = declarations.requires.into_iter().map(|requirement| (requirement.id, requirement.fingerprint)).collect();
         let mut context = Context::new(Request::default(), "caller".into(), Arc::new(requires));
-        context.child = Some(Arc::new(StateTransport { value: Mutex::new(Default::default()) }));
+        context.queue.child = Some(Arc::new(StateTransport { value: Mutex::new(Default::default()) }));
         let state = context.state();
         assert_eq!(state.get::<OpaqueState>().await.unwrap(), OpaqueState::default());
         let value = OpaqueState { effects: vec![0, 255, 7] };
@@ -754,21 +394,5 @@ mod tests {
         assert!(context.state().put(&value).await.is_err());
         assert_eq!(retained.clear().await.unwrap(), 2);
         assert_eq!(state.get::<OpaqueState>().await.unwrap(), OpaqueState::default());
-    }
-
-    #[test]
-    fn policy_clock_spans_keep_large_durations_and_fractional_seconds() {
-        let started = Timestamp {
-            seconds: -30_000_000_000,
-            nanos: 900_000_000,
-        };
-        let now = Timestamp {
-            seconds: 10_000_000_001,
-            nanos: 100_000_000,
-        };
-        let span = elapsed(&started, &now);
-        assert_eq!(span, Duration::new(40_000_000_000, 200_000_000));
-        assert_eq!(Duration::from_secs(40_000_000_000).saturating_sub(span), Duration::ZERO);
-        assert_eq!(elapsed(&now, &started), Duration::ZERO);
     }
 }

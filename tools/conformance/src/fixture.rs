@@ -33,7 +33,7 @@ use harmos_protocol::model::{
 
 /* === Constants === */
 
-pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
+pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy", "untyped"];
 pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.plugin.v1.Time/Sleep", "harmos.plugin.v1.Time/Get"];
 
 pub const WINDOW_STREAMS: &[&str] = &[
@@ -203,6 +203,8 @@ pub fn settings_declarations() -> SettingsDeclarations {
                 default: Some(value),
                 minimum: None,
                 maximum: None,
+                choices: Vec::new(),
+                required: false,
             })
             .collect(),
     }
@@ -313,6 +315,18 @@ pub fn declarations() -> Declarations {
             response: ROW.into(),
             visibility: Visibility::Public as i32,
             fingerprint: fingerprint("conformance.local_call"),
+            ..Default::default()
+        },
+    );
+    operations.insert(
+        0,
+        OperationContract {
+            id: "conformance.local".into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Private as i32,
+            replay_safe: true,
+            fingerprint: fingerprint("conformance.local"),
             ..Default::default()
         },
     );
@@ -431,6 +445,7 @@ pub fn failure(operation: &str) -> Failure {
         })),
         details: HashMap::from([("fixture".into(), "value".into())]),
         diagnostics: "Fixture Diagnostics".into(),
+        retry: None,
     }
 }
 

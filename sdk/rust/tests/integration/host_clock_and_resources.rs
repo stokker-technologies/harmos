@@ -117,6 +117,7 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn error::Error>> {
                     period: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
                     count: 1,
                     sequence: 1,
+                    capturing_executions: Vec::new(),
                 })),
             })
             .await?;

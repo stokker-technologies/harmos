@@ -476,7 +476,7 @@ fn matches_row(batch: &RecordBatch, row: usize, read: &ArrowScan) -> Result<bool
             return Ok(value.starts_with(prefix));
         }
         let value = super::transform::scalar(array.as_ref(), row)?;
-        if matches!(value, ScalarValue::Null | ScalarValue::Missing) || matches!(value, ScalarValue::Float(value) if !value.is_finite()) {
+        if matches!(value, ScalarValue::Null | ScalarValue::Missing) {
             return Ok(false);
         }
         if !matches!(value, ScalarValue::Float(_) | ScalarValue::Signed(_) | ScalarValue::Unsigned(_)) {

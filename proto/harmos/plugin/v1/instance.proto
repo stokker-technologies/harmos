@@ -31,8 +31,9 @@ service Instance {
   rpc Invoke(stream InstanceInvokeRequest) returns (stream InstanceInvokeResponse);
 
   // One declared stream or collection, selected by its lexicographically first member.
-  // The host opens with SamplesSelection. Ordinary streams take demand from open/close;
-  // collections take listened members from CollectionDemand, acknowledged after listener hooks.
+  // The host opens with SamplesSelection. Device streams take demand from open/close;
+  // interval observers take sampling demand from CollectionDemand, acknowledged after
+  // first-demand start or last-demand stop hooks. Collections select their listened members.
   // For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
   // the plugin answers with SampleBatch column parts or one CollectionBatch per tick;
   // the final part or tick is marked last. Only one window may be unanswered.
@@ -125,7 +126,7 @@ message InstanceSamplesRequest {
     harmos.plugin.v1.ChildResponse child = 3;
     // Grants one window of an interval stream; never while another is unanswered.
     harmos.plugin.v1.Window window = 4;
-    // Collection listeners, changed only between windows; await acknowledgement.
+    // Observer sampling demand, changed between windows; await acquisition or cleanup acknowledgement.
     harmos.plugin.v1.CollectionDemand demand = 5;
     // Sticky scope wind-down for this demand and its current and later windows.
     bool wind_down = 6;

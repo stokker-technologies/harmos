@@ -95,11 +95,11 @@ extern crate self as harmos;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connection::{Client, ClientSettings};
 use context::Context;
+pub use context::{OperationInput, Untyped, untyped};
 pub use error::{Error, Result};
 include!("exports.rs");
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
-use operation::Operation;
 use plugin::Plugin;
 
 // Dependencies Used by the Data Derive and Generated Protobuf Consumers.

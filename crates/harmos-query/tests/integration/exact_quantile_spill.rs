@@ -46,7 +46,7 @@ use harmos_query::Quantiles;
 fn exact_quantile_spill() {
     for bytes in [0, 1024] {
         let mut values = Quantiles::new(bytes);
-        for value in [3.0, 10.0, 0.0, f64::from_bits(1), -10.0, -0.0, 3.0] {
+        for value in [3.0, f64::NAN, 10.0, 0.0, f64::INFINITY, f64::from_bits(1), -10.0, -0.0, f64::NEG_INFINITY, 3.0] {
             values.push(value).unwrap();
         }
 
@@ -63,8 +63,6 @@ fn exact_quantile_spill() {
 
     for memory in [0, 16384, 32768] {
         let mut values = Quantiles::new(memory);
-        assert!(values.push(f64::NAN).is_err());
-        assert!(values.push(f64::INFINITY).is_err());
         // Cross The 1,024-Input Cancellation Check Boundary.
         for value in 0..1025 {
             values.push(value as f64).unwrap();
