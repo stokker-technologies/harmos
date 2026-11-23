@@ -176,6 +176,10 @@ def _protocols() -> None:
     command = [str(ROOT / "target/debug/examples" / ("generate.exe" if os.name == "nt" else "generate"))]
     subprocess.run(command, check=True, creationflags=spawn_flags())
 
+    # The Payload Memory Module Leaves the Generator Unformatted
+    command = ["rustfmt", "--edition", "2024", str(ROOT / "crates/harmos-domain/src/message/allocation/protobuf.rs")]
+    subprocess.run(command, check=True, creationflags=spawn_flags())
+
 
 def _render(language: str, executable: Path, scratch: Path) -> None:
     """Write One Language's Formatted Bindings Below `scratch`, One Folder per Placement Source."""
