@@ -241,7 +241,7 @@ def main() -> None:
     # Configure and Build the Shared Preset with Complete Compiler Evidence.
     directory.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    configure = ["cmake", "--preset", selected, f"-DHARMOS_EXECUTABLE={codegen.cli()}"]
+    configure = ["cmake", "--preset", selected, f"-DHARMOS_EXECUTABLE={codegen.cli().as_posix()}"]
     if options.fresh:
         configure.append("--fresh")
     result = subprocess.run(configure, cwd=sdk, env=child_environment, stdout=PIPE, stderr=STDOUT, text=True, creationflags=spawn_flags())
