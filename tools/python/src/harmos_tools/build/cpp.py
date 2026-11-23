@@ -325,6 +325,9 @@ def main() -> None:
             package.add(sdk / name, arcname=f"sdk/cpp/{name}")
         package.add(root / "proto", arcname="proto")
         package.add(root / "crates/harmos-protocol/src/descriptors.bin", arcname="crates/harmos-protocol/src/descriptors.bin")
+        package.add(
+            root / "sdk/rust/tests/fixtures/client/client-descriptors.bin", arcname="sdk/rust/tests/fixtures/client/client-descriptors.bin"
+        )
         package.add(root / "sdk/tests/fixtures/conformance", arcname="sdk/tests/fixtures/conformance")
         package.add(root / "sdk/tests/fixtures/client", arcname="sdk/tests/fixtures/client")
         package.add(root / "LICENSE", arcname="LICENSE")
