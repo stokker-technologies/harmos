@@ -15,7 +15,6 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 # Third Party Imports
-
 import grpc
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.empty_pb2 import Empty
