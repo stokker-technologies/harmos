@@ -156,9 +156,7 @@ impl<R: prost::Message + Default, O: prost::Message + Default> Decode<R, O> {
                 }
                 root
             };
-            required = required.checked_add(memory).ok_or_else(|| {
-                Status::resource_exhausted("client retained_bytes overflow; raise retained_bytes or request smaller pages")
-            })?;
+            required = required.checked_add(memory).ok_or_else(super::admission::overflow)?;
             if selected != Some(tag) {
                 retained = 0;
             }
@@ -243,6 +241,39 @@ mod tests {
     use super::*;
     use prost::Message;
     use prost_reflect::ReflectMessage;
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    #[global_allocator]
+    static ALLOCATOR: Counting = Counting;
+
+    thread_local! {
+        static LIVE: Cell<isize> = const { Cell::new(0) };
+    }
+
+    // A Pass-Through Allocator Measures Only This Test Thread's Live Bytes
+    struct Counting;
+
+    #[allow(unsafe_code, reason = "measuring decoded allocations requires an allocator shim")]
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            account(layout.size().cast_signed());
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            account(-layout.size().cast_signed());
+            unsafe { System.dealloc(pointer, layout) }
+        }
+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            account(size.cast_signed() - layout.size().cast_signed());
+            unsafe { System.realloc(pointer, layout, size) }
+        }
+    }
+
+    fn account(bytes: isize) {
+        // Thread Teardown May Allocate After Its Slot Is Gone.
+        let _ = LIVE.try_with(|live| live.set(live.get() + bytes));
+    }
 
     #[test]
     fn representative_product_replies_fit_the_unchanged_retained_budget() {
@@ -257,9 +288,13 @@ mod tests {
                 envelope: false,
                 marker: PhantomData,
             };
+            let before = LIVE.get();
             let Output::Response(decoded, permit) = decoder.message(&encoded).unwrap() else {
                 panic!("unary reply");
             };
+            // The Claim Covers the Decoded Value Within Five Percent.
+            let held = usize::try_from(LIVE.get() - before).unwrap() + std::mem::size_of::<T>();
+            assert!(held <= permit.num_permits() && permit.num_permits() <= held + held / 20);
             assert_eq!(decoded, value);
             drop(permit);
             assert_eq!(retained.available_permits(), budget);
@@ -271,17 +306,43 @@ mod tests {
         }
         let budget = 4 * 1024 * 1024;
 
-        // A Plugin Entry Includes Its Full Declaration Graph, Even with No Payload Fields.
-        reply(
-            harmos_protocol::host::PluginsGetResponse {
-                entry: Some(harmos_protocol::host::PluginEntry {
-                    name: "fixture".into(),
-                    ..Default::default()
-                }),
+        // A 93 KB Plugin List Carries Each Entry's Operations and Full Descriptor Set.
+        let files =
+            harmos_protocol::host::PluginEntry::default().descriptor().parent_pool().file_descriptor_protos().cloned().collect::<Vec<_>>();
+        let operations = (0..12)
+            .map(|index| harmos_protocol::model::OperationContract {
+                id: format!("fixture.operation_{index}"),
+                request: "fixture.v1.Request".into(),
+                response: "fixture.v1.Response".into(),
+                visibility: harmos_protocol::model::Visibility::Public as i32,
+                policy: Some(Default::default()),
+                fingerprint: vec![7; 32],
+                description: "Reads One Fixture Value".into(),
                 ..Default::default()
-            },
-            budget,
-        );
+            })
+            .collect::<Vec<_>>();
+        let plugins = harmos_protocol::host::PluginsListResponse {
+            entries: (0..2)
+                .map(|index| harmos_protocol::host::PluginEntry {
+                    name: format!("plugin-{index}"),
+                    revision: vec![1; 16],
+                    state: harmos_protocol::host::PluginState::Ready as i32,
+                    description: Some(harmos_protocol::host::PluginDescription {
+                        id: format!("fixture.plugin_{index}"),
+                        version: "1.0.0".into(),
+                        declarations: Some(harmos_protocol::model::Declarations {
+                            operations: operations.clone(),
+                            types: Some(prost_types::FileDescriptorSet { file: files.clone() }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        reply(plugins, budget);
 
         // A Document Holds Ordinary Text and Nested Properties.
         let text = prost_types::Value {
@@ -341,6 +402,30 @@ mod tests {
             marker: PhantomData,
         };
         assert_eq!(decoder.message(&oversized.encode_to_vec()).err().unwrap().code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[test]
+    fn repeated_singular_messages_claim_their_merged_capacity() {
+        // Eight Then One List Element Merge Into One Vec Past Its Power-of-Two Capacity.
+        let list = |count| prost_types::Value {
+            kind: Some(prost_types::value::Kind::ListValue(prost_types::ListValue {
+                values: vec![prost_types::Value::default(); count],
+            })),
+        };
+        let encoded = [list(8).encode_to_vec(), list(1).encode_to_vec()].concat();
+        let decoder = Decode::<prost_types::Value, prost_types::Value> {
+            retained: Arc::new(Semaphore::new(1024 * 1024)),
+            response: list(0).descriptor(),
+            output: None,
+            envelope: false,
+            marker: PhantomData,
+        };
+        let before = LIVE.get();
+        let Output::Response(decoded, permit) = decoder.message(&encoded).unwrap() else {
+            panic!("unary reply");
+        };
+        assert_eq!(decoded, list(9));
+        assert!(usize::try_from(LIVE.get() - before).unwrap() + std::mem::size_of::<prost_types::Value>() <= permit.num_permits());
     }
 
     #[derive(Default)]
