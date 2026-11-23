@@ -54,7 +54,7 @@ description = "Prepare Locked Tools"
 run = "uv run --locked --all-groups --project tools/python python -m harmos_tools.ci.tasks prepare"
 
 [tasks."generate"]
-description = "Generate Python Clients or SDK Protocol Bindings"
+description = "Generate or Check SDK Bindings"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks generate"
 
 [tasks."format"]
@@ -379,9 +379,9 @@ hide = true
 description = "Check Python SDK and Protocol Drift"
 run = [
   "mise -C sdk/python run check",
-  "uv run --locked --no-sync --project tools/python ruff format tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/build/resources tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py --check",
-  "uv run --locked --no-sync --project tools/python ruff check tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/build/resources tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py",
-  "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/build/resources tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py",
+  "uv run --locked --no-sync --project tools/python ruff format tools/python/src/harmos_tools/build/codegen.py tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py --check",
+  "uv run --locked --no-sync --project tools/python ruff check tools/python/src/harmos_tools/build/codegen.py tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py",
+  "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python/src/harmos_tools/build/codegen.py tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py",
 ]
 
 [tasks."test:rust:unit"]

@@ -22,13 +22,13 @@ from grpc.aio import EOF
 # Local Imports
 from harmos import CLASSIFICATION_CANCELLED, VISIBILITY_PUBLIC
 from harmos._generated.host import _SUBSCRIPTIONS_SUBSCRIBE
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetResponse
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceSamplesRequest
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.invocation_pb2 import Cancel, ChildResponse, Request
+from harmos._generated.proto.plugin.v1.stream_pb2 import SamplesSelection
+from harmos._generated.proto.plugin.v1.subscriptions_pb2 import SubscriptionRow, SubscriptionsSubscribeResponse
 from harmos._invocation import Context, OperationError
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceSamplesRequest
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.invocation_pb2 import Cancel, ChildResponse, Request
-from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection
-from harmos._wire.plugin.v1.subscriptions_pb2 import SubscriptionRow, SubscriptionsSubscribeResponse
 from harmos.plugin import Catalog, Gap, Plugin, Publisher, StreamRow, Subscription, operation, publisher
 from tests.support import calls
 
@@ -79,9 +79,8 @@ class Subscriptions(IsolatedAsyncioTestCase):
         self.assertEqual((await self.output.get()).child_cancel.call, first_call)
         self.assertNotIn(first_call, self.context._watches)
         self.assertIn(second_call, self.context._watches)
-        parent = Context(Request(operation="fixture.read", scope="unit/first"), "fixture", {}, self.output)
-        parent._children.append(self.context)
-        await parent._reply(ChildResponse(call=first_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
+        # A Late Row for the Closed Subscription Is Dropped Without Disturbing the Open One.
+        await self.context._reply(ChildResponse(call=first_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
         reading = create_task(anext(second))
         self.assertEqual((await self.output.get()).child_demand.call, second_call)
         await self.context._reply(ChildResponse(call=second_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))

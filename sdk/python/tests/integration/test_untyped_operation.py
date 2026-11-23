@@ -17,9 +17,9 @@ from unittest import IsolatedAsyncioTestCase
 # Third Party Imports
 # Local Imports
 from harmos import CLASSIFICATION_INVALID, CLASSIFICATION_REFUSED, OperationError, OperationPolicy, OperationRetry, model
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceInvokeResponse
+from harmos._generated.proto.plugin.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
 from harmos._invocation import Context
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse
-from harmos._wire.plugin.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
 
 # Type Checking Imports
 

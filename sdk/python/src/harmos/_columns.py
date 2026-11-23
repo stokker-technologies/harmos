@@ -22,7 +22,7 @@ from google.protobuf.descriptor import Descriptor, FieldDescriptor
 from google.protobuf.descriptor_pb2 import EDITION_2023, DescriptorProto, FieldDescriptorProto, FileDescriptorProto
 from google.protobuf.message import Message
 
-from harmos._wire.plugin.v1.stream_pb2 import SampleBatch
+from harmos._generated.proto.plugin.v1.stream_pb2 import SampleBatch
 
 # Local Imports
 

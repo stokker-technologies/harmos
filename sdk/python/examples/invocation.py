@@ -17,7 +17,7 @@ from argparse import ArgumentParser
 
 # Third Party Imports
 # Local Imports
-from tests.fixtures.client import Client
+from tests.fixtures.client._generated.client import Client
 
 # Type Checking Imports
 

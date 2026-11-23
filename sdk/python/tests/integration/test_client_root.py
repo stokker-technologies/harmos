@@ -21,13 +21,13 @@ from unittest import IsolatedAsyncioTestCase
 from grpc.aio import ServicerContext
 
 from harmos import SettingValues
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsSetRequest, SettingsSetResponse
-from harmos._wire.host.v1.status.diagnostics_pb2 import DiagnosticsGetRequest, DiagnosticsGetResponse
-from harmos._wire.host.v1.status_pb2 import StatusGetRequest, StatusGetResponse
-from tests.fixtures.client import Client
-from tests.fixtures.client._wire.application.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
-from tests.fixtures.client._wire.application.host.v1.jobs_pb2 import JobsStartRequest, JobsStartResponse
-from tests.fixtures.client._wire.application.host.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
+from harmos._generated.proto.host.v1.plugins.settings_pb2 import SettingsSetRequest, SettingsSetResponse
+from harmos._generated.proto.host.v1.status.diagnostics_pb2 import DiagnosticsGetRequest, DiagnosticsGetResponse
+from harmos._generated.proto.host.v1.status_pb2 import StatusGetRequest, StatusGetResponse
+from tests.fixtures.client._generated.client import Client
+from tests.fixtures.client._generated.proto.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
+from tests.fixtures.client._generated.proto.host.v1.jobs_pb2 import JobsStartRequest, JobsStartResponse
+from tests.fixtures.client._generated.proto.host.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
 
 # Third Party Imports
 

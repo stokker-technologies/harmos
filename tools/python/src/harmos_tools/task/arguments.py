@@ -43,12 +43,8 @@ def parse(arguments: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
     prepare = commands.add_parser("prepare")
     prepare.add_argument("--docs-only", action="store_true")
     generate = commands.add_parser("generate")
-    generate.add_argument("--profile", choices=("dev", "release"), default="dev")
-    generate.add_argument("--dependencies", action="store_true")
-    generate.add_argument("--descriptors", type=Path, action="append", default=[])
-    generate.add_argument("--output", type=Path)
-    generate.add_argument("--namespace", default="harmos")
-    generate.add_argument("--sdk", choices=("python", "rust", "csharp", "cpp"))
+    generate.add_argument("--language", choices=("rust", "python", "csharp", "cpp"), action="append")
+    generate.add_argument("--check", action="store_true")
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
         languages = LANGUAGES

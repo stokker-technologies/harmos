@@ -23,9 +23,9 @@ usage = 'flag "--refresh-lock"'
 run = ["{% if usage.refresh_lock %}uv lock{% endif %}", "uv sync --locked --all-groups"]
 
 [tasks.generate]
-description = "Generate the Typed Python SDK and Fixture Roots"
+description = "Generate the Typed Python SDK and Fixture Bindings"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.codegen --language python"
 
 [tasks.build]
 description = "Build the Python SDK Wheel"
@@ -65,5 +65,5 @@ run = [
   "mise -C sdk/python run prepare",
   "mise -C sdk/python run format -- --check",
   "mise -C sdk/python run lint",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol --check",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.codegen --language python --check",
 ]

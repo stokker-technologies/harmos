@@ -68,15 +68,15 @@ run = "dotnet restore Harmos.slnx --locked-mode"
 run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" restore Harmos.slnx --locked-mode"
 
 [tasks.generate]
-description = "Generate Committed C# Client Roots"
+description = "Generate Committed C# Bindings"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp generate"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.codegen --language csharp"
 
 [tasks."check:generated"]
 hide = true
-description = "Check Committed C# Client Roots"
+description = "Check Committed C# Bindings"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp check-generated"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.codegen --language csharp --check"
 
 [tasks."build:rust-fixture"]
 hide = true

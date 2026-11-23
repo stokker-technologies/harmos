@@ -33,11 +33,11 @@ from grpc import StatusCode
 from grpc.aio import Server, ServicerContext
 
 # Local Imports
-from harmos._wire.model.v1.description_pb2 import Declarations
-from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
-from harmos._wire.model.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
-from harmos._wire.plugin.v1 import stream_pb2
-from harmos._wire.plugin.v1.instance_pb2 import (
+from harmos._generated.proto.model.v1.description_pb2 import Declarations
+from harmos._generated.proto.model.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
+from harmos._generated.proto.model.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
+from harmos._generated.proto.plugin.v1 import stream_pb2
+from harmos._generated.proto.plugin.v1.instance_pb2 import (
     InstanceGetRequest,
     InstanceGetResponse,
     InstanceInvokeRequest,
@@ -47,17 +47,17 @@ from harmos._wire.plugin.v1.instance_pb2 import (
     InstanceStopRequest,
     InstanceStopResponse,
 )
-from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
-from harmos._wire.plugin.v1.launches_pb2 import LaunchesAnnounceRequest
-from harmos._wire.plugin.v1.launches_pb2_grpc import LaunchesStub
-from harmos._wire.plugin.v1.stream_pb2 import CollectionDemandResponse, Sample
+from harmos._generated.proto.plugin.v1.invocation_pb2 import Request, Response
+from harmos._generated.proto.plugin.v1.launches_pb2 import LaunchesAnnounceRequest
+from harmos._generated.proto.plugin.v1.launches_pb2_grpc import LaunchesStub
+from harmos._generated.proto.plugin.v1.stream_pb2 import CollectionDemandResponse, Sample
 
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Lane, Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
+from ._generated.proto.model.v1.transfer_pb2 import StorageTransferSettings
 from ._invocation import Context, Handler, OperationError, ProtocolError, Publisher, validate_timestamp
 from ._transfer import message_bytes
-from ._wire.model.v1.transfer_pb2 import StorageTransferSettings
 
 # Type Checking Imports
 

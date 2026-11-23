@@ -16,7 +16,7 @@
 # Third Party Imports
 
 # Local Imports
-from ._types import Graph, PayloadOnly, Value, Values
+from ._generated.proto.model.v1.fixture_pb2 import Graph, PayloadOnly, Value, Values
 from .fixture import catalog, plugin, register
 
 # Type Checking Imports

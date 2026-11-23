@@ -115,7 +115,7 @@ class ImpactPlanning(unittest.TestCase):
             [call("format:python", "--check"), call("lint:python"), call("check:repository"), call("check:python:generated")],
         )
         command.assert_called_once_with(["mise", "-C", "sdk/python", "run", "prepare"])
-        module.assert_called_once_with("build.python_protocol", "--check")
+        module.assert_called_once_with("build.codegen", "--language", "python", "--check")
 
     def test_provider_events_route_ready_draft_closed_and_release_reviews(self) -> None:
         cases = [

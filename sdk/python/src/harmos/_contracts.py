@@ -23,10 +23,10 @@ from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from harmos._wire.model.v1.description_pb2 import LaneDeclaration
-from harmos._wire.model.v1.operation_pb2 import OperationContract, Visibility
-from harmos._wire.model.v1.policy_pb2 import OperationPolicy
-from harmos._wire.model.v1.stream_pb2 import StreamDeclaration
+from harmos._generated.proto.model.v1.description_pb2 import LaneDeclaration
+from harmos._generated.proto.model.v1.operation_pb2 import OperationContract, Visibility
+from harmos._generated.proto.model.v1.policy_pb2 import OperationPolicy
+from harmos._generated.proto.model.v1.stream_pb2 import StreamDeclaration
 
 # Local Imports
 from ._columns import check_columns, columns_type

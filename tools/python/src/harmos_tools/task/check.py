@@ -61,7 +61,7 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             command = ["mise", "-C", "sdk/python", "run", "prepare"]
             execute.command(command)
             execute.task("lint:python")
-            execute.module("build.python_protocol", "--check")
+            execute.module("build.codegen", "--language", "python", "--check")
         if language == "rust":
             # Check Rust
             extra = ["--extended"] if options.extended else []

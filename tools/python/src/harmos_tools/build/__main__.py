@@ -143,23 +143,6 @@ def product(profile: str, scratch: Path) -> None:
     (examples / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
 
-def generate(profile: str) -> None:
-    export = paths.output(ROOT, "build", profile)
-    catalog_path = export / "product/examples/catalog.json"
-    # Read Structured Input
-    text = catalog_path.read_text(encoding="utf-8")
-    catalog = json.loads(text)
-    tool = export / "product/tools" / ("fixture-driver.exe" if os.name == "nt" else "fixture-driver")
-    fixtures.generate_python(
-        tool,
-        export / catalog["builds"]["schematic-sidecar"],
-        _protoc(),
-        catalog["files"],
-        source_root=Path(catalog["build_roots"]["schematic-sidecar"]),
-    )
-    catalog_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
-
-
 def _protoc() -> Path:
     # Read Structured Input
     # Run the Native Command

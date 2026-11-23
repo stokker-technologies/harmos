@@ -16,13 +16,13 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from harmos_tools.build import codegen
 from harmos_tools.build.cpp import environment
 from harmos_tools.build.paths import output
 from harmos_tools.process import spawn_flags
@@ -42,31 +42,11 @@ from tests.support import host
 
 
 class PackagedConformance(unittest.TestCase):
-    def test_external_subproject_uses_installed_tools_and_opts_in_to_fixtures(self) -> None:
-        # Install the Tools Wheel into an Isolated Interpreter.
+    def test_external_subproject_opts_in_to_fixtures_through_the_harmos_cli(self) -> None:
         root = Path(__file__).resolve().parents[4]
         build = root / "target/cpp/subproject-consumer"
         build.mkdir(parents=True, exist_ok=True)
-        wheel_directory = build / "wheel"
-        subprocess.run(
-            ["uv", "build", str(root / "tools/python"), "--wheel", "--out-dir", str(wheel_directory)],
-            check=True,
-            creationflags=spawn_flags(),
-        )
-        tools = build / "tools"
-        subprocess.run(["uv", "venv", "--clear", "--python", sys.executable, str(tools)], check=True, creationflags=spawn_flags())
-        python = tools / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-        wheel = next(wheel_directory.glob("*.whl"))
-        subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True, creationflags=spawn_flags())
         child_environment = environment(root)
-        child_environment.pop("PYTHONPATH", None)
-        installed = subprocess.check_output(
-            [str(python), "-c", "import harmos_tools.build.cpp; print(harmos_tools.build.cpp.__file__)"],
-            text=True,
-            env=child_environment,
-            creationflags=spawn_flags(),
-        ).strip()
-        self.assertTrue(Path(installed).is_relative_to(tools), installed)
 
         # Add the SDK from a Consumer Outside the Library Tree.
         scratch = tempfile.TemporaryDirectory()
@@ -101,7 +81,7 @@ class PackagedConformance(unittest.TestCase):
             f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
-            f"-DPython3_EXECUTABLE={python}",
+            f"-DHARMOS_EXECUTABLE={codegen.cli().as_posix()}",
         ]
         result = subprocess.run(
             configure,
@@ -199,7 +179,7 @@ class PackagedConformance(unittest.TestCase):
             f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
-            f"-DPython3_EXECUTABLE={sys.executable}",
+            f"-DHARMOS_EXECUTABLE={codegen.cli().as_posix()}",
         ]
         build.mkdir(parents=True, exist_ok=True)
         log = (build / "configure.log").open("w", encoding="utf-8")

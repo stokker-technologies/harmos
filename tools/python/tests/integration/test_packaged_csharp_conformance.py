@@ -87,7 +87,6 @@ class PackagedCSharpConformance(unittest.TestCase):
             )
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/Fixture.cs", consumer / "Fixture.cs")
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/CallerRequest.g.cs", consumer / "CallerRequest.g.cs")
-            shutil.copytree(root / "sdk/csharp/tests/Harmos.Conformance/Generated", consumer / "Generated")
             # Compile Declared Wrappers With Reused Host Payloads Without Friend Access.
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs", consumer / "Client.g.cs")
             shutil.copytree(root / "sdk/csharp/tests/Harmos.Tests/Generated/Wire", consumer / "Wire")
