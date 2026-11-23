@@ -5,8 +5,8 @@ using System.Collections.Generic;
 
 namespace Harmos;
 
-/// <summary>An operation failure with the host scheduler's retry evidence.</summary>
-public sealed class OperationException(Failure failure) : Exception(failure.Message)
+/// <summary>An operation failure with the host scheduler's retry evidence; its message names the action when one is present.</summary>
+public sealed class OperationException(Failure failure) : Exception(failure.Action.Length > 0 ? $"{failure.Message}; {failure.Action}" : failure.Message)
 {
   public Failure Failure { get; } = failure.Clone();
   public string Kind => Failure.Classification switch
@@ -26,7 +26,7 @@ public sealed class OperationException(Failure failure) : Exception(failure.Mess
   {
     ["kind"] = Kind,
     ["code"] = Code,
-    ["message"] = Message,
+    ["message"] = Failure.Message,
     ["action"] = Action,
     ["operation"] = Operation,
     ["retry"] = new Dictionary<string, object>

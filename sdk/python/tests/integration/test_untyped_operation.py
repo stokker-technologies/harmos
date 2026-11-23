@@ -95,9 +95,12 @@ class UntypedOperation(IsolatedAsyncioTestCase):
             with self.assertRaises(OperationError) as raised:
                 await output.context.operation("fixture.echo", {})
             result = raised.exception.to_dict()
+            self.assertEqual(str(raised.exception), "Apply Failed; Choose Another Input")
             self.assertEqual(result["kind"], kind)
+            self.assertEqual(result["message"], "Apply Failed")
             self.assertEqual(result["action"], "Choose Another Input")
             self.assertEqual(result["retry"], {"retryable": kind == "transient", "attempts": 2, "max_attempts": 3, "next_after_s": 0.5})
+        self.assertEqual(str(OperationError(message="Apply Failed")), "Apply Failed")
 
 
 # === Public Functions === #

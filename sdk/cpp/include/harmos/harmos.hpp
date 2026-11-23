@@ -163,7 +163,10 @@ namespace harmos {
 class OperationError : public std::runtime_error {
 public:
   model::Failure value;
-  explicit OperationError(model::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+  // what() Names the Action After the Message When One Is Present.
+  explicit OperationError(model::Failure failure)
+      : std::runtime_error(failure.action().empty() ? failure.message() : failure.message() + "; " + failure.action()),
+        value(std::move(failure)) {}
 
   const char *kind() const {
     switch (value.classification()) {

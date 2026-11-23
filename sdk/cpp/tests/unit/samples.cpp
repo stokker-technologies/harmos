@@ -540,6 +540,16 @@ TEST_CASE("A Window Calls the Clock Settings and a Demand-Bounded Watch") {
   REQUIRE(samples.finish().ok());
 }
 
+TEST_CASE("Operation Errors Name Their Action") {
+  harmos::model::Failure failure;
+  failure.set_message("Apply Failed");
+  REQUIRE(string(harmos::OperationError(failure).what()) == "Apply Failed");
+  failure.set_action("Choose Another Input");
+  const harmos::OperationError error(failure);
+  REQUIRE(string(error.what()) == "Apply Failed; Choose Another Input");
+  REQUIRE(error.message() == "Apply Failed");
+}
+
 TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   SamplesHost host([](Context &context) {
     try {
