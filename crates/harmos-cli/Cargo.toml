@@ -22,9 +22,11 @@ publish = false
 
 # === Package Targets === #
 
+# The Binary Shares the SDK Library's `harmos` Name, So It Has No Rustdoc Output to Collide With.
 [[bin]]
 name = "harmos"
 path = "src/main.rs"
+doc = false
 
 # === Features === #
 
