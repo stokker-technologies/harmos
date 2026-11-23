@@ -49,9 +49,9 @@ dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --consumer"
 
 [tasks.generate]
-description = "Generate the C++ Protocols"
+description = "Generate Committed C++ Bindings"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --generate"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.codegen --language cpp"
 
 [tasks.format]
 description = "Format the C++ SDK and Python Stories"

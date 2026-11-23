@@ -19,10 +19,8 @@ import tempfile
 from pathlib import Path
 
 # Third Party Imports
-from google.protobuf.descriptor_pb2 import FileDescriptorSet
-
 # Local Imports
-from ..build.resources import descriptor
+from ..build import codegen
 from ..process import spawn_flags
 
 # Type Checking Imports
@@ -47,8 +45,9 @@ def main() -> None:
         # Run the Native Command
         command = ["buf", "build", "--as-file-descriptor-set", "-o", str(output)]
         subprocess.run(command, check=True, creationflags=spawn_flags())
-        methods = descriptor.caller_options(FileDescriptorSet.FromString(output.read_bytes()))
-        print(f"Protocol Callers: {len(methods)} Annotated Operations")
+        # Check the Caller Contracts With the Harmos CLI
+        command = [str(codegen.cli()), "proto", "check", "--descriptors", str(output)]
+        subprocess.run(command, check=True, creationflags=spawn_flags())
     finally:
         scratch_directory.cleanup()
 

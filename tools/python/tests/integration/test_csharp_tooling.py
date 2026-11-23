@@ -11,7 +11,6 @@
 # === Imports === #
 
 # Standard Library Imports
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,7 +20,6 @@ from unittest.mock import patch
 # Local Imports
 import harmos_tools.build.fixtures
 import harmos_tools.build.rust.tests
-from harmos_tools import csharp
 
 # Type Checking Imports
 
@@ -35,39 +33,6 @@ from harmos_tools import csharp
 
 
 class CSharpTooling(unittest.TestCase):
-    def test_generated_root_checks_detect_drift_without_rewriting_sources(self) -> None:
-        root = Path(__file__).resolve().parents[4]
-        name_directory = tempfile.TemporaryDirectory()
-        name = name_directory.name
-        try:
-            scratch = Path(name)
-            for relative in (
-                "crates/harmos-protocol/src/descriptors.bin",
-                "sdk/rust/tests/fixtures/client/client-descriptors.bin",
-                "sdk/csharp/Directory.Packages.props",
-            ):
-                target = scratch / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(root / relative, target)
-            # Generate Both Roots and Check the Unmodified Output.
-            csharp.clients(scratch)
-            csharp.clients(scratch, check=True)
-            roots = list((scratch / "sdk/csharp").rglob("*.g.cs"))
-            # Detect Changed and Missing Output Without Repairing Either.
-            # Reuse the Already Verified Protocol Inputs
-            with patch.object(csharp, "protocols"):
-                for target in roots:
-                    original = target.read_bytes()
-                    target.write_bytes(original + b"// drift\n")
-                    self.assertRaises(ValueError, csharp.clients, scratch, check=True)
-                    self.assertEqual(target.read_bytes(), original + b"// drift\n")
-                    target.unlink()
-                    self.assertRaises(ValueError, csharp.clients, scratch, check=True)
-                    self.assertFalse(target.exists())
-                    target.write_bytes(original)
-        finally:
-            name_directory.cleanup()
-
     def test_rust_producer_stages_the_msbuild_selected_runtime_closure(self) -> None:
         name_directory = tempfile.TemporaryDirectory()
         name = name_directory.name

@@ -617,4 +617,28 @@ mod tests {
         assert!(is_version("v12"));
         assert!(!is_version("v") && !is_version("version"));
     }
+
+    #[test]
+    fn library_calls_keep_their_faces_and_payload_homes() {
+        // Plugins List Settings Through an Optional Selector
+        let library = Schema::library().unwrap();
+        let methods = library.table().unwrap();
+        let settings: Vec<&Method> = methods.iter().filter(|method| method.path == ["plugins", "settings", "list"]).collect();
+        assert!(!settings.is_empty());
+        assert!(settings.iter().all(|method| method.face == Face::Context));
+        assert!(settings.iter().all(|method| method.fields.iter().any(|field| field.name == "name" && field.optional)));
+
+        // Products Wrapping Library Payloads Keep the Library Home
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let paths = [
+            manifest.join("../harmos-protocol/src/descriptors.bin"),
+            manifest.join("../../sdk/rust/tests/fixtures/client/client-descriptors.bin"),
+        ];
+        let combined = Schema::load(&paths).unwrap();
+        let homes = library.payload_audiences(None).unwrap();
+        let wrapped = combined.payload_audiences(Some(&library)).unwrap();
+        for name in ["harmos.host.v1.TimeGetResponse", "harmos.host.v1.plugins.SettingsListResponse"] {
+            assert_eq!(wrapped[name], homes[name], "{name}");
+        }
+    }
 }

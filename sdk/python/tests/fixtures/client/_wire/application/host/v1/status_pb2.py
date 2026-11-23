@@ -22,7 +22,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.host.v1 import status_pb2 as harmos_dot_host_dot_v1_dot_status__pb2
+from harmos._wire.host.v1 import status_pb2 as harmos_dot_host_dot_v1_dot_status__pb2
 from harmos._wire.model.v1 import callers_pb2 as harmos_dot_model_dot_v1_dot_callers__pb2
 
 

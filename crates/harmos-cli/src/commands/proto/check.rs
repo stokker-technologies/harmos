@@ -49,7 +49,6 @@ pub(crate) struct Args {
 
 pub(crate) fn run(args: Args) -> Result<()> {
     let schema = Schema::load(&[args.descriptors])?;
-    schema.table()?;
     println!("Protocol Callers: {} Annotated Operations", schema.callers().len());
     Ok(())
 }

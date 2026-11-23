@@ -103,8 +103,16 @@ fn protocol_checks_count_callers_and_refuse_conflicts() {
     assert!(checked.status.success());
     assert!(String::from_utf8_lossy(&checked.stdout).starts_with("Protocol Callers: "));
 
-    // Refuse Two Definitions of One File
+    // Refuse Calls Whose Callers Declaration Is Gone
     let folder = TempDir::new().unwrap();
+    let stripped = folder.path().join("stripped.pb");
+    let set = FileDescriptorSet::decode(&fs::read(&library).unwrap()[..]).unwrap();
+    fs::write(&stripped, set.encode_to_vec()).unwrap();
+    let refused = harmos(&["proto", "check", "--descriptors", stripped.to_str().unwrap()]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("Requires CLIENTS, PLUGINS or ALL"));
+
+    // Refuse Two Definitions of One File
     let mut paths = Vec::new();
     for message in ["First", "Second"] {
         let file = FileDescriptorProto {

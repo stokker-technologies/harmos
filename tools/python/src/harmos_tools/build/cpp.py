@@ -25,6 +25,7 @@ from subprocess import PIPE, STDOUT
 # Third Party Imports
 # Local Imports
 from ..process import spawn_flags
+from . import codegen, paths
 
 # Type Checking Imports
 
@@ -130,37 +131,13 @@ def main() -> None:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--format", action="store_true")
     parser.add_argument("--fresh", action="store_true")
-    parser.add_argument("--generate", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--consumer", action="store_true")
     parser.add_argument("--layer", choices=("unit", "integration"))
     parser.add_argument("--exact")
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--fixture-client", type=Path)
-    parser.add_argument("--fixture-descriptors", type=Path)
     options = parser.parse_args()
     root = options.source_root.resolve()
-    if options.fixture_client:
-        from google.protobuf.descriptor_pb2 import FileDescriptorSet
-
-        import harmos_tools.build.resources.cpp
-        import harmos_tools.build.resources.descriptor
-
-        if options.fixture_descriptors is None:
-            parser.error("C++ fixture client requires --fixture-descriptors")
-        library = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        fixture = FileDescriptorSet.FromString(options.fixture_descriptors.read_bytes())
-        methods = harmos_tools.build.resources.descriptor.table(library) + harmos_tools.build.resources.descriptor.table(fixture)
-        harmos_tools.build.resources.cpp.client(
-            root, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.fixture_client
-        )
-        harmos_tools.build.resources.cpp.host(
-            root,
-            [method for method in methods if method["face"] == "context"],
-            namespace="fixture",
-            target=options.fixture_client.with_name("plugin.hpp"),
-        )
-        return
     selected = options.preset or ("release" if options.profile == "release" else "tests")
     directory = root / "target/cpp" / selected
     sdk = root / "sdk/cpp"
@@ -178,25 +155,6 @@ def main() -> None:
     if options.prepare:
         print(f"vcpkg: {child_environment['VCPKG_ROOT']}")
         return
-    if options.generate:
-        from google.protobuf.descriptor_pb2 import FileDescriptorSet
-
-        import harmos_tools.build.resources.cpp
-        import harmos_tools.build.resources.descriptor
-
-        descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        type_names = harmos_tools.build.resources.cpp.exports(root, descriptors)
-        harmos_tools.build.resources.cpp.client(
-            root,
-            [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"],
-            type_names=type_names,
-        )
-        harmos_tools.build.resources.cpp.host(
-            root,
-            [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"],
-            type_names=type_names,
-        )
-
     # Tests Consume Existing Producer Outputs; a Selection That Runs No Test Fails.
     if options.test:
         if options.layer != "integration":
@@ -259,7 +217,6 @@ def main() -> None:
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
             f"-DCMAKE_BUILD_TYPE={'Debug' if options.profile == 'dev' else 'Release'}",
-            f"-DPython3_EXECUTABLE={sys.executable}",
         ]
         subprocess.run(
             command,
@@ -284,20 +241,15 @@ def main() -> None:
     # Configure and Build the Shared Preset with Complete Compiler Evidence.
     directory.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    configure = ["cmake", "--preset", selected, f"-DPython3_EXECUTABLE={sys.executable}"]
+    configure = ["cmake", "--preset", selected, f"-DHARMOS_EXECUTABLE={codegen.cli()}"]
     if options.fresh:
         configure.append("--fresh")
     result = subprocess.run(configure, cwd=sdk, env=child_environment, stdout=PIPE, stderr=STDOUT, text=True, creationflags=spawn_flags())
     sys.stdout.write(result.stdout)
     (directory / "configure.log").write_text(result.stdout, encoding="utf-8")
     result.check_returncode()
-    if options.generate:
-        for path in (directory / "generated").rglob("*.pb.*"):
-            path.unlink()
     command = ["cmake", "--build", "--preset", selected, "--parallel", os.environ.get("CARGO_BUILD_JOBS", "3")]
-    if options.generate:
-        command += ["--target", "harmos_cpp_protocol"]
-    elif options.target:
+    if options.target:
         command += ["--target", *options.target]
     log = directory / "build.log"
     if log.exists():
@@ -354,35 +306,30 @@ def main() -> None:
         return
 
     # Install the SDK Before Any Compile-Contract Consumer Runs.
-    if not options.generate:
-        # Run the Native Command
-        command = ["cmake", "--install", str(directory), "--prefix", str(directory / "installed")]
-        subprocess.run(
-            command,
-            env=child_environment,
-            check=True,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-            creationflags=spawn_flags(),
-        )
+    command = ["cmake", "--install", str(directory), "--prefix", str(directory / "installed")]
+    subprocess.run(
+        command,
+        env=child_environment,
+        check=True,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        creationflags=spawn_flags(),
+    )
 
     # Stage the SDK Sources, Manifest and Conformance Consumer Together.
-    if not options.generate:
-        import harmos_tools.build.paths
-
-        destination = harmos_tools.build.paths.output(root, "build", options.profile) / "cpp"
-        destination.mkdir(parents=True, exist_ok=True)
-        package = tarfile.open(destination / "harmos-cpp.tar.gz", "w:gz")
-        try:
-            for name in ("CMakeLists.txt", "vcpkg.json", "include", "src", "cmake", "examples", "tests/CMakeLists.txt", "tests/unit"):
-                package.add(sdk / name, arcname=f"sdk/cpp/{name}")
-            package.add(root / "proto", arcname="proto")
-            package.add(root / "crates/harmos-protocol/src/descriptors.bin", arcname="crates/harmos-protocol/src/descriptors.bin")
-            package.add(root / "sdk/tests/fixtures/conformance", arcname="sdk/tests/fixtures/conformance")
-            package.add(root / "sdk/tests/fixtures/client", arcname="sdk/tests/fixtures/client")
-            package.add(root / "LICENSE", arcname="LICENSE")
-        finally:
-            package.close()
+    destination = paths.output(root, "build", options.profile) / "cpp"
+    destination.mkdir(parents=True, exist_ok=True)
+    package = tarfile.open(destination / "harmos-cpp.tar.gz", "w:gz")
+    try:
+        for name in ("CMakeLists.txt", "vcpkg.json", "include", "src", "cmake", "examples", "tests/CMakeLists.txt", "tests/unit"):
+            package.add(sdk / name, arcname=f"sdk/cpp/{name}")
+        package.add(root / "proto", arcname="proto")
+        package.add(root / "crates/harmos-protocol/src/descriptors.bin", arcname="crates/harmos-protocol/src/descriptors.bin")
+        package.add(root / "sdk/tests/fixtures/conformance", arcname="sdk/tests/fixtures/conformance")
+        package.add(root / "sdk/tests/fixtures/client", arcname="sdk/tests/fixtures/client")
+        package.add(root / "LICENSE", arcname="LICENSE")
+    finally:
+        package.close()
 
 
 # === Private Functions === #

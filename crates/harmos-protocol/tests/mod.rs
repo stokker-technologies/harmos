@@ -107,7 +107,7 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         }
         let module = codegen::module_path(name.trim_end_matches(".rs"))?;
         let committed = root.join(format!("crates/harmos-protocol/src/{}.rs", module.replace("::", "/")));
-        assert!(fs::read(path)? == fs::read(committed)?, "Generated Module Differs: {module}; Run mise run generate -- --sdk rust");
+        assert!(fs::read(path)? == fs::read(committed)?, "Generated Module Differs: {module}; Run mise run generate -- --language rust");
     }
     for (name, committed) in [
         ("reflection.rs", include_bytes!("../src/reflection.rs").as_slice()),

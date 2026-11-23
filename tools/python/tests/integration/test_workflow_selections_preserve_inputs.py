@@ -346,25 +346,6 @@ class WorkflowTaskTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 2)
             execute.assert_not_called()
 
-    def test_rust_generation_builds_and_runs_the_selected_profile(self) -> None:
-        root = Path.cwd()
-        for profile in ("dev", "release"):
-            with (
-                self.subTest(profile=profile),
-                patch("harmos_tools.build.cargo.focused", return_value=0) as build,
-                patch.object(harmos_tools.task.execute, "command", return_value=0) as execute,
-                patch("harmos_tools.build.resource_roots.generate") as generate,
-            ):
-                result = tasks.dispatch(["generate", "--sdk", "rust", "--profile", profile])
-            self.assertEqual(result, 0)
-            arguments = build.call_args.args[2]
-            self.assertEqual(arguments[arguments.index("--profile") + 1], profile)
-            directory = "debug" if profile == "dev" else profile
-            executable = "generate.exe" if os.name == "nt" else "generate"
-            binary = root / "target" / directory / "examples" / executable
-            execute.assert_called_once_with([str(binary)])
-            generate.assert_called_once_with(root)
-
 
 # === Public Functions === #
 

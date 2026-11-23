@@ -26,12 +26,12 @@ Products declare operation audiences in their protocol descriptors. Runtime asse
 and SDK generation use those declarations directly; no composition file or caller
 override map is read.
 
-Regenerate through `mise run generate -- --sdk rust`, then python, csharp and cpp.
-Generated output is never edited by hand. The native package and reflection
-renderers live in `crates/harmos-protocol/codegen/`; SDK renderers live in
-`tools/python/src/harmos_tools/build/protocol/`, with descriptor composition owned
-by `build/resource_roots.py`. The protocol crate's generated modules
-are model, host and plugin; Python wire modules are private beneath _wire.
+Regenerate through `mise run generate` (or one `--language`), and check drift with
+`mise run generate -- --check`. Generated output is never edited by hand. The native
+package and reflection renderers live in `crates/harmos-protocol/codegen/`; SDK
+bindings are rendered by the `harmos` CLI (`crates/harmos-cli`), which products
+install at their pinned revision. The protocol crate's generated modules are model,
+host and plugin; Python wire modules are private beneath _wire.
 See [Behaviour](harmos/plugin/v1/behaviour.md) for the numbered conformance contract.
 Within retained values, field numbers, enum values and native storage encodings
 remain unchanged; no compatibility package or duplicate service is retained.

@@ -30,7 +30,7 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
   private readonly Operation<Value, Value> hostPending = new("conformance.host.pending", Visibility.Public);
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
-  private readonly Operation<Wire.InvocationsCreateRequest, Wire.InvocationsCreateResponse> createInvocation = new("application.host.v1.Invocations/Create", Visibility.Public);
+  private readonly Operation<InvocationsCreateRequest, InvocationsCreateResponse> createInvocation = new("application.host.v1.Invocations/Create", Visibility.Public);
 
   private static readonly Lane Instrument = Lane.Serial("instrument");
   private static readonly Lane Parallel = Lane.Concurrent("parallel", 2);
@@ -129,7 +129,7 @@ public sealed class Fixture
   {
     try
     {
-      var invocation = Wire.InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
+      var invocation = InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
       await context.Operation(createInvocation, invocation);
     }
     catch (OperationException error)
