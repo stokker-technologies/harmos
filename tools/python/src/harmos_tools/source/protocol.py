@@ -15,6 +15,7 @@
 import ast
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -44,10 +45,10 @@ def main() -> None:
         output = Path(scratch) / "descriptors.bin"
         # Run the Native Command
         command = ["buf", "build", "--as-file-descriptor-set", "-o", str(output)]
-        subprocess.run(command, check=True, creationflags=spawn_flags())
+        subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
         # Check the Caller Contracts With the Harmos CLI
         command = [str(codegen.cli()), "proto", "check", "--descriptors", str(output)]
-        subprocess.run(command, check=True, creationflags=spawn_flags())
+        subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
     finally:
         scratch_directory.cleanup()
 

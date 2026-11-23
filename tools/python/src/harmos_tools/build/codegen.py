@@ -174,11 +174,11 @@ def _protocols() -> None:
     if status:
         raise SystemExit(status)
     command = [str(ROOT / "target/debug/examples" / ("generate.exe" if os.name == "nt" else "generate"))]
-    subprocess.run(command, check=True, creationflags=spawn_flags())
+    subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
 
     # The Payload Memory Module Leaves the Generator Unformatted
     command = ["rustfmt", "--edition", "2024", str(ROOT / "crates/harmos-domain/src/message/allocation/protobuf.rs")]
-    subprocess.run(command, check=True, creationflags=spawn_flags())
+    subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
 
 
 def _render(language: str, executable: Path, scratch: Path) -> None:
@@ -192,7 +192,7 @@ def _render(language: str, executable: Path, scratch: Path) -> None:
         # Format With the SDK Policy
         sources = [str(path) for path in scratch.rglob("*.rs")]
         command = ["rustfmt", "--edition", "2024", "--config-path", str(ROOT / "sdk/rust/rustfmt.toml"), *sources]
-        subprocess.run(command, check=True, creationflags=spawn_flags())
+        subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
     elif language == "python":
         # Generate the SDK, the Application Fixture and the Conformance Wire
         protoc = ["--protoc", sys.executable, "--protoc-arg=-m", "--protoc-arg=grpc_tools.protoc"]
@@ -243,9 +243,9 @@ def _render(language: str, executable: Path, scratch: Path) -> None:
         sources = [str(path) for path in scratch.rglob("*.py") if "_pb2" not in path.name]
         style = str(ROOT / "sdk/python/pyproject.toml")
         command = [sys.executable, "-m", "ruff", "check", "--config", style, "--select", "I,F401", "--fix", "--quiet", *sources]
-        subprocess.run(command, check=True, creationflags=spawn_flags())
+        subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
         command = [sys.executable, "-m", "ruff", "format", "--config", style, "--quiet", *sources]
-        subprocess.run(command, check=True, creationflags=spawn_flags())
+        subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
     elif language == "csharp":
         # Generate the SDK, the Application Fixture and the Conformance Request
         tools = _csharp_tools()
@@ -317,12 +317,12 @@ def _render(language: str, executable: Path, scratch: Path) -> None:
         # Format With the Generator Policy
         sources = [str(path) for path in scratch.rglob("*") if path.suffix in (".hpp", ".cpp")]
         command = ["clang-format", f"--style={CPP_STYLE}", "-i", *sources]
-        subprocess.run(command, check=True, creationflags=spawn_flags())
+        subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
 
 
 def _codegen(executable: Path, language: str, out: Path, *arguments: str | Path) -> None:
     command = [str(executable), "codegen", language, "--out", str(out), *map(str, arguments)]
-    subprocess.run(command, check=True, creationflags=spawn_flags())
+    subprocess.run(command, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
 
 
 def _csharp_tools() -> Path:
