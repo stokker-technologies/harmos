@@ -70,6 +70,8 @@ impl Accumulator {
     }
 
     pub fn push(&mut self, capture: u64, value: &ScalarValue) -> Result<()> {
+        // A Nonfinite Sample Is a Missing Measurement.
+        let value = if matches!(value, ScalarValue::Float(value) if !value.is_finite()) { &ScalarValue::Null } else { value };
         value.check()?;
         self.rows = self.rows.checked_add(1).ok_or(invalid("row count overflow"))?;
         if self.agg == Agg::Last && !matches!(value, ScalarValue::Missing) {

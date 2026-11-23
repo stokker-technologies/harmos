@@ -156,8 +156,7 @@ impl Groups {
         for row in 0..input.num_rows() {
             check()?;
             let keys = self.plan.groups.iter().map(|group| group.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
-            let values =
-                self.plan.measures.iter().map(|measure| measure.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
+            let values = self.plan.measures.iter().map(|measure| measure.field.value(input, row)).collect::<Result<Vec<_>>>()?;
             let index = match self.find(&keys)? {
                 Ok(index) => index,
                 Err(index) => {
