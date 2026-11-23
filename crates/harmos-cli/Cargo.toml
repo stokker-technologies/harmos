@@ -1,0 +1,100 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "harmos-cli"
+description = "Harmos product tooling: authoritative protocol export, protocol checks and SDK binding generation."
+autotests = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# The CLI Installs From a Pinned Git Revision; It Bundles Repository Protocols and Is Never Published.
+publish = false
+
+# === Package Targets === #
+
+[[bin]]
+name = "harmos"
+path = "src/main.rs"
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+
+# Utilities
+
+# Serialization
+prost = { workspace = true, features = ["std"] }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true, features = ["std"] }
+
+# Configuration
+clap = { workspace = true, features = ["derive", "std", "help", "usage", "error-context"] }
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #
