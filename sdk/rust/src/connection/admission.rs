@@ -78,10 +78,11 @@ impl Inline {
 /// alignment, `Option` adds one aligned tag unless its value has a niche, and a oneof adds one tag.
 /// Heap storage follows prost's decode path: strings and bytes reserve their length, repeated
 /// fields push from Vec's first capacity, and maps take the larger of a hashbrown table and a
-/// B-tree with half-full nodes. A singular message encoded twice merges, so its collections count
-/// double. Bytes and map slots assume the larger `bytes::Bytes` and `HashMap`.
-pub(super) fn memory(message: &MessageDescriptor, encoded: &[u8], root: usize) -> Result<usize, Status> {
-    add(layout(message, None).size.max(root), allocations(message, encoded, false, 100)?)
+/// B-tree with half-full nodes. A singular message encoded twice, or a `merged` value that other
+/// occurrences extend, counts its collections double. Bytes and map slots assume the larger
+/// `bytes::Bytes` and `HashMap`.
+pub(super) fn memory(message: &MessageDescriptor, encoded: &[u8], root: usize, merged: bool) -> Result<usize, Status> {
+    add(layout(message, None).size.max(root), allocations(message, encoded, merged, 100)?)
 }
 
 pub(super) fn overflow() -> Status {
@@ -328,7 +329,13 @@ fn vector(count: usize, element: usize) -> Result<usize, Status> {
         2..=1024 => 4,
         _ => 1,
     };
-    multiply(element, count.checked_next_power_of_two().ok_or_else(overflow)?.max(first))
+    // An Element Estimated Past 1 KiB May Still Be Smaller and Start With Four.
+    let floor = if element > 1024 {
+        4096
+    } else {
+        0
+    };
+    Ok(multiply(element, count.checked_next_power_of_two().ok_or_else(overflow)?.max(first))?.max(floor))
 }
 
 // Hashbrown Keeps an Eighth of Its Buckets Free Plus a Control Byte Each and One Trailing Group;
@@ -425,7 +432,7 @@ mod tests {
             values: vec![prost_types::Value::default(); 128],
         };
         let encoded = value.encode_to_vec();
-        let required = memory(&value.descriptor(), &encoded, std::mem::size_of_val(&value)).unwrap();
+        let required = memory(&value.descriptor(), &encoded, std::mem::size_of_val(&value), false).unwrap();
         let storage = std::mem::size_of_val(&value) + value.values.capacity() * std::mem::size_of::<prost_types::Value>();
         assert!(required >= storage);
         assert!(storage > encoded.len());
@@ -450,9 +457,9 @@ mod tests {
             .into(),
         };
         let encoded = value.encode_to_vec();
-        let required = memory(&value.descriptor(), &encoded, std::mem::size_of_val(&value)).unwrap();
+        let required = memory(&value.descriptor(), &encoded, std::mem::size_of_val(&value), false).unwrap();
         assert!(required >= 5 * "payload".len() * 128);
         let truncated = &encoded[..encoded.len() - 1];
-        assert_eq!(memory(&value.descriptor(), truncated, 0).unwrap_err().code(), tonic::Code::DataLoss);
+        assert_eq!(memory(&value.descriptor(), truncated, 0, false).unwrap_err().code(), tonic::Code::DataLoss);
     }
 }

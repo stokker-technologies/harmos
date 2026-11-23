@@ -123,14 +123,19 @@ impl<R: prost::Message + Default, O: prost::Message + Default> Decoder for Decod
 impl<R: prost::Message + Default, O: prost::Message + Default> Decode<R, O> {
     fn message(&self, bytes: &[u8]) -> Result<Output<R, O>, Status> {
         if !self.envelope {
-            let required = super::admission::memory(&self.response, bytes, std::mem::size_of::<R>())?;
+            let required = super::admission::memory(&self.response, bytes, std::mem::size_of::<R>(), false)?;
             let permit = claim(&self.retained, required)?;
             let value = R::decode(bytes).map_err(invalid)?;
             return Ok(Output::Response(value, permit));
         }
 
-        // Scan Borrowed Occurrences Before Allocating Any Generated Value.
+        // Scan Borrowed Occurrences Before Allocating Any Generated Value; Several May Merge.
         let mut remaining = bytes;
+        let mut occurrences = 0usize;
+        while occurrence(&mut remaining)?.is_some() {
+            occurrences += 1;
+        }
+        remaining = bytes;
         let mut selected = None;
         let mut retained = 0usize;
         let mut required = std::mem::size_of::<R>().checked_add(std::mem::size_of::<O>()).ok_or_else(exhausted)?;
@@ -146,7 +151,7 @@ impl<R: prost::Message + Default, O: prost::Message + Default> Decode<R, O> {
                 std::mem::size_of::<R>()
             };
             let memory = if let Some(descriptor) = descriptor {
-                super::admission::memory(descriptor, payload, root)?
+                super::admission::memory(descriptor, payload, root, occurrences > 1)?
             } else {
                 // NoItems Ignores Fields, But Replaced Oneof Occurrences Still Must Be Valid.
                 let mut fields = payload;
@@ -406,26 +411,33 @@ mod tests {
 
     #[test]
     fn repeated_singular_messages_claim_their_merged_capacity() {
-        // Eight Then One List Element Merge Into One Vec Past Its Power-of-Two Capacity.
+        // Eight Then One List Element Merge Into One Vec Past Its Power-of-Two Capacity, Whether a
+        // Field or the Response Envelope Repeats.
         let list = |count| prost_types::Value {
             kind: Some(prost_types::value::Kind::ListValue(prost_types::ListValue {
                 values: vec![prost_types::Value::default(); count],
             })),
         };
-        let encoded = [list(8).encode_to_vec(), list(1).encode_to_vec()].concat();
-        let decoder = Decode::<prost_types::Value, prost_types::Value> {
-            retained: Arc::new(Semaphore::new(1024 * 1024)),
-            response: list(0).descriptor(),
-            output: None,
-            envelope: false,
-            marker: PhantomData,
-        };
-        let before = LIVE.get();
-        let Output::Response(decoded, permit) = decoder.message(&encoded).unwrap() else {
-            panic!("unary reply");
-        };
-        assert_eq!(decoded, list(9));
-        assert!(usize::try_from(LIVE.get() - before).unwrap() + std::mem::size_of::<prost_types::Value>() <= permit.num_permits());
+        let mut envelope = Vec::new();
+        for count in [8, 1] {
+            prost::encoding::encode_key(2, WireType::LengthDelimited, &mut envelope);
+            list(count).encode_length_delimited(&mut envelope).unwrap();
+        }
+        for (bytes, envelope) in [([list(8).encode_to_vec(), list(1).encode_to_vec()].concat(), false), (envelope, true)] {
+            let decoder = Decode::<prost_types::Value, prost_types::Value> {
+                retained: Arc::new(Semaphore::new(1024 * 1024)),
+                response: list(0).descriptor(),
+                output: None,
+                envelope,
+                marker: PhantomData,
+            };
+            let before = LIVE.get();
+            let Output::Response(decoded, permit) = decoder.message(&bytes).unwrap() else {
+                panic!("unary reply");
+            };
+            assert_eq!(decoded, list(9));
+            assert!(usize::try_from(LIVE.get() - before).unwrap() + std::mem::size_of::<prost_types::Value>() <= permit.num_permits());
+        }
     }
 
     #[derive(Default)]
@@ -450,7 +462,7 @@ mod tests {
             values: vec![prost_types::Value::default(); 128],
         };
         let bytes = value.encode_to_vec();
-        let required = super::super::admission::memory(&value.descriptor(), &bytes, 0).unwrap();
+        let required = super::super::admission::memory(&value.descriptor(), &bytes, 0, false).unwrap();
         let budget = Arc::new(Semaphore::new(required - 1));
         let decoder = Decode::<Undecodable, Undecodable> {
             retained: budget.clone(),
@@ -477,7 +489,7 @@ mod tests {
             values: vec![prost_types::Value::default(); 8],
         };
         let bytes = value.encode_to_vec();
-        let required = super::super::admission::memory(&value.descriptor(), &bytes, std::mem::size_of_val(&value)).unwrap();
+        let required = super::super::admission::memory(&value.descriptor(), &bytes, std::mem::size_of_val(&value), false).unwrap();
         let budget = Arc::new(Semaphore::new(required * 2));
         let decoder = Decode::<prost_types::ListValue, prost_types::ListValue> {
             retained: budget.clone(),
@@ -520,8 +532,8 @@ mod tests {
             prost::encoding::encode_key(tag, WireType::LengthDelimited, &mut envelope);
             value.encode_length_delimited(&mut envelope).unwrap();
         }
-        let retained = super::super::admission::memory(&descriptor, &first.encode_to_vec(), 0).unwrap()
-            + super::super::admission::memory(&descriptor, &second.encode_to_vec(), 0).unwrap();
+        let retained = super::super::admission::memory(&descriptor, &first.encode_to_vec(), 0, true).unwrap()
+            + super::super::admission::memory(&descriptor, &second.encode_to_vec(), 0, true).unwrap();
         let budget = Arc::new(Semaphore::new(retained * 4));
         let decoder = Decode::<prost_types::ListValue, prost_types::ListValue> {
             retained: budget.clone(),
