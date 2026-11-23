@@ -74,6 +74,8 @@ pub fn settings_declarations() -> SettingsDeclarations {
             default: Some(SettingValue { value: Some(Value::Flag(true)) }),
             minimum: None,
             maximum: None,
+            choices: Vec::new(),
+            required: false,
         }],
     }
 }
