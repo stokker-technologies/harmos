@@ -93,6 +93,9 @@ class OperationError(Exception):
             )
         super().__init__(self.value.message)
 
+    def __str__(self) -> str:
+        return f"{self.message}; {self.action}" if self.action else self.message
+
     @property
     def kind(self) -> str:
         return {

@@ -42,7 +42,8 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("{}", .0.message)]
+    /// Renders "message; action" When the Failure Names an Action.
+    #[error("{}{}{}", .0.message, if .0.action.is_empty() { "" } else { "; " }, .0.action)]
     Failure(Box<Failure>),
 
     #[error(transparent)]
@@ -112,7 +113,10 @@ impl Error {
     }
 
     pub fn message(&self) -> String {
-        self.to_string()
+        match self {
+            Self::Failure(failure) => failure.message.clone(),
+            error => error.to_string(),
+        }
     }
 
     pub fn action(&self) -> &str {
@@ -180,3 +184,17 @@ impl Error {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failures_name_their_action_after_the_message() {
+        let error = Error::failure(Classification::Refused, "fixture_failure", "Apply Failed", "Choose Another Input");
+        assert_eq!(error.to_string(), "Apply Failed; Choose Another Input");
+        assert_eq!(error.message(), "Apply Failed");
+        assert_eq!(error.action(), "Choose Another Input");
+        assert_eq!(Error::failure(Classification::Refused, "fixture_failure", "Apply Failed", "").to_string(), "Apply Failed");
+    }
+}

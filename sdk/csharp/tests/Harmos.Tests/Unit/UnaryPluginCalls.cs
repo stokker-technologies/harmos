@@ -22,6 +22,15 @@ public sealed class UnaryPluginCalls
   }
 
   [Fact]
+  public void OperationErrorsNameTheirAction()
+  {
+    var error = new OperationException(new Failure { Message = "Apply Failed", Action = "Choose Another Input" });
+    Assert.Equal("Apply Failed; Choose Another Input", error.Message);
+    Assert.Equal("Apply Failed", error.ToDictionary()["message"]);
+    Assert.Equal("Apply Failed", new OperationException(new Failure { Message = "Apply Failed" }).Message);
+  }
+
+  [Fact]
   public void RefusedWatchRegistrationDoesNotReserveTheUnaryOperation()
   {
     var plugin = new Harmos.Plugins.Plugin("unary", "1.0.0");
