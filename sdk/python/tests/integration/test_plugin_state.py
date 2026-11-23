@@ -17,8 +17,8 @@ from unittest import IsolatedAsyncioTestCase
 
 # Third Party Imports
 # Local Imports
-from harmos._wire.host.v1.plugins.state_pb2 import StateGetResponse, StatePutRequest, StatePutResponse
-from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse, Request
+from harmos._generated.proto.host.v1.plugins.state_pb2 import StateGetResponse, StatePutRequest, StatePutResponse
+from harmos._generated.proto.plugin.v1.invocation_pb2 import ChildResponse, Request
 from harmos.plugin import Catalog, Context, HostOperation, Plugin, Registrar
 
 # Type Checking Imports

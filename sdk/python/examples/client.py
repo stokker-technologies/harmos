@@ -15,7 +15,7 @@ from argparse import ArgumentParser
 
 from harmos import DiscoveredOperation
 from harmos.client import StatusGetResponse, StatusWatchResponse
-from tests.fixtures.client import Client
+from tests.fixtures.client._generated.client import Client
 
 # === Public Exports === #
 

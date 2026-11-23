@@ -65,7 +65,7 @@ def check_public_surfaces(
 ) -> None:
     """Keep Protocol Implementation Names Out of Consumer Entry Points.
 
-    Allow internal generated directories (detail, _generated, _wire) and canonical
+    Allow internal generated directories (detail, _generated) and canonical
     gRPC method paths. CI documentation checking owns the guide surface.
     """
     python_package = root / (python_package or Path(f"sdk/python/src/{namespace}"))
@@ -90,31 +90,25 @@ def check_public_surfaces(
         if "detail" in relative.parts:
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            # Barrels Bind Public Names From the Private Generated Package.
+            if re.match(r"from \.+_generated\.", line):
+                continue
             line = grpc_path.sub("", line)
             if wire.search(line) or re.search(r"\bv\d+\b", line):
                 findings.append(f"{relative.as_posix()}:{number}: Public Surface Names a Wire Package")
     exports: dict[str, Path] = {}
-    for name in ("__init__.py", "client.py", "plugin/__init__.py"):
+    for name in ("__init__.py", "client.py", "model.py", "plugin/__init__.py"):
         path = python_package / name
         if not path.is_file():
             continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.Assign) or not any(
-                isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
-            ):
-                continue
-            if not isinstance(node.value, (ast.List, ast.Tuple)):
-                raise ValueError(
-                    f"Check Public Exports: {path} Must Declare Its Names Explicitly; Correct the source protocol declarations or explicit public exports before regenerating"
-                )
-            for item in node.value.elts:
-                if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
-                    raise ValueError(
-                        f"Check Public Exports: {path} Must Declare String Names; Correct the source protocol declarations or explicit public exports before regenerating"
-                    )
-                if item.value in exports:
-                    findings.append(f"{path.relative_to(root)}: Duplicate Public Export {item.value}")
-                exports[item.value] = path
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            targets = [target.id for target in node.targets if isinstance(target, ast.Name)] if isinstance(node, ast.Assign) else []
+            for target in targets:
+                if target == "__all__":
+                    findings.append(f"{path.relative_to(root)}: Bind Public Names by Assignment Instead of __all__")
+                elif target in exports:
+                    findings.append(f"{path.relative_to(root)}: Duplicate Public Export {target}")
+                exports[target] = path
     for path in sorted(csharp_source.rglob("*.cs")):
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r"^namespace .*\.V\d+\b", line):

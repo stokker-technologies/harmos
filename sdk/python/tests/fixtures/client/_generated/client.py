@@ -11,15 +11,15 @@ from grpc.aio import AioRpcError, Channel
 
 from harmos import _connection
 from harmos._client_transport import Metadata, call_error, stream, unary
-from harmos._wire.host.v1.access.certificates_pb2 import CertificatesCreateRequest, CertificatesCreateResponse
-from harmos._wire.host.v1.access.listener_pb2 import (
+from harmos._generated.proto.host.v1.access.certificates_pb2 import CertificatesCreateRequest, CertificatesCreateResponse
+from harmos._generated.proto.host.v1.access.listener_pb2 import (
     ListenerGetRequest,
     ListenerGetResponse,
     ListenerSetRequest,
     ListenerSetResponse,
     ListenerValue,
 )
-from harmos._wire.host.v1.access.pairings_pb2 import (
+from harmos._generated.proto.host.v1.access.pairings_pb2 import (
     PairingsCreateRequest,
     PairingsCreateResponse,
     PairingsDeleteRequest,
@@ -27,7 +27,7 @@ from harmos._wire.host.v1.access.pairings_pb2 import (
     PairingsListRequest,
     PairingsListResponse,
 )
-from harmos._wire.host.v1.invocations_pb2 import (
+from harmos._generated.proto.host.v1.invocations_pb2 import (
     InvocationsCancelRequest,
     InvocationsCancelResponse,
     InvocationsCreateRequest,
@@ -37,9 +37,19 @@ from harmos._wire.host.v1.invocations_pb2 import (
     InvocationsWatchRequest,
     InvocationsWatchResponse,
 )
-from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse, SettingsSetRequest, SettingsSetResponse
-from harmos._wire.host.v1.plugins_pb2 import (
+from harmos._generated.proto.host.v1.operations_pb2 import (
+    OperationsGetRequest,
+    OperationsGetResponse,
+    OperationsListRequest,
+    OperationsListResponse,
+)
+from harmos._generated.proto.host.v1.plugins.settings_pb2 import (
+    SettingsListRequest,
+    SettingsListResponse,
+    SettingsSetRequest,
+    SettingsSetResponse,
+)
+from harmos._generated.proto.host.v1.plugins_pb2 import (
     PluginEntry,
     PluginPlacement,
     PluginsCreateRequest,
@@ -60,27 +70,27 @@ from harmos._wire.host.v1.plugins_pb2 import (
     PluginsWatchResponse,
     PluginValue,
 )
-from harmos._wire.host.v1.schemas_pb2 import SchemaDescription, SchemasListRequest, SchemasListResponse
-from harmos._wire.host.v1.status.diagnostics_pb2 import DiagnosticsGetRequest, DiagnosticsGetResponse
-from harmos._wire.host.v1.status.logs_pb2 import LogsListRequest, LogsListResponse, LogsWatchRequest, LogsWatchResponse
-from harmos._wire.host.v1.status.trace_events_pb2 import (
+from harmos._generated.proto.host.v1.schemas_pb2 import SchemaDescription, SchemasListRequest, SchemasListResponse
+from harmos._generated.proto.host.v1.status.diagnostics_pb2 import DiagnosticsGetRequest, DiagnosticsGetResponse
+from harmos._generated.proto.host.v1.status.logs_pb2 import LogsListRequest, LogsListResponse, LogsWatchRequest, LogsWatchResponse
+from harmos._generated.proto.host.v1.status.trace_events_pb2 import (
     TraceEventsListRequest,
     TraceEventsListResponse,
     TraceEventsWatchRequest,
     TraceEventsWatchResponse,
 )
-from harmos._wire.host.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
-from harmos._wire.host.v1.streams_pb2 import StreamIdentity, StreamsListRequest, StreamsListResponse
-from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.model.v1.invocation_pb2 import InstanceState
-from harmos._wire.model.v1.operation_pb2 import DiscoveredOperation
-from harmos._wire.model.v1.page_pb2 import PageRequest
-from harmos._wire.model.v1.position_pb2 import Position, ReadCut
-from harmos._wire.model.v1.receipt_pb2 import Receipt
-from harmos._wire.model.v1.setting_pb2 import SettingValues
-from tests.fixtures.client._wire.application.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
-from tests.fixtures.client._wire.application.host.v1.jobs_pb2 import JobsStartRequest, JobsStartResponse
-from tests.fixtures.client._wire.application.host.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
+from harmos._generated.proto.host.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
+from harmos._generated.proto.host.v1.streams_pb2 import StreamIdentity, StreamsListRequest, StreamsListResponse
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._generated.proto.model.v1.invocation_pb2 import InstanceState
+from harmos._generated.proto.model.v1.operation_pb2 import DiscoveredOperation
+from harmos._generated.proto.model.v1.page_pb2 import PageRequest
+from harmos._generated.proto.model.v1.position_pb2 import Position, ReadCut
+from harmos._generated.proto.model.v1.receipt_pb2 import Receipt
+from harmos._generated.proto.model.v1.setting_pb2 import SettingValues
+from tests.fixtures.client._generated.proto.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
+from tests.fixtures.client._generated.proto.host.v1.jobs_pb2 import JobsStartRequest, JobsStartResponse
+from tests.fixtures.client._generated.proto.host.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
 
 
 class AccessCertificatesResource:

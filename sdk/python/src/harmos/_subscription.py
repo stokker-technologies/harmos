@@ -19,7 +19,7 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 # Local Imports
-from ._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeResponse
+from ._generated.proto.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeResponse
 
 # Type Checking Imports
 if TYPE_CHECKING:

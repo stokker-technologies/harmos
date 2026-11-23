@@ -27,10 +27,15 @@ from harmos_tools.process import spawn_flags
 from examples import invocation
 from examples.client import run
 from harmos import DiscoveredContract, DiscoveredOperation, Position, SettingsDeclarations, SettingValue, SettingValues
-from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
-from harmos._wire.host.v1.status_pb2 import (
+from harmos._generated.proto.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
+from harmos._generated.proto.host.v1.operations_pb2 import (
+    OperationsGetRequest,
+    OperationsGetResponse,
+    OperationsListRequest,
+    OperationsListResponse,
+)
+from harmos._generated.proto.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
+from harmos._generated.proto.host.v1.status_pb2 import (
     HostIdentity,
     HostStatus,
     StatusGetRequest,
@@ -38,8 +43,8 @@ from harmos._wire.host.v1.status_pb2 import (
     StatusWatchRequest,
     StatusWatchResponse,
 )
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceStopRequest
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceStopRequest
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
 from tests.support import bootstrap, calls
 
 # === Public Exports === #

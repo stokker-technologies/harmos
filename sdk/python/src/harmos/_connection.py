@@ -15,7 +15,7 @@ from typing import Self
 import grpc
 from grpc.aio import Channel
 
-from ._generated.shared import StorageTransferSettings
+from ._generated.proto.model.v1.transfer_pb2 import StorageTransferSettings
 from ._transfer import message_bytes
 
 # === Public Exports === #

@@ -22,23 +22,23 @@ from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse
-from harmos._wire.model.v1 import failure_pb2
-from harmos._wire.model.v1.failure_pb2 import (
+from harmos._generated.proto.host.v1.plugins.settings_pb2 import SettingsListResponse
+from harmos._generated.proto.model.v1 import failure_pb2
+from harmos._generated.proto.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
     CLASSIFICATION_REFUSED,
 )
-from harmos._wire.model.v1.policy_pb2 import OperationPolicy
-from harmos._wire.model.v1.position_pb2 import ReadCut
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
-from harmos._wire.plugin.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
-from harmos._wire.plugin.v1.stream_pb2 import Sample
+from harmos._generated.proto.model.v1.policy_pb2 import OperationPolicy
+from harmos._generated.proto.model.v1.position_pb2 import ReadCut
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
+from harmos._generated.proto.plugin.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
+from harmos._generated.proto.plugin.v1.stream_pb2 import Sample
 
 # Local Imports
 from ._contracts import Operation, message_types
 from ._generated.host import _SUBSCRIPTIONS_SUBSCRIBE, HostPluginsStateResource, HostRoot
+from ._generated.proto.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest
 from ._subscription import Subscription
-from ._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest
 
 # Type Checking Imports
 if TYPE_CHECKING:

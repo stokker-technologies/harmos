@@ -25,8 +25,8 @@ from unittest import IsolatedAsyncioTestCase
 
 from grpc.aio import ServicerContext
 
-from tests.fixtures.client import Client
-from tests.fixtures.client._wire.application.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
+from tests.fixtures.client._generated.client import Client
+from tests.fixtures.client._generated.proto.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
 
 # Third Party Imports
 

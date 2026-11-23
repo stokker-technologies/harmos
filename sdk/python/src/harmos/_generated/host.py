@@ -8,7 +8,7 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos._contracts import Operation
-from harmos._wire.host.v1.invocations_pb2 import (
+from harmos._generated.proto.host.v1.invocations_pb2 import (
     InvocationsCancelRequest,
     InvocationsCancelResponse,
     InvocationsGetRequest,
@@ -16,15 +16,20 @@ from harmos._wire.host.v1.invocations_pb2 import (
     InvocationsWatchRequest,
     InvocationsWatchResponse,
 )
-from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
-from harmos._wire.host.v1.plugins.state_pb2 import StateGetRequest, StateGetResponse, StatePutRequest, StatePutResponse
-from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.model.v1.invocation_pb2 import InstanceState
-from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
-from harmos._wire.model.v1.policy_pb2 import OperationPolicy
-from harmos._wire.model.v1.position_pb2 import ReadCut
-from harmos._wire.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest, SubscriptionsSubscribeResponse
+from harmos._generated.proto.host.v1.operations_pb2 import (
+    OperationsGetRequest,
+    OperationsGetResponse,
+    OperationsListRequest,
+    OperationsListResponse,
+)
+from harmos._generated.proto.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
+from harmos._generated.proto.host.v1.plugins.state_pb2 import StateGetRequest, StateGetResponse, StatePutRequest, StatePutResponse
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._generated.proto.model.v1.invocation_pb2 import InstanceState
+from harmos._generated.proto.model.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
+from harmos._generated.proto.model.v1.policy_pb2 import OperationPolicy
+from harmos._generated.proto.model.v1.position_pb2 import ReadCut
+from harmos._generated.proto.plugin.v1.subscriptions_pb2 import SubscriptionsSubscribeRequest, SubscriptionsSubscribeResponse
 
 if TYPE_CHECKING:
     from harmos._invocation import Context

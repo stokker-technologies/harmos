@@ -17,8 +17,8 @@ import asyncio
 import grpc
 from grpc.aio import ServicerContext
 
-from harmos._wire.plugin.v1.launches_pb2 import LaunchesAnnounceRequest, LaunchesAnnounceResponse
-from harmos._wire.plugin.v1.launches_pb2_grpc import LaunchesServicer, add_LaunchesServicer_to_server
+from harmos._generated.proto.plugin.v1.launches_pb2 import LaunchesAnnounceRequest, LaunchesAnnounceResponse
+from harmos._generated.proto.plugin.v1.launches_pb2_grpc import LaunchesServicer, add_LaunchesServicer_to_server
 
 # Local Imports
 

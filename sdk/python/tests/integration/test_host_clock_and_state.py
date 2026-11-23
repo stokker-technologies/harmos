@@ -23,13 +23,18 @@ from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
 from harmos import CLASSIFICATION_REFUSED, SettingDeclaration, SettingValue, model
+from harmos._generated.proto.host.v1.invocations_pb2 import InvocationsCreateRequest
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._generated.proto.plugin.v1.instance_pb2 import (
+    InstanceGetRequest,
+    InstanceInvokeRequest,
+    InstanceSamplesRequest,
+    InstanceStopRequest,
+)
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.invocation_pb2 import ChildResponse, Request
+from harmos._generated.proto.plugin.v1.stream_pb2 import SamplesSelection, Window
 from harmos._invocation import Context, ProtocolError
-from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse, Request
-from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Window
 
 # Local Imports
 from harmos.plugin import Catalog, HostOperation, Plugin, Registrar

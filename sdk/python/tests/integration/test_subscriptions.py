@@ -22,13 +22,13 @@ from grpc.aio import EOF
 # Local Imports
 from harmos import CLASSIFICATION_CANCELLED, VISIBILITY_PUBLIC
 from harmos._generated.host import _SUBSCRIPTIONS_SUBSCRIBE
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetResponse
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceSamplesRequest
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.invocation_pb2 import Cancel, ChildResponse, Request
+from harmos._generated.proto.plugin.v1.stream_pb2 import SamplesSelection
+from harmos._generated.proto.plugin.v1.subscriptions_pb2 import SubscriptionRow, SubscriptionsSubscribeResponse
 from harmos._invocation import Context, OperationError
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceSamplesRequest
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.invocation_pb2 import Cancel, ChildResponse, Request
-from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection
-from harmos._wire.plugin.v1.subscriptions_pb2 import SubscriptionRow, SubscriptionsSubscribeResponse
 from harmos.plugin import Catalog, Gap, Plugin, Publisher, StreamRow, Subscription, operation, publisher
 from tests.support import calls
 

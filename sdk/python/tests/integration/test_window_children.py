@@ -35,11 +35,11 @@ from harmos import (
     SettingValues,
     model,
 )
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
-from harmos._wire.plugin.v1.stream_pb2 import CollectionDemand, SampleBatch, SamplesSelection, Window
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.invocation_pb2 import ChildResponse
+from harmos._generated.proto.plugin.v1.stream_pb2 import CollectionDemand, SampleBatch, SamplesSelection, Window
 from harmos.plugin import Catalog, Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 from tests.fixtures.conformance import Value, Values
 

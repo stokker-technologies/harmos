@@ -25,10 +25,10 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc.aio import EOF
 
 from harmos import CLASSIFICATION_REFUSED, VISIBILITY_PUBLIC, model
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceStopRequest
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
+from harmos._generated.proto.host.v1.time_pb2 import TimeGetResponse
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceStopRequest
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.invocation_pb2 import ChildResponse
 from harmos.plugin import Catalog, Context, Endpoint, HostOperation, Plugin, Registrar, operation
 
 # Local Imports

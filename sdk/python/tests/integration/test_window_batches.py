@@ -27,9 +27,9 @@ from grpc.aio import AioRpcError
 
 from harmos import MessageSettings
 from harmos._columns import Columns, append, batches, columns_type, extract
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest, InstanceSamplesResponse
-from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
+from harmos._generated.proto.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest, InstanceSamplesResponse
+from harmos._generated.proto.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._generated.proto.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
 
 # Local Imports
 from harmos.plugin import Catalog, Context, Plugin, observer, publisher, window_observer

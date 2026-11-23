@@ -48,9 +48,9 @@ timeout_seconds = 120
 exclude = [".venv", "tools/python/.ruff_cache"]
 generated = [
   "target/generated/python/src",
-  "sdk/python/src/harmos/_wire/**/*_pb2*",
-  "sdk/python/tests/fixtures/conformance/_wire/**/*_pb2*",
-  "sdk/python/tests/fixtures/client/_wire/**/*_pb2*",
+  "sdk/python/src/harmos/_generated/proto/**/*_pb2*",
+  "sdk/python/tests/fixtures/conformance/_generated/proto/**/*_pb2*",
+  "sdk/python/tests/fixtures/client/_generated/proto/**/*_pb2*",
 ]
 roots = ["tools/python", "sdk/python"]
 

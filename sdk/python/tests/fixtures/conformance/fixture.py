@@ -32,7 +32,7 @@ from harmos import (
     SettingValue,
     model,
 )
-from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
+from harmos._generated.proto.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
 from harmos.plugin import (
     Catalog,
     Context,
