@@ -50,11 +50,12 @@ const COORDINATE_CACHE_BYTES: usize = 32 * 1024 * 1024;
 
 /* === Structs === */
 
+// Each Coordinate Keeps Its Source Row; Rows Without a Coordinate Are Skipped.
 struct Coordinates {
     file: Option<File>,
     length: usize,
     start: usize,
-    cache: Vec<(f64, f64)>,
+    cache: Vec<(f64, f64, usize)>,
 }
 
 struct Selection {
@@ -69,20 +70,21 @@ struct Selection {
 /* === Implementations === */
 
 impl Coordinates {
-    fn get(&mut self, index: usize) -> Result<(f64, f64)> {
+    fn get(&mut self, index: usize) -> Result<(f64, f64, usize)> {
         if index < self.start || index >= self.start + self.cache.len() {
             self.start = index / COORDINATES * COORDINATES;
             self.file
                 .as_mut()
                 .expect("uncached coordinates own a file")
-                .seek(SeekFrom::Start((self.start as u64).checked_mul(16).ok_or_else(|| invalid("coordinate offset overflow"))?))
+                .seek(SeekFrom::Start((self.start as u64).checked_mul(24).ok_or_else(|| invalid("coordinate offset overflow"))?))
                 .map_err(io)?;
             let count = COORDINATES.min(self.length - self.start);
             self.cache.clear();
-            let mut bytes = vec![0; count * 16];
+            let mut bytes = vec![0; count * 24];
             self.file.as_mut().unwrap().read_exact(&mut bytes).map_err(io)?;
-            for bytes in bytes.as_chunks::<16>().0 {
-                self.cache.push((f64::from_le_bytes(bytes[..8].try_into().unwrap()), f64::from_le_bytes(bytes[8..].try_into().unwrap())));
+            for bytes in bytes.as_chunks::<24>().0 {
+                let word = |at: usize| <[u8; 8]>::try_from(&bytes[at..at + 8]).unwrap();
+                self.cache.push((f64::from_le_bytes(word(0)), f64::from_le_bytes(word(8)), u64::from_le_bytes(word(16)) as usize));
             }
         }
         Ok(self.cache[index - self.start])
@@ -90,7 +92,8 @@ impl Coordinates {
 
     fn mean(&mut self, start: usize, end: usize, check: &mut impl FnMut() -> Result<()>) -> Result<(f64, f64)> {
         if start == end {
-            return self.get(self.length - 1);
+            let (x, y, _) = self.get(self.length - 1)?;
+            return Ok((x, y));
         }
         let (mut x, mut y) = (0.0, 0.0);
         for index in start..end {
@@ -190,12 +193,18 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
         }
     } else {
         let mut coordinates = coordinates(&input, plan, COORDINATE_CACHE_BYTES, check)?;
-        if matches!(plan.algorithm, Algorithm::Extrema) {
-            let span = ((input.rows as f64 / (plan.max_rows / 2) as f64).ceil() as usize).max(1);
-            for start in (0..input.rows).step_by(span) {
+        let length = coordinates.length;
+        if length <= plan.max_rows {
+            for index in 0..length {
+                check()?;
+                selected.push(coordinates.get(index)?.2)?;
+            }
+        } else if matches!(plan.algorithm, Algorithm::Extrema) {
+            let span = ((length as f64 / (plan.max_rows / 2) as f64).ceil() as usize).max(1);
+            for start in (0..length).step_by(span) {
                 let (mut low, mut high) = (start, start);
                 let (mut minimum, mut maximum) = (coordinates.get(start)?.1, coordinates.get(start)?.1);
-                for index in start + 1..start.saturating_add(span).min(input.rows) {
+                for index in start + 1..start.saturating_add(span).min(length) {
                     check()?;
                     let value = coordinates.get(index)?.1;
                     if value < minimum {
@@ -207,8 +216,8 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
                         maximum = value;
                     }
                 }
-                selected.push(low.min(high))?;
-                selected.push(low.max(high))?;
+                selected.push(coordinates.get(low.min(high))?.2)?;
+                selected.push(coordinates.get(low.max(high))?.2)?;
             }
         } else {
             triangles(&mut coordinates, plan, &mut selected, check)?;
@@ -295,12 +304,12 @@ fn compare_keys(left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering>
 }
 
 fn coordinates(input: &Spool, plan: &Downsample, cache_bytes: usize, check: &mut impl FnMut() -> Result<()>) -> Result<Coordinates> {
-    let cached = input.rows <= cache_bytes / 16;
+    let cached = input.rows <= cache_bytes / 24;
     let mut writer = if cached { None } else { Some(BufWriter::with_capacity(1024 * 1024, tempfile::tempfile().map_err(io)?)) };
     let mut cache = Vec::with_capacity(if cached { input.rows } else { 0 });
     let mut first_time = None;
     let mut previous = None;
-    let mut index = 0usize;
+    let (mut offset, mut length) = (0usize, 0usize);
     let field = plan.value.as_ref().ok_or_else(|| invalid("missing downsample value field"))?;
     let mut fields = vec![Projection { field: field.clone(), name: "y".into() }];
     if let Some(axis) = &plan.axis
@@ -315,50 +324,51 @@ fn coordinates(input: &Spool, plan: &Downsample, cache_bytes: usize, check: &mut
         let columns = projection.apply(&batch, check)?;
         for row in 0..batch.num_rows() {
             check()?;
+            let source = offset + row;
             let y = coordinate(columns.column(0).as_ref(), row)?;
             let x = match &plan.axis {
-                _ if matches!(plan.algorithm, Algorithm::Extrema) => index as f64,
-                None => index as f64,
+                _ if matches!(plan.algorithm, Algorithm::Extrema) => Some(source as f64),
+                None => Some(source as f64),
                 Some(_) => match super::transform::scalar(columns.column(1).as_ref(), row)? {
                     ScalarValue::Datetime(value) => {
                         let first = *first_time.get_or_insert(value);
-                        value.checked_sub(first).ok_or_else(|| invalid("LTTB timestamp difference overflow"))? as f64
+                        Some(value.checked_sub(first).ok_or_else(|| invalid("LTTB timestamp difference overflow"))? as f64)
                     }
-                    value => number(&value)?,
+                    ScalarValue::Null | ScalarValue::Missing => None,
+                    value => Some(number(&value)?),
                 },
             };
-            if !x.is_finite() || !y.is_finite() {
-                return Err(invalid("downsample requires finite non-null coordinates"));
-            }
+            let (Some(x), Some(y)) = (x, y) else {
+                continue;
+            };
             if matches!(plan.algorithm, Algorithm::LttbLog) && (x <= 0.0 || previous.is_some_and(|previous| previous > x)) {
                 return Err(invalid("logarithmic LTTB requires positive ordered coordinates"));
             }
             if let Some(writer) = &mut writer {
                 writer.write_all(&x.to_le_bytes()).map_err(io)?;
                 writer.write_all(&y.to_le_bytes()).map_err(io)?;
+                writer.write_all(&(source as u64).to_le_bytes()).map_err(io)?;
             } else {
-                cache.push((x, y));
+                cache.push((x, y, source));
             }
             previous = Some(x);
-            index += 1;
+            length += 1;
         }
+        offset += batch.num_rows();
     }
     let file = writer.map(|writer| writer.into_inner().map_err(|error| io(error.into_error()))).transpose()?;
-    Ok(Coordinates {
-        file,
-        length: input.rows,
-        start: 0,
-        cache,
-    })
+    Ok(Coordinates { file, length, start: 0, cache })
 }
 
-fn coordinate(array: &dyn Array, row: usize) -> Result<f64> {
-    if let Some(values) = array.as_any().downcast_ref::<Float64Array>()
-        && !values.is_null(row)
-    {
-        return Ok(values.value(row));
+// A Missing or Nonfinite Coordinate Is Skipped.
+fn coordinate(array: &dyn Array, row: usize) -> Result<Option<f64>> {
+    if let Some(values) = array.as_any().downcast_ref::<Float64Array>() {
+        return Ok(Some(values.value(row)).filter(|value| !values.is_null(row) && value.is_finite()));
     }
-    number(&super::transform::scalar(array, row)?)
+    match super::transform::scalar(array, row)? {
+        ScalarValue::Null | ScalarValue::Missing => Ok(None),
+        value => number(&value).map(Some),
+    }
 }
 
 fn triangles(points: &mut Coordinates, plan: &Downsample, selected: &mut Selection, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
@@ -372,7 +382,7 @@ fn triangles(points: &mut Coordinates, plan: &Downsample, selected: &mut Selecti
     let buckets = count - 2;
     let bucket_width = (length - 2) as f64 / buckets as f64;
     let edge = |bucket: usize| (low + (bucket as f64 / buckets as f64) * span).exp();
-    selected.push(0)?;
+    selected.push(points.get(0)?.2)?;
     let mut previous = 0;
     for bucket in 0..buckets {
         check()?;
@@ -388,7 +398,7 @@ fn triangles(points: &mut Coordinates, plan: &Downsample, selected: &mut Selecti
             (start, end, ahead)
         };
         let (mut mean_x, mean_y) = points.mean(end, ahead, check)?;
-        let (mut previous_x, previous_y) = points.get(previous)?;
+        let (mut previous_x, previous_y, _) = points.get(previous)?;
         if logarithmic {
             previous_x = previous_x.max(f64::MIN_POSITIVE).ln();
             mean_x = mean_x.max(f64::MIN_POSITIVE).ln();
@@ -397,7 +407,7 @@ fn triangles(points: &mut Coordinates, plan: &Downsample, selected: &mut Selecti
         let mut largest: Option<f64> = None;
         for index in start..end {
             check()?;
-            let (mut x, y) = points.get(index)?;
+            let (mut x, y, _) = points.get(index)?;
             if logarithmic {
                 x = x.max(f64::MIN_POSITIVE).ln();
             }
@@ -408,10 +418,10 @@ fn triangles(points: &mut Coordinates, plan: &Downsample, selected: &mut Selecti
                 largest = Some(area);
             }
         }
-        selected.push(picked)?;
+        selected.push(points.get(picked)?.2)?;
         previous = picked;
     }
-    selected.push(length - 1)
+    selected.push(points.get(length - 1)?.2)
 }
 
 fn read_index(reader: &mut impl Read) -> Result<Option<usize>> {
@@ -484,5 +494,33 @@ mod tests {
         }
         let combined = arrow_select::concat::concat_batches(&expected.schema(), output.iter()).unwrap();
         assert_eq!(combined, expected);
+    }
+
+    #[test]
+    fn downsampling_skips_missing_and_nonfinite_coordinates() {
+        let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::Float64, true)]));
+        let values = (0..10_000).map(|row| match row % 1000 {
+            0..100 => None,
+            100..200 => Some(f64::NAN),
+            200..210 => Some(f64::INFINITY),
+            _ => Some((row as f64 / 50.0).sin()),
+        });
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(Float64Array::from_iter(values))]).unwrap();
+        for algorithm in [Algorithm::Lttb, Algorithm::Extrema] {
+            let plan = Downsample {
+                algorithm,
+                max_rows: 100,
+                value: Some(FieldPath::from("value")),
+                axis: None,
+            };
+            let mut spool = Builder::new(schema.clone()).unwrap();
+            spool.push(&batch, &mut || Ok(())).unwrap();
+            let mut pages = downsample(spool.finish().unwrap(), &plan, &mut || Ok(())).unwrap().pages().unwrap();
+            let mut kept = Vec::new();
+            while let Some(page) = pages.next().unwrap() {
+                kept.extend(page.column(0).as_any().downcast_ref::<Float64Array>().unwrap().iter());
+            }
+            assert!((2..=100).contains(&kept.len()) && kept.iter().all(|value| value.is_some_and(f64::is_finite)));
+        }
     }
 }
