@@ -79,9 +79,8 @@ class Subscriptions(IsolatedAsyncioTestCase):
         self.assertEqual((await self.output.get()).child_cancel.call, first_call)
         self.assertNotIn(first_call, self.context._watches)
         self.assertIn(second_call, self.context._watches)
-        parent = Context(Request(operation="fixture.read", scope="unit/first"), "fixture", {}, self.output)
-        parent._children.append(self.context)
-        await parent._reply(ChildResponse(call=first_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
+        # A Late Row for the Closed Subscription Is Dropped Without Disturbing the Open One.
+        await self.context._reply(ChildResponse(call=first_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
         reading = create_task(anext(second))
         self.assertEqual((await self.output.get()).child_demand.call, second_call)
         await self.context._reply(ChildResponse(call=second_call, item=SubscriptionsSubscribeResponse(row=row).SerializeToString()))
