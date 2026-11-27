@@ -70,6 +70,11 @@ async fn guest_lifecycle_keeps_requests_resources_and_attempt_authority() {
     assert_eq!(first.state, harmos_runtime::guest::PluginState::Ready);
     assert_eq!(support::call(&runtime.operations, EchoOperation { say: "one".into() }).await.unwrap().said, "heard one");
 
+    // Admit the Declared Private Operation Only for the Guest's Own Calls Through the Host
+    assert_eq!(support::call(&runtime.operations, EchoOperation { say: "local:inside".into() }).await.unwrap().said, "inside");
+    let refused = support::call(&runtime.operations, LocalEcho { say: "outside".into() }).await;
+    assert!(matches!(refused, Err(harmos_runtime::Error::OperationUnauthorized { .. })));
+
     // Retry Original Request Clones While Retaining Authored Resource State
     for value in ["first", "second", "third"] {
         let invocation =

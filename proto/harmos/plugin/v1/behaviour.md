@@ -369,25 +369,18 @@ The fixture appends `conformance.protected`, `conformance.resources` and
 Value to Value; only resources declares replay safety. Their descriptions and
 policies are empty. Cases 20 through 29 run before Stop, like the other additive cases.
 
-24. **Local Private Isolation.** `conformance.local` MUST be absent from operations
-    and requirements. `conformance.local_call` invokes it locally and returns the
-    Value unchanged without any ChildRequest frame. Direct Instance.Invoke of
-    `conformance.local` MUST fail with NotFound. The local call entry precedes echo
-    in declaration order; the remaining exported operation order is preserved.
+24. **Host-Scheduled Private Calls.** `conformance.local` MUST be declared Private
+    and replay-safe, first in operation order and absent from requirements;
+    `conformance.local_call` follows it. `conformance.local_call` calls it with one
+    ChildRequest carrying the request Value and returns the ChildResponse Value
+    unchanged. The host schedules that call like any other operation and admits a
+    Private operation only from its declaring plugin's activation, always through
+    the host; other plugins, clients and host-side callers are refused, and it never
+    binds a client-facing gRPC method.
 
 25. **Demand-Bounded Context Watch.** A declared context Watch carries one item
     for each ChildDemand. Disposing its consumer cancels that child without
     settling the parent. Unary calls and Watch contracts cannot be interchanged.
-26. **Local Private Retry Policy.** A transient local failure retries under the
-    callee's replay-safe policy and host clock. Attempt resources are fresh;
-    only clock and declared public dependencies cross the carrier.
-    Retry backoff is capped by the remaining overall deadline.
-27. **Local Private Attempt Deadline.** The host-clock deadline cancels a local
-    attempt and its outstanding child; no local operation request crosses the wire.
-    Cancellation grace cannot extend an attempt or overall deadline.
-28. **Local Private Cooperative Cancellation.** Caller cancellation reaches the
-    local handler with its reason; cooperative settlement respects the host-clock
-    grace budget and preserves the handler's final result.
 29. **Host-Mediated Peer Visibility.** The plugin declares a Public peer contract,
     receives its result and structured failure cause, and retains its opaque scope.
     Protected and absent Private peer requests are refused with the action named.

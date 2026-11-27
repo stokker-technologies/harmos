@@ -34,7 +34,12 @@ pub(crate) use windows::prepare_compiler;
 
 // Standard Library Imports
 use std::env::consts::{ARCH, OS};
-use std::{env, error::Error, fs, path::Path};
+use std::{
+    env,
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+};
 
 // Third Party Imports
 
@@ -59,6 +64,21 @@ use crate::codegen;
 
 /* === Private Functions === */
 
+// The Versioned Vendor Folder Holds Exactly One Locked Package per Prefix.
+fn vendored(vendor: &Path, prefix: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let mut found = Vec::new();
+    for entry in fs::read_dir(vendor)? {
+        let path = entry?.path();
+        if path.file_name().is_some_and(|name| name.to_string_lossy().starts_with(prefix)) {
+            found.push(path);
+        }
+    }
+    match <[PathBuf; 1]>::try_from(found) {
+        Ok([package]) => Ok(package),
+        Err(found) => Err(format!("Locate Vendored {prefix}*: Expected One Locked Package, Found {}", found.len()).into()),
+    }
+}
+
 /* === Tests === */
 
 #[test]
@@ -69,8 +89,8 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&output_root)?;
     let output = tempfile::tempdir_in(output_root)?;
 
-    // Archived Tests Consume the Transferred Compiler, Not the Producer's Registry.
-    let (compiler, includes) = if let Ok(profile) = env::var("STKR_TEST_PROFILE") {
+    // Archived Tests Consume the Transferred Compiler and Sources, Not the Producer's Registry.
+    let (compiler, includes, prost_types) = if let Ok(profile) = env::var("STKR_TEST_PROFILE") {
         let target = format!("{}-{}", OS, ARCH);
         let vendor = root.join("target/build").join(profile).join(target).join("fixtures/inputs/vendor");
         let platform = match (OS, ARCH) {
@@ -81,22 +101,16 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
             ("windows", _) => "win32",
             other => panic!("no vendored protoc for {other:?}"),
         };
-        let prefix = format!("protoc-bin-vendored-{platform}-");
-        let package = fs::read_dir(vendor)?
-            .map(|entry| entry.map(|entry| entry.path()))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .find(|path| path.file_name().unwrap().to_string_lossy().starts_with(&prefix))
-            .expect("the transferred vendor inputs contain the pinned protobuf compiler");
+        let package = vendored(&vendor, &format!("protoc-bin-vendored-{platform}-"))?;
         let executable = if OS == "windows" { "protoc.exe" } else { "protoc" };
-        (package.join("bin").join(executable), package.join("include"))
+        (package.join("bin").join(executable), package.join("include"), vendored(&vendor, "prost-types-")?)
     } else {
-        (protoc_bin_vendored::protoc_bin_path()?, protoc_bin_vendored::include_path()?)
+        (protoc_bin_vendored::protoc_bin_path()?, protoc_bin_vendored::include_path()?, codegen::locked_prost_types()?)
     };
     prepare_compiler(&compiler)?;
 
     // Regenerate With the Pinned Compiler, Without Mutating the Environment.
-    codegen::generate(&compiler, &includes, output.path())?;
+    codegen::generate(&compiler, &includes, &prost_types, output.path())?;
 
     // Compare the Complete Generated Source Without Dumping Descriptor Bytes.
     for entry in fs::read_dir(output.path())? {

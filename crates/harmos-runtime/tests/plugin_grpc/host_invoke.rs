@@ -28,7 +28,7 @@ async fn host_invokes_registered_plugin_operation() {
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
 
-    // Invoke Its Private Operation As The Host
+    // Invoke Its Protected Operation As The Host
     let input = payload(b"echo");
     let response = host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap();
     assert_eq!(response, input);

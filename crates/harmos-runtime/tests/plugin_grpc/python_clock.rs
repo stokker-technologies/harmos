@@ -27,9 +27,9 @@ async fn python_plugin_sleep_and_now_share_the_virtual_host_clock() {
     let payload = super::invoke_support::payload(b"python");
     let reply = host.runtime.operations.submit_encoded("conformance.step.0", payload.clone()).unwrap().await.unwrap();
     assert_eq!(reply, payload);
-    // A Valid Private Handler Is Local to the SDK and Never Admitted by the Host.
+    // A Private Handler Is Declared to the Host and Answers Only Its Own Plugin's Calls.
     assert!(
-        !attached
+        attached
             .activation()
             .unwrap()
             .description
@@ -38,9 +38,12 @@ async fn python_plugin_sleep_and_now_share_the_virtual_host_clock() {
             .unwrap()
             .operations
             .iter()
-            .any(|operation| operation.id == "conformance.local")
+            .any(|operation| operation.id == "conformance.local" && operation.visibility() == harmos_protocol::model::Visibility::Private)
     );
-    assert!(host.runtime.operations.submit_encoded("conformance.local", payload.clone()).is_err());
+    assert!(matches!(
+        host.runtime.operations.submit_encoded("conformance.local", payload.clone()),
+        Err(harmos_runtime::Error::OperationUnauthorized { .. })
+    ));
     let reply = host.runtime.operations.call_encoded("conformance.local_call", payload.clone()).await.unwrap();
     assert_eq!(reply, payload);
 

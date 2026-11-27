@@ -184,6 +184,7 @@ impl Declaration {
 fn contract(operation: &model::OperationContract, types: &prost_types::FileDescriptorSet) -> Result<Contract, Error> {
     let invalid = |message: String| Error::Guest { message };
     let visibility = match operation.visibility() {
+        model::Visibility::Private => Visibility::Private,
         model::Visibility::Public => Visibility::Public,
         model::Visibility::Protected => Visibility::Protected,
         _ => return Err(invalid("Invalid Guest Operation Visibility".into())),

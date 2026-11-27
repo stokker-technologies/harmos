@@ -44,7 +44,12 @@ use std::{collections::BTreeSet, error::Error, fs, path::Path};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let output = tempfile::tempdir()?;
-    codegen::generate(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
+    codegen::generate(
+        &protoc_bin_vendored::protoc_bin_path()?,
+        &protoc_bin_vendored::include_path()?,
+        &codegen::locked_prost_types()?,
+        output.path(),
+    )?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // Delete Superseded Generated Modules Before Copying the New Inventory.
     let expected: BTreeSet<_> = fs::read_dir(output.path())?

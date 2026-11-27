@@ -32,6 +32,7 @@ use super::contract::{EchoOperation, Echoed};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
 use harmos_protocol::model::InstanceState;
+use harmos_protocol::model::Visibility;
 use harmos_protocol::plugin::GuestChildAction;
 use harmos_protocol::plugin::GuestCommand;
 use harmos_protocol::plugin::GuestInitialize;
@@ -242,6 +243,14 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     assert!(session.store.data().calls.is_empty());
     let metadata = session.metadata.clone();
     assert_eq!(metadata.id, "sandbox_guest");
+    // The Host Assigns the Guest's Own Private Declaration Beside Its Requirements.
+    let private = metadata.declarations.as_ref().unwrap().operations.iter().find(|operation| operation.id == "probe.local").unwrap();
+    assert_eq!(private.visibility(), Visibility::Private);
+    let own = AssignedOperation {
+        operation: "sandbox_guest.probe.local".into(),
+        fingerprint: private.fingerprint.clone(),
+        generation: 1,
+    };
     let assignments = metadata
         .requirements
         .iter()
@@ -260,6 +269,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
             fingerprint: required.fingerprint.clone(),
             generation: 1,
         })
+        .chain([own])
         .collect();
     let initialize = GuestInitialize {
         configuration: b"\"submit\"".to_vec(),
@@ -281,12 +291,11 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     let request = EchoOperation { say: "hello".into() }.encode_to_vec();
     let answer = session.call("probe.echo", 2, request).await;
     assert!(matches!(answer, response::Result::Payload(payload) if Echoed::decode(payload.as_slice()).unwrap().said == "heard hello"));
-    // Private Dispatch Never Acquires an Assignment or Crosses the Component Import.
-    assert!(!metadata.declarations.as_ref().unwrap().operations.iter().any(|operation| operation.id == "probe.local"));
+    // Private Dispatch Crosses the Component Import Under the Guest's Own Assignment.
     let imported = session.store.data().calls.len();
     let answer = session.call("probe.echo", 12, EchoOperation { say: "local:inside".into() }.encode_to_vec()).await;
     assert!(matches!(answer, response::Result::Payload(payload) if Echoed::decode(payload.as_slice()).unwrap().said == "inside"));
-    assert_eq!(session.store.data().calls.len(), imported);
+    assert_eq!(session.store.data().calls[imported..], [("sandbox_guest.probe.local".to_owned(), false)]);
     // Only the Initialization Context Carries Retained Generation Authority
     session.call("probe.echo", 10, EchoOperation { say: "dependency:finite".into() }.encode_to_vec()).await;
     assert_eq!(session.store.data().generations.last(), Some(&0));

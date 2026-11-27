@@ -199,6 +199,10 @@ impl PluginScope {
         self.wire_contracts.values()
     }
 
+    pub(crate) fn declares(&self, id: &crate::Identifier) -> bool {
+        self.wire_contracts.contains_key(id)
+    }
+
     pub(crate) fn required_contracts(&self) -> Option<&[harmos_operations::inventory::contracts::Required]> {
         self.required_contracts.as_ref().as_deref()
     }

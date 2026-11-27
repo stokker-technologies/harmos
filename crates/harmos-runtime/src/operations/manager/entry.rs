@@ -58,6 +58,18 @@ impl Entry {
         matches!(self.callers(), Callers::Plugins | Callers::All) && !self.connection_operation()
     }
 
+    // A Plugin's Declared Private Operation Admits Only That Plugin's Calls Through the Host.
+    fn declared_private(&self) -> bool {
+        if self.definition.visibility != Visibility::Private {
+            return false;
+        }
+        #[cfg(feature = "plugin-guest")]
+        if self.plugin.as_ref().is_some_and(|scope| scope.declares(&self.definition.id)) {
+            return true;
+        }
+        self.binding.is::<Binding>()
+    }
+
     fn connection_operation(&self) -> bool {
         use harmos_protocol::schema::{Executor, operation_identity};
         matches!(operation_identity(self.id()), Ok(Executor::Plugin))
@@ -220,6 +232,13 @@ impl Entry {
         if !_origin.is_plugin() && matches!(_origin.identity, super::super::caller::Identity::External(_)) && !self.client_visible() {
             return Err(Error::OperationUnauthorized {
                 caller: "external".to_owned(),
+                owner: self.owner.to_string(),
+                operation: self.id().to_owned(),
+            });
+        }
+        if !_origin.is_plugin() && self.declared_private() {
+            return Err(Error::OperationUnauthorized {
+                caller: "host".into(),
                 owner: self.owner.to_string(),
                 operation: self.id().to_owned(),
             });
