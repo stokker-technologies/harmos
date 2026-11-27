@@ -148,7 +148,7 @@ impl Host {
         let attached = runtime.attach_grpc(placement, settings).await.unwrap();
         let _watching = (0..case.streams)
             .map(|index| {
-                let stream = runtime.streams.current_publication(&format!("benchmark.readings_{index}")).unwrap();
+                let stream = runtime.streams.current_publication(&plugin::stream(index)).unwrap();
                 Box::new(stream.watch()) as Box<dyn Send>
             })
             .collect();

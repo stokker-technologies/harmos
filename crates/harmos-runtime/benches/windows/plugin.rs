@@ -52,6 +52,11 @@ struct Readings {
 
 /* === Public Functions === */
 
+/// The Plugin-Qualified Identifier of Benchmark Stream `index`.
+pub fn stream(index: usize) -> String {
+    format!("window_benchmark.readings_{index}")
+}
+
 /// Run `streams` Interval Observers; `observer` Is `window` (Whole Windows) or `sample` (One Sample per Call).
 pub fn run(mut arguments: impl Iterator<Item = String>) {
     let streams: usize = arguments.next().unwrap().parse().unwrap();
@@ -64,7 +69,7 @@ pub fn run(mut arguments: impl Iterator<Item = String>) {
     Plugin::new("window_benchmark", "1.0.0")
         .register(|ctx| {
             for index in 0..streams {
-                let stream = Stream::<Reading>::new(format!("benchmark.readings_{index}"));
+                let stream = Stream::<Reading>::new(stream(index));
                 let reading = if observer == "window" {
                     Observer::window(&stream, async |_: &Context, window: &Window| {
                         Ok(Readings {
