@@ -224,8 +224,8 @@ async fn close_seals_admission() {
         Err(harmos_storage::Error::Closing { domain: "storage" })
     ));
 
-    f.recovery.control.read_release.notify_one();
-    assert!(reader.await.unwrap().unwrap().is_none());
+    // Close Cancels the Gated Read Instead of Waiting for the Backend to Release It.
+    assert!(matches!(reader.await.unwrap(), Err(harmos_storage::Error::Closing { domain: "storage reader" })));
     close.await.unwrap();
     f.finish().await;
 }
