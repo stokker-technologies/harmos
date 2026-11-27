@@ -223,33 +223,20 @@ impl Context {
     pub(crate) async fn cancel_calls(&self, reason: &str) -> Result<()> {
         let (pending, watches) = {
             let mut calls = self.queue.calls.lock().expect("Child Calls Poisoned");
-            let ids = calls.pending.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-            let mut pending = Vec::new();
-            for id in ids {
-                let call = calls.pending.remove(&id).expect("selected child");
-                if call.sent {
-                    calls.cancelled.insert(id);
-                    calls.cancel_queue.insert(id);
-                }
-                pending.push(call);
-            }
-            let ids = calls.watches.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-            let mut watches = Vec::new();
-            for id in ids {
-                let watch = calls.watches.remove(&id).expect("selected watch");
-                if watch.sent {
-                    calls.cancelled.insert(id);
-                    calls.cancel_queue.insert(id);
-                }
-                watches.push(watch.sender);
+            let pending = mem::take(&mut calls.pending);
+            let watches = mem::take(&mut calls.watches);
+            let sent = pending.iter().filter(|(_, call)| call.sent).map(|(id, _)| *id);
+            for id in sent.chain(watches.iter().filter(|(_, watch)| watch.sent).map(|(id, _)| *id)) {
+                calls.cancelled.insert(id);
+                calls.cancel_queue.insert(id);
             }
             (pending, watches)
         };
-        for call in pending {
+        for call in pending.into_values() {
             let _ = call.sender.send(Err(self.cancel_failure(reason.into())));
         }
-        for watch in watches {
-            let _ = watch.try_send(Err(self.cancel_failure(reason.into())));
+        for watch in watches.into_values() {
+            let _ = watch.sender.try_send(Err(self.cancel_failure(reason.into())));
         }
         self.flush_cancels().await
     }

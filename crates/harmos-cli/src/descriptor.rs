@@ -286,7 +286,7 @@ impl Schema {
 
         // Refuse Calls That Sit Below Another Call
         for leaf in &leaves {
-            if (2..leaf.len()).any(|length| leaves.contains(&leaf[..length].to_vec())) {
+            if (2..leaf.len()).any(|length| leaves.contains(&leaf[..length])) {
                 return Err(collision(&leaf[1..]));
             }
         }

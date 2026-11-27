@@ -135,7 +135,7 @@ impl Error {
 
     pub fn retry(&self) -> OperationRetry {
         match self {
-            Self::Failure(failure) => failure.retry.clone().unwrap_or_default(),
+            Self::Failure(failure) => failure.retry.unwrap_or_default(),
             _ => OperationRetry::default(),
         }
     }

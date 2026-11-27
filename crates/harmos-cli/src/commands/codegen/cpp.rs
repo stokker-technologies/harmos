@@ -91,6 +91,20 @@ struct Export {
     constant: bool,
 }
 
+/// The public and private payload barrels and the C++ name of every exported payload.
+struct Exports {
+    public: Vec<String>,
+    private: Vec<String>,
+    type_names: BTreeMap<String, String>,
+}
+
+/// The client resources, their private wire header and, for applications, the response re-exports.
+struct ClientSources {
+    lines: Vec<String>,
+    wire: Vec<String>,
+    messages: Option<Vec<String>>,
+}
+
 /// The rendered host header and source with the number of root resources.
 struct HostSources {
     header: Vec<String>,
@@ -112,7 +126,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let mut output = Output::default();
     if generation.application {
         let code = args.cpp_namespace.as_deref().unwrap_or(namespace);
-        let (lines, wire, messages) = client(&generation, &BTreeMap::new(), code, &args)?;
+        let ClientSources { lines, wire, messages } = client(&generation, &BTreeMap::new(), code, &args)?;
         output.add("client.hpp", &lines);
         output.add("detail/client.hpp", &wire);
         if let Some(messages) = messages {
@@ -123,11 +137,11 @@ pub(crate) fn run(args: Args) -> Result<()> {
         output.add_source("plugin.cpp", source);
         return output.write(args.inputs.out());
     }
-    let (public, private, type_names) = exports(&generation, &args.omitted_exports)?;
+    let Exports { public, private, type_names } = exports(&generation, &args.omitted_exports)?;
     output.add(format!("include/{namespace}/messages.hpp"), &public);
     output.add(format!("include/{namespace}/detail/messages.hpp"), &private);
     if !generation.clients.is_empty() {
-        let (lines, wire, _) = client(&generation, &type_names, namespace, &args)?;
+        let ClientSources { lines, wire, .. } = client(&generation, &type_names, namespace, &args)?;
         output.add(format!("include/{namespace}/_generated/client.hpp"), &lines);
         output.add(format!("include/{namespace}/_generated/detail/client.hpp"), &wire);
     }
@@ -139,8 +153,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
 
 /* === Private Functions === */
 
-/// The public and private payload barrels and the C++ name of every exported payload.
-fn exports(generation: &Generation, omitted: &[String]) -> Result<(Vec<String>, Vec<String>, BTreeMap<String, String>)> {
+/// Render the payload barrels and name every exported payload.
+fn exports(generation: &Generation, omitted: &[String]) -> Result<Exports> {
     let schema = &generation.schema;
     let namespace = generation.namespace.as_str();
     let public_paths = schema.public_paths(namespace, &BTreeSet::new());
@@ -252,7 +266,7 @@ fn exports(generation: &Generation, omitted: &[String]) -> Result<(Vec<String>, 
         }
         public.push("}".to_owned());
     }
-    Ok((public, private, type_names))
+    Ok(Exports { public, private, type_names })
 }
 
 /// The host resources over the plugin context and the operation registrar.
@@ -556,10 +570,8 @@ fn application_host(rendered: HostSources, namespace: &str, code: &str) -> (Stri
     (header, format!("#include \"plugin.hpp\"\n{source}"))
 }
 
-/// The client resources, their private wire header and, for applications, the response re-exports.
-fn client(
-    generation: &Generation, type_names: &BTreeMap<String, String>, code: &str, args: &Args,
-) -> Result<(Vec<String>, Vec<String>, Option<Vec<String>>)> {
+/// Render the client resources and their private wire header.
+fn client(generation: &Generation, type_names: &BTreeMap<String, String>, code: &str, args: &Args) -> Result<ClientSources> {
     let namespace = generation.namespace.as_str();
     let methods = &generation.clients;
     let code = code.replace('.', "::");
@@ -811,7 +823,7 @@ fn client(
         lines.push("}".to_owned());
     }
     lines.push("}".to_owned());
-    Ok((lines, wire, messages))
+    Ok(ClientSources { lines, wire, messages })
 }
 
 /// The C++ name of a protocol type; exported payloads keep their barrel names.
