@@ -37,6 +37,9 @@ use crate::{state::At, state::Position};
 
 pub(crate) type Row = Arc<dyn Any + Send + Sync>;
 
+/// Encodes a Native Row Into Its Wire Bytes.
+type Encode = fn(&Row) -> Result<Vec<u8>, harmos_domain::MessageError>;
+
 type Step = Pin<Box<dyn Future<Output = (Parts, Turn)> + Send>>;
 
 /* === Structs === */
@@ -89,7 +92,7 @@ pub(crate) struct Advanced {
 #[derive(Clone, Copy)]
 pub(crate) struct Observation {
     pub(crate) received: prost_types::Timestamp,
-    pub(crate) encode: Option<fn(&Row) -> Result<Vec<u8>, harmos_domain::MessageError>>,
+    pub(crate) encode: Option<Encode>,
     first_unit: u64,
     through_unit: u64,
 }

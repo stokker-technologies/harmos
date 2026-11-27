@@ -515,7 +515,7 @@ impl Manager {
 /* === Private Functions === */
 
 fn child_policy(declared: OperationPolicy, override_policy: &model::OperationPolicy) -> Result<OperationPolicy> {
-    let mut wire = override_policy.clone();
+    let mut wire = *override_policy;
     let retry = wire.retries.take();
     let parsed = policy(Some(&wire))?;
     let mut applied = declared;

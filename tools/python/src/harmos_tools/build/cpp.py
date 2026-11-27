@@ -217,6 +217,7 @@ def main() -> None:
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
             f"-DCMAKE_BUILD_TYPE={'Debug' if options.profile == 'dev' else 'Release'}",
+            f"-DHARMOS_EXECUTABLE={codegen.cli().as_posix()}",
         ]
         subprocess.run(
             command,

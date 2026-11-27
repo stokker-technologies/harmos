@@ -44,7 +44,7 @@ pub(crate) enum Command {
 
     /// Generate SDK bindings from descriptor sets.
     #[command(subcommand)]
-    Codegen(codegen::Command),
+    Codegen(Box<codegen::Command>),
 }
 
 /* === Traits === */

@@ -254,7 +254,7 @@ fn client(methods: &[Method], application: bool) -> Result<(Vec<String>, Vec<Str
     let used = used_types(&methods, |_| true);
     let mut reserved: BTreeSet<String> = names.values().cloned().collect();
     reserved.extend(["Call", "Client", "CallOptions", "ClientTransport", "Watching", "ReflectMessage", "PathAndQuery"].map(str::to_owned));
-    reserved.extend(methods.iter().map(|method| options_name(method)));
+    reserved.extend(methods.iter().map(options_name));
     let message_names = message_names(&used, &reserved);
     let field_type = |field: &Field| field_type(field, &message_names);
 
