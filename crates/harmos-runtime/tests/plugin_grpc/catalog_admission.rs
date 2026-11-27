@@ -51,22 +51,16 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     let runtime = support::runtime(None).await;
     let remote = Remote::start().await;
 
-    // Private and Unspecified Visibility Never Enter the Wire Registry.
-    let mut catalog = support::catalog();
-    catalog.operations[0].visibility = model::Visibility::Private as i32;
-    catalog.digest = schema::declarations_digest(&catalog);
-    remote.declarations(catalog);
-    let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
-    assert!(matches!(result, Err(Error::Invalid(_))));
-    assert!(runtime.operations.definition("fixture.echo").is_err());
-
-    let mut catalog = support::catalog();
-    catalog.operations[0].visibility = model::Visibility::Unspecified as i32;
-    catalog.digest = schema::declarations_digest(&catalog);
-    remote.declarations(catalog);
-    let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
-    assert!(matches!(result, Err(Error::Invalid(_))));
-    assert!(runtime.operations.definition("fixture.echo").is_err());
+    // Unspecified and Undefined Visibility Never Enter the Wire Registry.
+    for visibility in [model::Visibility::Unspecified as i32, 99] {
+        let mut catalog = support::catalog();
+        catalog.operations[0].visibility = visibility;
+        catalog.digest = schema::declarations_digest(&catalog);
+        remote.declarations(catalog);
+        let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
+        assert!(matches!(result, Err(Error::Invalid(_))));
+        assert!(runtime.operations.definition("fixture.echo").is_err());
+    }
 
     // Refuse A Catalog Whose Bytes Do Not Match Its Advertised Digest
     remote.declarations(model::Declarations::default());
