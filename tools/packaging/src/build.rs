@@ -346,7 +346,7 @@ fn finish_build(
         }
         let parent = artifact.path.parent().ok_or_else(|| Error::Settings("artifact has no parent directory".into()))?;
         let file_name = artifact.path.file_name().ok_or_else(|| Error::Settings("artifact has no file name".into()))?;
-        // Cargo Target Names Cannot Contain a Dot, So No Binary Such as the `harmos` CLI Collides With This Folder.
+        // Rust Crate Names Cannot Contain a Dot, So No Compiled Binary Such as the `harmos` CLI Collides With This Folder.
         let output = parent.join(".harmos").join(&artifact.producer).join(file_name);
         #[cfg(feature = "guest")]
         let bytes = if backend == BuildBackend::Guest {
