@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -54,7 +55,9 @@ fn source(relative: &str) -> PathBuf {
 }
 
 fn harmos(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_harmos")).args(arguments).output().expect("the harmos binary runs")
+    // Archived Runs Extract the Binary Away From Its Build Path, So Nextest Names the Remapped One.
+    let binary = env::var_os("NEXTEST_BIN_EXE_harmos").unwrap_or_else(|| env!("CARGO_BIN_EXE_harmos").into());
+    Command::new(binary).args(arguments).output().expect("the harmos binary runs")
 }
 
 fn read(folder: &Path, relative: &str) -> String {
