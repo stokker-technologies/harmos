@@ -557,12 +557,7 @@ fn main() -> Result<()> {
     } else if mode == "private" {
         Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
-                ctx.register(
-                    Operation::new("fixture.own", async |context: &Context, request: Value| {
-                        context.operation(PrivateInput { value: request.value }).await
-                    })
-                    .visibility(Visibility::Protected),
-                )?;
+                ctx.register(Operation::new("fixture.own", call_private).visibility(Visibility::Protected))?;
                 ctx.register(Operation::new("fixture.private", retry).visibility(Visibility::Private).replay_safe().policy(
                     OperationPolicy {
                         retries: Some(RetryPolicy {
@@ -573,6 +568,14 @@ fn main() -> Result<()> {
                         ..Default::default()
                     },
                 ))?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+    } else if mode == "private-peer" {
+        Plugin::new("fixture", "1.0.0")
+            .register(|ctx| {
+                ctx.register(Dependency::<PrivateInput>::new())?;
+                ctx.register(Operation::new("fixture.private_peer", call_private).visibility(Visibility::Protected))?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
@@ -877,6 +880,10 @@ async fn scoped(context: &Context, input: Value) -> Result<Value> {
 
 async fn echo(_: &Context, input: Value) -> Result<Value> {
     Ok(input)
+}
+
+async fn call_private(context: &Context, request: Value) -> Result<Value> {
+    context.operation(PrivateInput { value: request.value }).await
 }
 
 async fn retry(context: &Context, input: Value) -> Result<Value> {
