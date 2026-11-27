@@ -52,7 +52,7 @@ struct Payload {
 
 /* === Public Functions === */
 
-pub fn generate(output: &Path, modules: &BTreeMap<String, String>) -> Result<String, Box<dyn Error>> {
+pub fn generate(output: &Path, modules: &BTreeMap<String, String>, prost_types: &Path) -> Result<String, Box<dyn Error>> {
     let mut payloads = BTreeMap::new();
     for (package, module) in modules {
         let source = fs::read_to_string(output.join(format!("{package}.rs")))?;
@@ -60,22 +60,7 @@ pub fn generate(output: &Path, modules: &BTreeMap<String, String>) -> Result<Str
         collect(source.items, &module.replace("crate::", "harmos_protocol::"), &mut payloads);
     }
     // Use the Locked Rust Layout; protoc's Descriptor Schema Can Be Newer Than prost-types.
-    let metadata = Command::new("cargo").args(["metadata", "--locked", "--offline", "--format-version", "1"]).output()?;
-    if !metadata.status.success() {
-        return Err(
-            format!("Generate Payload Memory: Resolve the Locked Dependencies: {}", String::from_utf8_lossy(&metadata.stderr)).into()
-        );
-    }
-    let metadata: Value = serde_json::from_slice(&metadata.stdout)?;
-    let manifest = metadata["packages"]
-        .as_array()
-        .ok_or("Generate Payload Memory: Read Cargo Packages")?
-        .iter()
-        .find(|package| package["name"] == "prost-types")
-        .and_then(|package| package["manifest_path"].as_str())
-        .ok_or("Generate Payload Memory: Resolve prost-types")?;
-    let manifest = PathBuf::from(manifest);
-    let source = fs::read_to_string(manifest.parent().ok_or("Generate Payload Memory: Locate prost-types")?.join("src/protobuf.rs"))?;
+    let source = fs::read_to_string(prost_types.join("src/protobuf.rs"))?;
     let source = syn::parse_file(&source)?;
     collect(source.items, "prost_types", &mut payloads);
     let mut pending: Vec<_> = payloads
@@ -127,6 +112,25 @@ pub fn generate(output: &Path, modules: &BTreeMap<String, String>) -> Result<Str
         source.push_str("    }\n}\n");
     }
     Ok(source)
+}
+
+/// The Locked prost-types Source; Offline Resolution Needs Every Platform's Crates in the Local Registry.
+pub fn locked_prost_types() -> Result<PathBuf, Box<dyn Error>> {
+    let metadata = Command::new("cargo").args(["metadata", "--locked", "--offline", "--format-version", "1"]).output()?;
+    if !metadata.status.success() {
+        return Err(
+            format!("Generate Payload Memory: Resolve the Locked Dependencies: {}", String::from_utf8_lossy(&metadata.stderr)).into()
+        );
+    }
+    let metadata: Value = serde_json::from_slice(&metadata.stdout)?;
+    let manifest = metadata["packages"]
+        .as_array()
+        .ok_or("Generate Payload Memory: Read Cargo Packages")?
+        .iter()
+        .find(|package| package["name"] == "prost-types")
+        .and_then(|package| package["manifest_path"].as_str())
+        .ok_or("Generate Payload Memory: Resolve prost-types")?;
+    Ok(Path::new(manifest).parent().ok_or("Generate Payload Memory: Locate prost-types")?.to_path_buf())
 }
 
 /* === Private Functions === */

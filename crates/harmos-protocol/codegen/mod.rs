@@ -20,6 +20,7 @@ mod reflection;
 
 pub use client::generate_client_fixture;
 pub use conformance::generate_conformance;
+pub use memory::locked_prost_types;
 
 /* === Imports === */
 
@@ -57,7 +58,7 @@ use harmos_protocol::schema;
 
 /* === Public Functions === */
 
-pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+pub fn generate(compiler: &Path, includes: &Path, prost_types: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
     let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     let mut inputs = Vec::new();
     let mut folders = vec![proto.join("harmos")];
@@ -202,7 +203,7 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         .collect::<Result<BTreeMap<_, _>, Box<dyn Error>>>()?;
     let reflection = reflection::generate(&descriptors, &modules, "descriptors.bin")?;
     fs::write(output.join("reflection.rs"), reflection)?;
-    let memory = memory::generate(output, &modules)?;
+    let memory = memory::generate(output, &modules, prost_types)?;
     fs::write(output.join("memory.rs"), memory)?;
     Ok(())
 }
