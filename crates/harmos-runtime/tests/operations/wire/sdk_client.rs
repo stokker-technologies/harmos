@@ -278,10 +278,11 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert_eq!(response.offset, 19);
 
     // A Compact Wire Reply Must Fit The Decoded Bound Before Prost Allocates Its List.
+    let bound = 384;
     let bounded = Client::new(
         channel,
         ClientSettings {
-            retained_bytes: NonZeroUsize::new(384).unwrap(),
+            retained_bytes: NonZeroUsize::new(bound).unwrap(),
             ..settings
         },
     )
@@ -290,7 +291,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         samples: vec![0; 256],
         ..Default::default()
     };
-    assert!(prost::Message::encoded_len(&compact) < 384);
+    assert!(prost::Message::encoded_len(&compact) < bound);
     let error = bounded.operation(&echo, compact.clone()).await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
     assert!(error.message().contains("retained_bytes"));
@@ -316,9 +317,10 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     running.request_cancel().await.unwrap();
     assert!(running.next().await.unwrap().is_none());
 
-    // The Queued Final Response Keeps Its Claim Until Join Hands It To The Caller.
+    // The Queued Final Response Keeps Its Claim Until Join Hands It To The Caller: Its Empty Reply
+    // Claims Its Layout, So A Reply Claiming Its Layout And Text Fits The Bound Only Without It.
     let competing = Request {
-        text: "retained".repeat(15),
+        text: "x".repeat(bound - size_of::<Reply>() * 3 / 2),
         ..Default::default()
     };
     assert_eq!(bounded.clone().operation(&echo, competing.clone()).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
