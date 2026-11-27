@@ -76,9 +76,9 @@ async fn private_calls_use_host_admission_and_retry_scheduling() {
         host.runtime.operations.submit_encoded("fixture.private", input.clone()),
         Err(harmos_runtime::Error::OperationUnauthorized { .. })
     ));
-    let error = host.runtime.operations.call_encoded("fixture.private_peer", input.clone()).await.unwrap_err();
+    let error = host.runtime.operations.call_encoded("fixture.peer_private", input.clone()).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), Classification::Refused);
-    assert!(call_error(&error).to_string().contains("fixture.private"));
+    assert!(call_error(&error).to_string().contains("fixture.private"), "{error}");
 
     // A Client Knowing the Fingerprint Is Refused Without a Client-Facing Method
     host.runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();

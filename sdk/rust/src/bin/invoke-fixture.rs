@@ -575,7 +575,7 @@ fn main() -> Result<()> {
         Plugin::new("fixture", "1.0.0")
             .register(|ctx| {
                 ctx.register(Dependency::<PrivateInput>::new())?;
-                ctx.register(Operation::new("fixture.private_peer", call_private).visibility(Visibility::Protected))?;
+                ctx.register(Operation::new("fixture.peer_private", call_private).visibility(Visibility::Protected))?;
                 Ok(())
             })
             .expect("Register Plugin Declarations")
