@@ -150,6 +150,11 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# Installing a Managed Bundle Digests Every Byte of Its Executable Several Times; Unoptimized,
+# SHA-256 Runs Near 50 MB/s, Which Is Over a Second Per Pass of a Debug Linux Plugin.
+[profile.dev.package.sha2]
+opt-level = 3
+
 # === Patches === #
 
 # === Other === #
