@@ -526,7 +526,7 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
                 f"release PR #{review['number']} head {head} has no green validation: {error}; "
                 "Inspect the release provider response and correct its revision, workflow evidence or credentials"
             ) from error
-        if not any(job.get("name") == REHEARSAL_CHECK and job.get("conclusion") == "success" for job in jobs):
+        if not any(job.get("name", "").endswith(REHEARSAL_CHECK) and job.get("conclusion") == "success" for job in jobs):
             raise policy.ToolError(
                 f"release PR #{review['number']} head {head} has no successful {REHEARSAL_CHECK} check; "
                 "Inspect the release provider response and correct its revision, workflow evidence or credentials"
