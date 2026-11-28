@@ -225,6 +225,8 @@ jobs:
     - name: Run Project Task
       run: mise run ci:review --
       id: review
+      env:
+        GH_TOKEN: ${{ github.token }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
