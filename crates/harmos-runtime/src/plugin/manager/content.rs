@@ -76,13 +76,11 @@ impl Installation {
             }
             bytes.extend_from_slice(&range.data);
         }
-        if bytes.len() as u64 != reference.length || Sha256::digest(&bytes).as_slice() != reference.sha256 {
+        let sha256 = Sha256::digest(&bytes);
+        if bytes.len() as u64 != reference.length || sha256.as_slice() != reference.sha256 {
             return Err(Error::new("content_digest", "Read Plugin Bundle", "restore the immutable content and its digest"));
         }
-        if bytes.len() > settings.bundle.archive_bytes {
-            return Err(Error::new("bundle_capacity", "Create Managed Plugin", "supply content within the configured archive capacity"));
-        }
-        if managed.sha256.len() != 32 || Sha256::digest(&bytes).as_slice() != managed.sha256 {
+        if sha256.as_slice() != managed.sha256 {
             return Err(Error::new(
                 "bundle_digest",
                 "Create Managed Plugin: Bundle Digest Differs",

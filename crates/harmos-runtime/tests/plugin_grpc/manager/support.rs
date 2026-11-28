@@ -177,7 +177,7 @@ impl Host {
         self.runtime.stop().await.unwrap();
     }
     pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> PluginManaged {
-        let digest = Sha256::digest(&bytes).to_vec();
+        let digest = Sha256::digest(&bytes);
         let mut production = self
             .storage
             .produce_file(FileMetadata {
@@ -185,7 +185,7 @@ impl Host {
                 scope: None,
                 media_type: "application/x-tar".into(),
                 expected_length: Some(bytes.len() as u64),
-                expected_sha256: Some(Sha256::digest(&bytes).into()),
+                expected_sha256: Some(digest.into()),
             })
             .await
             .unwrap();
@@ -194,7 +194,7 @@ impl Host {
         self.storage.flush_until(&file.position).await.unwrap();
         PluginManaged {
             content: Some(file.into()),
-            sha256: digest,
+            sha256: digest.to_vec(),
         }
     }
 }
