@@ -142,4 +142,4 @@ windows-x86_64 = "x86_64-pc-windows-msvc"
 
 [version]
 files = ["Cargo.toml", "examples/schematic/Cargo.toml", "sdk/rust/tests/fixtures/sandbox/Cargo.toml", "sdk/python/pyproject.toml"]
-value = "0.1.15"
+value = "0.1.14"
