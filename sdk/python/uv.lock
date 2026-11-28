@@ -70,7 +70,7 @@ wheels = [
 
 [[package]]
 name = "harmos-sdk"
-version = "0.1.15"
+version = "0.1.14"
 source = { editable = "." }
 dependencies = [
     { name = "grpcio" },

@@ -8,7 +8,7 @@ exclude = ["sdk/rust/tests/fixtures/sandbox", "examples/schematic"]
 # === Workspace Package === #
 
 [workspace.package]
-version = "0.1.15"
+version = "0.1.14"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
@@ -20,15 +20,15 @@ publish = true
 [workspace.dependencies]
 # Local
 harmos-conformance = { path = "tools/conformance" }
-harmos-domain = { path = "crates/harmos-domain", version = "=0.1.15", default-features = false }
-harmos-operations = { path = "crates/harmos-operations", version = "=0.1.15", default-features = false }
-harmos-packaging = { path = "tools/packaging", version = "=0.1.15", default-features = false }
-harmos-query = { path = "crates/harmos-query", version = "=0.1.15", default-features = false }
-harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.15", default-features = false }
-harmos-runtime = { path = "crates/harmos-runtime", version = "=0.1.15", default-features = false }
-harmos = { path = "sdk/rust", version = "=0.1.15" }
-harmos-sdk-derive = { path = "sdk/rust/derive", version = "=0.1.15" }
-harmos-storage = { path = "crates/harmos-storage", version = "=0.1.15", default-features = false }
+harmos-domain = { path = "crates/harmos-domain", version = "=0.1.14", default-features = false }
+harmos-operations = { path = "crates/harmos-operations", version = "=0.1.14", default-features = false }
+harmos-packaging = { path = "tools/packaging", version = "=0.1.14", default-features = false }
+harmos-query = { path = "crates/harmos-query", version = "=0.1.14", default-features = false }
+harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.14", default-features = false }
+harmos-runtime = { path = "crates/harmos-runtime", version = "=0.1.14", default-features = false }
+harmos = { path = "sdk/rust", version = "=0.1.14" }
+harmos-sdk-derive = { path = "sdk/rust/derive", version = "=0.1.14" }
+harmos-storage = { path = "crates/harmos-storage", version = "=0.1.14", default-features = false }
 
 # Git
 
