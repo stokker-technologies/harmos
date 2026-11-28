@@ -123,6 +123,13 @@ lock_commands = [
     "sdk/rust/tests/fixtures/sandbox/Cargo.toml",
     "--workspace",
   ],
+  [
+    "uv",
+    "lock",
+    "--offline",
+    "--project",
+    "sdk/python",
+  ],
 ]
 product = "harmos"
 provider = "github"
