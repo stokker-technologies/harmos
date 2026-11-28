@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "harmos"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "bytes",
  "futures-core",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-protocol"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "prost",
  "prost-reflect",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sandbox-guest"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "harmos",
  "harmos-protocol",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sdk-derive"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
