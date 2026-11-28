@@ -126,7 +126,6 @@ lock_commands = [
   [
     "uv",
     "lock",
-    "--offline",
     "--project",
     "sdk/python",
   ],
