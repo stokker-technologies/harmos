@@ -1048,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "harmos"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "bytes",
  "futures-core",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-domain"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos-protocol",
  "harmos-sdk-derive",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-operations"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -1113,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-packaging"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-operations",
@@ -1137,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-protocol"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "prost",
  "prost-reflect",
@@ -1151,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-query"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -1173,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-runtime"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "bytes",
  "futures-core",
@@ -1214,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sdk-derive"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1225,7 +1225,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-storage"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "arrow-array",
  "arrow-data",
@@ -2271,7 +2271,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-app"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "arrow-array",
  "futures-util",
@@ -2296,7 +2296,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-cli"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "clap",
  "harmos-domain",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-domain"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "schematic-protocol",
@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-guest"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos",
  "schematic-domain",
@@ -2336,7 +2336,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-operations"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos-operations",
  "harmos-protocol",
@@ -2348,7 +2348,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-protocol"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos",
  "harmos-protocol",
@@ -2364,7 +2364,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-sidecar"
-version = "0.1.15"
+version = "0.1.14"
 dependencies = [
  "harmos",
  "schematic-domain",
